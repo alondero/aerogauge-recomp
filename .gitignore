@@ -1,0 +1,63 @@
+# --- Copyrighted game data (NEVER commit) ---------------------------------
+# The original ROM must be supplied by the user. This project ships no assets.
+*.z64
+*.n64
+*.v64
+*.rom
+
+# --- Recompiler output (regenerated from your ROM at build time) -----------
+# `scripts/gen_syms_toml.py` + the N64Recomp CLI produce these from the ROM.
+RecompiledFuncs/
+data_dump.toml
+# RSP audio microcode, RSPRecomp'd from your ROM (BUILDING.md step 3):
+src/aspMain.cpp
+
+# --- CMake build trees -----------------------------------------------------
+build/
+build-*/
+out/
+CMakeUserPresets.json
+compile_commands.json
+
+# --- Editor / OS -----------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Bundled emulator + debug captures (not source; regenerable/large) ------
+# ares reference emulator for live-debug skills (ares-debugger / port-vs-ares-harness)
+tools/emulators/
+# RDRAM / framebuffer / DL dumps captured from ares or the port
+*.bin
+dma_validation/
+
+# --- Logs / scratch --------------------------------------------------------
+*.log
+*.stackdump
+# gdb batch backtrace/logging dumps from native port debugging
+gdb_bt*.txt
+# framebuffer / display-list render captures from the port
+*.bmp
+# Python bytecode cache (scripts/gen_syms_toml.py etc.)
+__pycache__/
+
+# --- Local AI Artefacts ----------------------------------------------------
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+nextsessionprompt.md
+.worktreeinclude
+
+# --- Game artefacts --------------------------------------------------------
+*.mpk
+*.pak
+*.mpk.tmp
+*.pak.tmp
+# Generic scratch
+*.tmp
+# Session scratch (screenshots, driven-capture configs)
+verify_*/
+# Host-compiled unit-test binaries
+tests/*.exe

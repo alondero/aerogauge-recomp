@@ -1,0 +1,1 @@
+func_8006C800  # auto: Unhandled instruction: trunc.l.d
