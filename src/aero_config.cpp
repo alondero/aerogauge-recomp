@@ -188,12 +188,10 @@ ultramodern::renderer::GraphicsConfig default_graphics_config() {
     return cfg;
 }
 
-// (issue #67) The widescreen-HUD geometry shifts no longer need a config-time gate:
-// src/aero_hud_widescreen.c derives them from aero_ws_get_hud_rect_aspect_bits(), which
-// is 0-travel (4/3) for any config where the rect pins don't move (non-Expand, 4:3 output,
-// or hr_option Original) AND tracks runtime window resizes and the hr_option clamp -- none
-// of which a load-time bool could capture. The old aero_ws_hud_widescreen_active()
-// (Expand + Clamp16x9) has been removed.
+// (issue #67 carry-over) The widescreen-HUD rect-pin scaling (see aero_hud_widescreen.h)
+// tracks runtime window resizes and the hr_option clamp via aero_ws_hud_effective_rect_aspect,
+// so it needs no config-time gate. The constants remain unverified for AeroGauge's HUD;
+// TODO(aerogauge): re-measure once the HUD renders.
 
 ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     ultramodern::renderer::GraphicsConfig cfg = default_graphics_config();

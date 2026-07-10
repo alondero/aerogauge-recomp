@@ -25,12 +25,14 @@ uint8_t* g_aero_rdram = nullptr;
 
 // TODO(aerogauge): the Lamborghini port sampled that game's state machine (D_800CE6AC),
 // menu screen id (D_80098560) and attract demo index (D_800CE774) to gate/label captures.
-// AeroGauge's equivalents are not identified yet, so these return sentinels: state -1
-// means the state-gated capture knobs never fire (pass a negative AERO_DL_RENDER_STATE /
-// AERO_DL_INSPECT_STATE to force them until the real global is found).
-static int aero_probe_state()      { return -1; }
-static int aero_probe_menu_screen(){ return 0; }
-static int aero_probe_demo_idx()   { return 0; }
+// TODO(aerogauge): the Lamborghini port sampled that game's state machine (D_800CE6AC),
+// menu screen id (D_80098560) and attract demo index (D_800CE774) to gate/label captures.
+// AeroGauge's equivalents are not identified yet, so the probe funcs return sentinels: state
+// -1 (unmapped) means the state-gated capture knobs never fire unless the user passes a
+// negative AERO_DL_RENDER_STATE / AERO_DL_INSPECT_STATE explicitly. Map these to real
+// globals once the boot+game state has been disassembled past the first fault.
+static int aero_state_unmapped()      { return -1; }
+static int aero_menu_screen_unmapped(){ return 0;  }
 
 namespace headless {
 
@@ -1367,7 +1369,7 @@ public:
                 const char* se = std::getenv("AERO_DL_INSPECT_STATE");
                 int target = se ? std::atoi(se) : 8;
                 // state = high halfword of the word at 0x800CE6AC (MEM_H, matches state_probe()).
-                int state = aero_probe_state(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+                int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
                 if (state >= target) {
                     std::fprintf(stderr, "[dl-inspect] state=%d (>= target %d), send_dl #%d\n",
                                  state, target, count);
@@ -1383,7 +1385,7 @@ public:
         if (s_race_dump && t && g_aero_rdram) {
             static bool s_done = false;
             static int s_settle = 0;
-            int state = aero_probe_state(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+            int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
             if (!s_done && state >= 8 && ++s_settle >= 400) {
                 char path[512];
                 std::snprintf(path, sizeof(path), "%s.txt", s_race_dump);
@@ -1414,7 +1416,7 @@ public:
             dlinspect::SpriteScan sc;
             uint32_t dl_addr = (uint32_t)(int32_t)t->t.data_ptr;
             dlinspect::sprite_scan(g_aero_rdram, dl_addr, seg, sc, 0);
-            int scr = aero_probe_menu_screen(); // TODO(aerogauge): re-point (was Lambo D_80098562)
+            int scr = aero_menu_screen_unmapped(); // TODO(aerogauge): re-point (was Lambo D_80098562)
             static int s_scr = -9999; static uint32_t s_count = 0xFFFFFFFF;
             static uint32_t s_cmds = 0;
             if (scr != s_scr || sc.count != s_count || sc.cmds != s_cmds) {
@@ -1473,7 +1475,7 @@ public:
             if (!m_frame_captured || (s_every > 0 && count >= m_next_capture)) {
                 const char* se = std::getenv("AERO_DL_RENDER_STATE");
                 int target = se ? std::atoi(se) : 8;
-                int state = aero_probe_state(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+                int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
                 if (state >= target) {
                     const char* out = std::getenv("AERO_DL_RENDER_OUT");
                     const char* base = out ? out : "dl_render_state8.bmp";
@@ -1485,15 +1487,14 @@ public:
                     }
                     if (s_every > 0) m_next_capture = count + s_every;
                     bool ok = swrender::write_bmp(path, m_fb);
-                    // Demo-track index (D_800CE774, mod-6, +1 per attract pass via func_80038D6C).
-                    // Logged so every capture self-identifies its attract demo — W111 chased a
-                    // "horizon gap" that was two DIFFERENT demos compared frame-to-frame.
-                    int demo_idx = aero_probe_demo_idx(); // TODO(aerogauge): re-point (was Lambo D_800CE774)
+                    // TODO(aerogauge): the Lamborghini port logged a demo-track index here so
+                    // every capture self-identified its attract demo (D_800CE774 was the
+                    // Lambo global). Unmapped for AeroGauge — re-add once its attract loop runs.
                     std::fprintf(stderr,
-                        "[dl-render] captured state=%d demo_idx=%d frame (send_dl #%d) -> %s (%s)\n"
+                        "[dl-render] captured state=%d frame (send_dl #%d) -> %s (%s)\n"
                         "[dl-render]   verts_loaded=%u tris_in=%u drawn=%u clipped=%u pixels=%u tex_pixels=%u  viewport=%s\n"
                         "[dl-render]   fog: pixels=%u mul=%d off=%d color=(%u,%u,%u)\n",
-                        state, demo_idx, count, path, ok ? "written" : "WRITE FAILED",
+                        state, count, path, ok ? "written" : "WRITE FAILED",
                         rs.verts_loaded, rs.tris_in, rs.tris_drawn, rs.tris_clipped, rs.pixels, rs.tex_pixels,
                         rs.vp_from_dl ? "from-DL" : "default",
                         rs.fog_pixels, (int)rs.fog_mul, (int)rs.fog_off, rs.fog_r, rs.fog_g, rs.fog_b);

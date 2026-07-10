@@ -105,7 +105,7 @@ git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 # `ultramodern_relink_thread_contexts`".
 log "[2/5] Applying Lamborghini submodule patches..."
 PATCHES=(
-    "lib/N64ModernRuntime:0001-lamborghini-runtime-scheduler-audio-vi.patch"
+    "lib/N64ModernRuntime:0001-ultramodern-runtime-scheduler-audio-vi.patch"
     "lib/N64ModernRuntime:0007-ultramodern-savestate-thread-context-relink.patch"
     "lib/rt64:0006-rt64-interp-angular-velocity-matching.patch"
     "lib/rt64:0008-rt64-skybox-stretch-parallaxless-backdrop.patch"

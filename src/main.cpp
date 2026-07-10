@@ -147,8 +147,10 @@ static void promote_vi_context() {
     // Promote the WHOLE 0x30 context, not just the buffer field: ares RDRAM dumps show the two
     // OSViContexts byte-identical every frame (title dump 0x8008D140/0x8008D170), which is the
     // hardware __osViSwapContext's net effect. The buffer word (+0x4) is the scheduler gate;
-    // modep (+0x8) and control (+0xC) are live since osViSetMode (func_80075C60) was un-stubbed
-    // (W115: LPN2 0x8008C4A0 at boot, LAN2 0x8008C540 from the game SM -- matches ares).
+    // modep (+0x8) and control (+0xC) are live since osViSetMode was un-stubbed
+    // (Lamborghini reference: LPN2 0x8008C4A0 at boot, LAN2 0x8008C540 from the game
+    // SM — matches ares. TODO(aerogauge): re-derive for this ROM once its VI init
+    // is mapped; the Lambo addresses in this comment will not be portable.)
     for (uint32_t off = 0; off < 0x30; off += 4) sw(curr + off, gw(next + off));
     // VI present-path bridge (#58, default since the 2026-07-02 RT64 flip): apply the game's
     // VI-manager state to ultramodern's VI natives at retrace cadence -- the exact values and
@@ -193,19 +195,6 @@ static void state_probe() {
     // TODO(aerogauge): D_800CE6AC is the LAMBORGHINI state-machine global. Re-point this
     // probe at AeroGauge's boot/game state register once it has been identified.
     return;
-    uint8_t* rdram = g_aero_rdram;
-    if (rdram == nullptr) return;
-    auto h = [&](uint32_t a) -> uint32_t { // N64 big-endian halfword at literal addr (MEM_H)
-        uint32_t w = *(uint32_t*)(rdram + ((a & ~3u) - 0x80000000u));
-        return (a & 2u) ? (w & 0xFFFF) : ((w >> 16) & 0xFFFF);
-    };
-    int state = (int)h(0x800CE6AC);
-    if (state > g_max_state.load()) g_max_state.store(state);
-    static int s_last = -1;
-    if (state != s_last) {
-        std::fprintf(stderr, "[state] vi=%d  state=%d (was %d)\n", g_vis.load(), state, s_last);
-        s_last = state;
-    }
 }
 
 // Menu-screen probe (PERMANENT harness instrumentation, same class as state_probe): samples the
@@ -216,20 +205,6 @@ static void state_probe() {
 static void menu_probe() {
     // TODO(aerogauge): D_80098562/D_80098560 are LAMBORGHINI menu globals; disabled.
     return;
-    uint8_t* rdram = g_aero_rdram;
-    if (rdram == nullptr) return;
-    auto h = [&](uint32_t a) -> uint32_t { // N64 big-endian halfword at literal addr (MEM_H)
-        uint32_t w = *(uint32_t*)(rdram + ((a & ~3u) - 0x80000000u));
-        return (a & 2u) ? (w & 0xFFFF) : ((w >> 16) & 0xFFFF);
-    };
-    int scr = (int)(int16_t)h(0x80098562);
-    int sub = (int)(int16_t)h(0x80098560);
-    static int s_scr = -9999, s_sub = -9999;
-    if (scr != s_scr || sub != s_sub) {
-        std::fprintf(stderr, "[menu] vi=%d  screen=%d sub=%d (was %d/%d)\n",
-                     g_vis.load(), scr, sub, s_scr, s_sub);
-        s_scr = scr; s_sub = sub;
-    }
 }
 
 // Frame-pace probe (PERMANENT harness instrumentation, same class as state_probe): counts game
@@ -242,21 +217,6 @@ static void pace_probe(int vi_n) {
     // AeroGauge's VI-manager state is located.
     (void)vi_n;
     return;
-    uint8_t* rdram = g_aero_rdram;
-    if (rdram == nullptr) return;
-    auto gw = [&](uint32_t a) -> uint32_t { return *(uint32_t*)(rdram + (a - 0x80000000u)); };
-    uint32_t next = gw(0x8008D1A4); // __osViNext
-    if (next < 0x80000000u || next >= 0x80800000u) return;
-    uint32_t buf = gw(next + 0x4);
-    static uint32_t s_last_buf = 0;
-    if (buf != s_last_buf) { s_last_buf = buf; g_swaps.fetch_add(1); }
-    if ((vi_n % 600) == 0) {
-        static int s_prev_total = 0;
-        int total = g_swaps.load();
-        std::fprintf(stderr, "[pace] vi=%d swaps_last_600vi=%d (~%.1f fps)\n",
-                     vi_n, total - s_prev_total, (total - s_prev_total) / 10.0);
-        s_prev_total = total;
-    }
 }
 
 // Provided by runtime patch 0001 (mesgqueue.cpp), gated by LAMBO_THREAD_TRACE — the lambo_
@@ -746,10 +706,12 @@ int main(int argc, char** argv) {
     cfg.error_handling_callbacks.message_box = message_box_stub;
     // window_handle left default-empty -> create_window_stub() is used.
 
-    // Controller 0 is wired by DEFAULT (#64/#53, 2026-06-29): the ROM's controller subsystem
-    // gates object-slot registration on a clean controller status, and ares boots with 4 detected
-    // controllers (count D_8011C681=4). With NO controller wired the read returns "no response"
-    // and the object-slot gate func_8007A8A0 (via func_80083100) bails -> stuck at state 6.
+    // Controller 0 is wired by DEFAULT (carried over from the Lamborghini port's
+    // controller-gating issue). AeroGauge's equivalent SI read path is not yet
+    // identified — see TODO(aerogauge) on libultra_stubs.c funcs near func_80075C60 —
+    // so the rationale above (D_8011C681 count, object-slot gate func_8007A8A0) does
+    // not necessarily apply here; this is the safe default of "controller 0 connected"
+    // and we revalidate once the port's SI signal path is mapped.
     // AERO_MODERN_INPUT still overrides the held-button mask for input testing (e.g. =1000 holds
     // START); default (unset) = controller 0 connected, no buttons held.
     if (const char* in = std::getenv("AERO_MODERN_INPUT")) {

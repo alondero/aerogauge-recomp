@@ -131,7 +131,7 @@ try {
     # relative path doesn't resolve.
     Write-Host "[2/5] Applying submodule patches..." -ForegroundColor Cyan
     $patches = @(
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-lamborghini-runtime-scheduler-audio-vi.patch' },
+        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-ultramodern-runtime-scheduler-audio-vi.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0007-ultramodern-savestate-thread-context-relink.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0006-rt64-interp-angular-velocity-matching.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },
