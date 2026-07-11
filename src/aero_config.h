@@ -65,9 +65,9 @@ bool widescreen_sky_match();
 
 // Far-clip-plane multiplier for the native guPerspectiveF (draw-distance
 // enhancement; see src/aero_draw_distance.h). graphics.json key
-// "draw_distance_scale" (default 0.0 = infinite far plane, 1.0 = the original
-// game's 500-unit far plane, clamped to {0} U [1, 10000]), overridable by
-// AERO_DRAW_DISTANCE_SCALE=<float> for A/B capture runs.
+// "draw_distance_scale" (default 100.0; 0.0 = infinite far plane,
+// 1.0 = the original game's 500-unit far plane, clamped to {0} U [1, 10000]),
+// overridable by AERO_DRAW_DISTANCE_SCALE=<float> for A/B capture runs.
 float draw_distance_scale();
 
 } // namespace config
