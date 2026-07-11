@@ -194,6 +194,12 @@ void submit(const int16_t* pcm, size_t sample_count) {
 }
 
 void queue_samples(int16_t* pcm, size_t sample_count) {
+    // SCAFFOLD (retire with audio_ucode_noop, main.cpp): no aspMain runs yet, so the AI
+    // buffer the game hands osAiSetNextBuffer is stale RDRAM, not PCM. Now that windowed
+    // runs open a REAL SDL audio device, queueing it as-is emits loud garbage. Zero the
+    // payload but keep the submit itself -- the queue depth is what paces the game's
+    // audio thread (get_frames_remaining), so timing behaviour stays faithful.
+    std::memset(pcm, 0, sample_count * sizeof(int16_t));
     submit(pcm, sample_count);
 }
 

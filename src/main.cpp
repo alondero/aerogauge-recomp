@@ -111,69 +111,19 @@ static void thread_create_cb(uint8_t*, recomp_context*) {
     std::_Exit(g_first_vi.load() ? 0 : 2);
 }
 
-// Set by headless::create_render_context (stub_renderer.cpp) so this retrace hook can reach RDRAM.
-extern uint8_t* g_aero_rdram;
 
-// Emulate libultra's retrace-time __osViSwapContext for THIS game's osScheduler (#58).
+// The Lamborghini stack carried a retrace-time __osViSwapContext bridge here
+// (promote_vi_context): that ROM's osScheduler read the PRIVATE VI-manager globals
+// __osViCurr/__osViNext directly, so the port had to emulate the VI interrupt's
+// pointer promotion or the gfx-task gate latched shut after one frame.
 //
-// ultramodern reimplements the PUBLIC libultra VI API (osViSwapBuffer/osViGetCurrentFramebuffer)
-// as natives, but this game's osScheduler reaches into the PRIVATE VI-manager state __osViCurr
-// (0x8008D1A0) / __osViNext (0x8008D1A4) that only libultra's VI INTERRUPT used to maintain. Its
-// gfx-task scheduling gate (__scTaskReady -> func_80074380) runs a task only when
-//   __osViCurr->buffer (+0x4) == __osViNext->buffer (+0x4).
-// On real hardware the VI retrace ISR's __osViSwapContext promotes __osViCurr <- __osViNext every
-// frame, so once a requested swap is applied the two match again and the gate reopens. ultramodern
-// replaced that ISR (and __osViInit is a no-op stub), so __osViCurr stayed frozen at 0 while
-// __osViNext advanced to the pending framebuffer -> the gate latched shut after frame 1 and only the
-// first gfx OSTask ever reached the renderer (the #58 1-task stall). Mirroring the buffer field each
-// retrace reopens the gate with correct 1-frame-per-retrace pacing. This is faithful libultra VI
-// behaviour, not a scaffold, so it is the default. (When RT64 lands this hook stays — it is the
-// game's registered retrace callback.)
-static void promote_vi_context() {
-    // TODO(aerogauge): the addresses below (__osViCurr 0x8008D1A0 / __osViNext 0x8008D1A4)
-    // are the LAMBORGHINI ROM's private VI-manager globals, carried over with the stack.
-    // AeroGauge's equivalents have not been derived yet (locate them from the boot
-    // disassembly / an ares RDRAM dump once the libultra layer is mapped), so the bridge
-    // is disabled until then.
-    return;
-    uint8_t* rdram = g_aero_rdram;
-    if (rdram == nullptr) return;
-    auto gw = [&](uint32_t a) -> uint32_t { return *(uint32_t*)(rdram + (a - 0x80000000u)); };
-    auto sw = [&](uint32_t a, uint32_t v) { *(uint32_t*)(rdram + (a - 0x80000000u)) = v; };
-    auto in_rdram = [](uint32_t a) { return a >= 0x80000000u && a < 0x80800000u; };
-    uint32_t curr = gw(0x8008D1A0); // __osViCurr
-    uint32_t next = gw(0x8008D1A4); // __osViNext
-    if (!in_rdram(curr) || !in_rdram(next)) return;
-    // Promote the WHOLE 0x30 context, not just the buffer field: ares RDRAM dumps show the two
-    // OSViContexts byte-identical every frame (title dump 0x8008D140/0x8008D170), which is the
-    // hardware __osViSwapContext's net effect. The buffer word (+0x4) is the scheduler gate;
-    // modep (+0x8) and control (+0xC) are live since osViSetMode was un-stubbed
-    // (Lamborghini reference: LPN2 0x8008C4A0 at boot, LAN2 0x8008C540 from the game
-    // SM — matches ares. TODO(aerogauge): re-derive for this ROM once its VI init
-    // is mapped; the Lambo addresses in this comment will not be portable.)
-    for (uint32_t off = 0; off < 0x30; off += 4) sw(curr + off, gw(next + off));
-    // VI present-path bridge (#58, default since the 2026-07-02 RT64 flip): apply the game's
-    // VI-manager state to ultramodern's VI natives at retrace cadence -- the exact values and
-    // timing libultra's __osViSwapContext would have used. osViSetMode only on a modep
-    // transition (the native reconfigures the display; hardware re-applies registers every
-    // frame but the config is idempotent). Unconditional (also headless): ultramodern's VI
-    // state simply goes unconsumed without a presenting renderer, and one code path keeps the
-    // trunk stress-tested. NOTE events.cpp patch-0002's dummy-mode hunk is NOT retired with the
-    // flip: W115 observed dummy-mode scanout live, i.e. VI ticks do land in the game-started ->
-    // first-osViSetMode window while RT64/Vulkan init delays the first tick -- without the
-    // hunk's mode==nullptr guard, update_vi() derefs null there. It is a null-guard for that
-    // race, not a scaffold.
-    {
-        uint32_t modep = gw(next + 0x8);
-        uint32_t buf   = gw(next + 0x4);
-        static uint32_t s_last_modep = 0;
-        if (in_rdram(modep) && modep != s_last_modep) {
-            osViSetMode(rdram, (int32_t)modep);
-            s_last_modep = modep;
-        }
-        if (in_rdram(buf))   osViSwapBuffer(rdram, (int32_t)buf);
-    }
-}
+// AeroGauge does NOT need it (verified 2026-07-11 by an all-.text immediate scan for
+// its VI globals __osViCurr=0x80094C50 / __osViNext=0x80094C54, scratchpad globref.py):
+// every reference lives inside libultra itself — the routed osVi* API bodies, the
+// collapsed __osViInit (0x80077120), and the VI-ISR-only __osViSwapContext
+// (0x80077FD0/0x800782F0), which never runs recompiled. Game code goes exclusively
+// through the public osVi* entry points, all routed to ultramodern natives, so the
+// native VI manager owns the whole swap path and there is no private state to mirror.
 
 // Stage3 state-machine progression tracker (PERMANENT harness instrumentation, not a
 // throwaway diagnostic). The ROM's per-frame dispatcher (func_800028D0) walks a state
@@ -208,22 +158,30 @@ static void menu_probe() {
 }
 
 // Frame-pace probe (PERMANENT harness instrumentation, same class as state_probe): counts game
-// framebuffer swaps by sampling __osViNext->buffer (ctx at *(0x8008D1A4), buffer field +0x4) once
-// per VI. The scheduler gate admits at most one swap per retrace, so per-VI sampling cannot miss
-// one. Real hardware runs this game at ~30fps = 0.5 swaps/VI (ares state-8 dwell 3094 VIs, W102);
-// ~1.0 swaps/VI means the port is running the game 2x fast (#58 pacing).
+// framebuffer swaps by watching ultramodern's native VI_ORIGIN register once per VI. AeroGauge's
+// swap path is fully native (osViSwapBuffer routed; no private VI state, see the note above), so
+// the ROM-global sampling the Lambo port used does not apply — the native register IS the ground
+// truth the VI scanout would read. At most one swap can become current per retrace, so per-VI
+// sampling cannot miss one. ~0.5 swaps/VI is a 30 fps title on a 60 Hz VI; ~1.0 swaps/VI means
+// the port runs the game 2x fast (pacing bug class).
 static void pace_probe(int vi_n) {
-    // TODO(aerogauge): reads the LAMBORGHINI __osViNext global; disabled until
-    // AeroGauge's VI-manager state is located.
-    (void)vi_n;
-    return;
+    static uint32_t s_last_origin = 0;
+    const ultramodern::renderer::ViRegs* vr = ultramodern::renderer::get_vi_regs();
+    if (vr == nullptr) return;
+    uint32_t origin = vr->VI_ORIGIN_REG;
+    if (origin != s_last_origin) {
+        s_last_origin = origin;
+        int s = ++g_swaps;
+        if (s <= 8 || (s % 256) == 0)
+            std::fprintf(stderr, "[probe] fb swap #%d -> VI_ORIGIN=0x%08x (vi=%d)\n",
+                         s, origin, vi_n);
+    }
 }
 
 // Provided by runtime patch 0001 (mesgqueue.cpp), gated by LAMBO_THREAD_TRACE — the lambo_
 // prefix stays because the symbol lives inside the patched N64ModernRuntime submodule.
 extern "C" void lambo_thread_trace_dump(int vi);
 static void vi_cb() {
-    promote_vi_context();
     state_probe();
     menu_probe();
     int n = ++g_vis;
@@ -660,6 +618,11 @@ int main(int argc, char** argv) {
     game.internal_name     = "AEROGAUGE           "; // ROM header name @0x20 (20 bytes)
     game.game_id           = u8"aerogauge.us";
     game.is_enabled        = true;
+    // 4Kbit EEPROM (512 B): the ROM's save loader (0x80061D00) probes with osEepromProbe and
+    // the routed librecomp eep.cpp natives gate on this via recomp::eeprom_allowed(). The
+    // probe status bits in __osEepStatus map 0x8000 -> type 1 (4K), which is what this
+    // cartridge shipped with.
+    game.save_type         = recomp::SaveType::Eep4k;
     game.entrypoint_address = (gpr)(int32_t)0x80000400u;
     game.entrypoint        = recomp_entrypoint;
     game.on_init_callback  = on_init_cb;

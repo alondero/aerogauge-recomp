@@ -232,6 +232,53 @@ LIBULTRA_NAMES = {
     # __osMaxControllers(0x801BABD1) channels, error bits from rx byte -> errno, fills the
     # 6-byte-stride OSContPad array (button u16, stick s8 x2, errno).
     0x8006B2AC: "osContGetReadData",
+    # --- EEPROM family (byte-verified 2026-07-11; ninth first-fault, the first RT64 windowed
+    #     run: game save-load 0x80061D00 -> osEepromProbe -> __osEepStatus(0x800778B8) ->
+    #     __osSiRawStartDma(0x80074240) -> __osSiDeviceBusy(0x8007AAA0) raw SI_STATUS read).
+    #     All reimplemented -> librecomp eep.cpp natives backed by the real save file
+    #     (requires game.save_type = Eep4k in main.cpp). Shared SI plumbing identified:
+    #     __osSiGetAccess=0x800740F0, __osSiRelAccess=0x80074134, __osSiRawStartDma=0x80074240
+    #     (busy check; dcache writeback/inval of the 64-byte PIF frame; osVirtualToPhysical ->
+    #     SI_DRAM_ADDR 0xA4800000, PIF_RAM 0x1FC007C0 -> RD64B/WR64B), __osEepStatus=0x800778B8
+    #     (zeroes 4 channel slots to reach channel 4, cmd frame FF 01 03 00 = tx1/rx3/
+    #     REQUEST_STATUS, 0xFE terminator, write+read DMA pair @0x801BAC30).
+    # osEepromProbe (0xA0): __osSiGetAccess; __osEepStatus; type bits (status & 0xC000):
+    # 0x8000 -> 1 (EEPROM_TYPE_4K), 0xC000 -> 2 (16K), else 0; __osSiRelAccess. Game caller:
+    # the save loader 0x80061D00 (accepts any nonzero type).
+    0x8006DE40: "osEepromProbe",
+    # osEepromRead (0x21C): GetAccess; __osEepStatus; 4K path builds cmd 04 (read block) via
+    # the channel-skip frame, write+read DMA pair, 16K half handled by the helper
+    # 0x8006E0FC (only caller is this body -> collapses). Game callers 0x80061D54 + inside
+    # osEepromLongRead.
+    0x8006DEE0: "osEepromRead",
+    # osEepromWrite (0x1EC): GetAccess; __osEepStatus TWICE (second is the write-in-progress
+    # poll); type check -> cmd 05 (write block) frame @0x801BAC30, write+read DMA pair.
+    # Only direct caller is osEepromLongWrite's loop @0x8006E22C.
+    0x800775C0: "osEepromWrite",
+    # osEepromLongRead (0x90): loops osEepromRead(0x8006E2F0's jal @0x8006E31C) one 8-byte
+    # block at a time, buffer+8/address+1 per pass. Game callers 0x80062038/0x8006205C.
+    0x8006E2F0: "osEepromLongRead",
+    # osEepromLongWrite (0xF0): loops osEepromWrite(@0x8006E22C) per 8-byte block, then
+    # osSetTimer(0x80074160) with 0x89544 counts (~12 ms EEPROM write latency) + osRecvMesg
+    # between blocks. Game callers 0x80061EAC..0x800624E0 (9 sites, the save writer).
+    0x8006E200: "osEepromLongWrite",
+    # --- Rumble-motor family (byte-verified 2026-07-11, same raw-SI crash class; all
+    #     reimplemented -> ultramodern input.cpp natives, which self-guard on
+    #     pfs->status & PFS_MOTOR_INITIALIZED and answer via the set_rumble callback) ---
+    # osMotorInit (0x2E4, no jal callers -- reached indirectly): pfs->queue=a0@+4,
+    # channel=a2@+8, status=0@+0, +0x65=0x80; fills a 32-byte 0xFE probe block and
+    # __osContRamWrite(0x80077260)s it to pak address 0x400, re-probes with 0x80 -- the
+    # canonical rumble-pak detect. Writes the per-channel init table @0x80093670 that
+    # osMotorStart/Stop check.
+    0x8006E83C: "osMotorInit",
+    # osMotorStop (0x1A0): bails 5 (PFS_ERR_INVALID) unless table[pfs->channel]@0x80093670;
+    # __osSiGetAccess; __osContLastCmd=3 @0x801BABD0; __osSiRawStartDma WRITE of the prebuilt
+    # per-channel 0x40 motor frame @0x801BAC70+chan*0x40, then READ @0x801BD350. Game caller
+    # 0x80063970 (rumble dispatcher 0x80063930, flag bit 0x400).
+    0x8006E380: "osMotorStop",
+    # osMotorStart (0x1A0): byte-identical shape to osMotorStop but writes the start frame
+    # table @0x801BAD70+chan*0x40. Game caller 0x80063954 (same dispatcher, flag bit 0x800).
+    0x8006E520: "osMotorStart",
 }
 
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):
@@ -250,6 +297,41 @@ INDIRECT_STARTS = [
     # 2026-07-11 boot smoke: indirect call after audio init; bytes at 0x80002028 are a
     # prologue-less leaf starting right after the previous function's `jr $ra` + delay slot.
     0x80002028,
+    # 2026-07-11 windowed run: `Failed to find function at 0x8000DFD0` ~14 s in (game
+    # advancing past the boot states). Verified head right after `jr $ra` + nop padding at
+    # 0x8000DFBC; missed by the prologue scan because the `addiu $sp` sits at +8 (two
+    # scheduling-hoisted loads precede it), and no jal targets it.
+    0x8000DFD0,
+    # 2026-07-11 batch (scratchpad indirect_scan.py, after the next fault moved to
+    # 0x80009D70): scanned the whole ROM DATA region for aligned words pointing into
+    # .text, kept those that (a) are not already derived starts, (b) sit right after a
+    # function terminator (jr + delay slot, or jr + nop padding), and (c) are NOT
+    # branch-reachable from earlier inside their containing derived span -- filter (c)
+    # rejects switch-dispatcher case blocks whose addresses live in .data jump tables
+    # (e.g. 0x80026598, the shared `jr $ra` default case of the 0x80026578 dispatcher,
+    # 28 table slots) and which N64Recomp already handles as jump tables. Survivors are
+    # game object/callback pointers, all in the same low-.text module:
+    0x80009D70,  # 288 refs -- the per-object callback in the entity spawn records
+    0x8000E090,  # same hoisted-load head shape as 0x8000DFD0
+    0x8000F920,
+    0x8000FAFC,  # prologue-less arg-spill leaf
+    0x8000FCD0,
+    # 2026-07-11 second batch (scratchpad la_scan.py, after the next fault moved to
+    # 0x80007BB0): same head + branch-reachability filters, but the pointer source is
+    # lui/addiu (`la`) pairs in .text -- callbacks materialized in registers and stored
+    # into runtime structs, invisible to both the jal scan and the data-word scan.
+    # Deliberately EXCLUDED from the same scan's output: 0x800708A0/0x800708B0 ($k0-using
+    # exception-handler entries, referenced only by the vector installer) and 0x8007BED0
+    # (the exception-vector code blob, referenced as a memcpy source) -- kernel artifacts
+    # that must stay un-emitted, same class as the CP0 auto-stubs.
+    0x800013A0,
+    0x80007BB0,  # the fault site; registered by the 0x80018438..0x80018A9C callback module
+    0x80007D08,
+    0x80007FA0,
+    0x8000D148,
+    0x80018E90,
+    0x8005C95C,
+    0x8007A4E8,  # _Printf-style proc pointer, stored at struct+0x28 beside func_8007A75C
 ]
 
 
