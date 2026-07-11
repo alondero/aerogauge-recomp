@@ -63,6 +63,13 @@ bool widescreen_fog_match();
 // AERO_SKY_MATCH_1P=1/0. Only flips a branch that 1P/2P already take.
 bool widescreen_sky_match();
 
+// Far-clip-plane multiplier for the native guPerspectiveF (draw-distance
+// enhancement; see src/aero_draw_distance.h). graphics.json key
+// "draw_distance_scale" (default 100.0; 0.0 = infinite far plane,
+// 1.0 = the original game's 500-unit far plane, clamped to {0} U [1, 10000]),
+// overridable by AERO_DRAW_DISTANCE_SCALE=<float> for A/B capture runs.
+float draw_distance_scale();
+
 } // namespace config
 } // namespace aero
 
