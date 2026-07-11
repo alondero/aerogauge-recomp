@@ -27,3 +27,6 @@ stubs = [
     "func_8007B830",
     "func_8007BD70",
 ]
+ignored = [
+    "guPerspectiveF",
+]

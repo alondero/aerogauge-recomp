@@ -281,6 +281,24 @@ LIBULTRA_NAMES = {
     0x8006E520: "osMotorStart",
 }
 
+# Game/libultra functions we replace with hand-written natives in src/ for ENHANCEMENTS
+# (not OS routing). These are emitted into the us.toml `[patches] ignored` array: N64Recomp
+# skips the body but does NOT rename call sites, so callers reference the bare name and the
+# linker resolves it to our native (src/aero_draw_distance.cpp etc.). Unlike LIBULTRA_NAMES,
+# these names are NOT in N64Recomp's built-in reimplemented/ignored/renamed sets
+# (symbol_lists.cpp), so the toml array is the only routing mechanism.
+NATIVE_NAMES = {
+    # guPerspectiveF (ROM 0x8006BA60, byte-verified 2026-07-11): jal 0x8006C330
+    # (guMtxIdentF), fovy cvt.d.s * double @0x80098D20 (== 3.1415926/180.0,
+    # ROM-byte-exact), /2.0f, jal 0x8006AC80 (cosf) / 0x80066D50 (sinf) -> cot,
+    # (n+f)/(n-f) & 2nf/(n-f) matrix terms, perspNorm `c.le.d 2.0` + `sh` store at
+    # 0x8006BBB4..0x8006BC88. ALL 11 call sites pass far=500.0 (0x43FA immediates
+    # at 9 scene setups; camera structs +0x10 at 0x8001F59C/0x80020748) -- the
+    # game's entire draw-distance limit. Replaced by src/aero_draw_distance.cpp
+    # to scale the far plane (issue: pop-in).
+    0x8006BA60: "guPerspectiveF",
+}
+
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):
 #   0x80000400  entry trampoline: clears the DMA table then `jr $t2` -> 0x800653f0
 #   0x80000450  own `addiu $sp,-0x38` prologue right after the trampoline pad
@@ -371,7 +389,7 @@ def main():
     for i, v in enumerate(starts):
         end_v = starts[i + 1] if i + 1 < len(starts) else vhi
         size = end_v - v
-        name = LIBULTRA_NAMES.get(v, "func_%08X" % v)
+        name = LIBULTRA_NAMES.get(v) or NATIVE_NAMES.get(v) or "func_%08X" % v
         cop0 = False
         branch_out = False
         for off in range(vram_to_rom(v), vram_to_rom(end_v), 4):
@@ -407,7 +425,8 @@ def main():
         print(f"WARNING: force_stub.txt names not in the function map: {sorted(unknown_force)}")
     # Canonically-named functions are routed (reimplemented/ignored) by N64Recomp itself and
     # are never emitted -- listing one as a stub too would make the recompiler hard-error.
-    stubs = sorted(((auto_stubs | force) & known) - set(LIBULTRA_NAMES.values()))
+    stubs = sorted(((auto_stubs | force) & known)
+                   - set(LIBULTRA_NAMES.values()) - set(NATIVE_NAMES.values()))
 
     # --- emit syms.toml -----------------------------------------------------------
     with OUT_SYMS.open("w", newline="\n") as f:
@@ -441,12 +460,19 @@ def main():
         for n in stubs:
             f.write(f'    "{n}",\n')
         f.write("]\n")
+        # Natively-replaced enhancement hooks (see NATIVE_NAMES): body skipped, call sites
+        # keep the bare name, src/ provides the symbol.
+        f.write("ignored = [\n")
+        for n in sorted(n for n in NATIVE_NAMES.values() if n in known):
+            f.write(f'    "{n}",\n')
+        f.write("]\n")
 
     n_auto = len(auto_stubs & known)
     named = sorted(n for n in LIBULTRA_NAMES.values() if n in known)
-    missing_named = sorted(set(LIBULTRA_NAMES.values()) - known)
+    missing_named = sorted((set(LIBULTRA_NAMES.values()) | set(NATIVE_NAMES.values())) - known)
     if missing_named:
-        print(f"WARNING: LIBULTRA_NAMES vram not a derived function start: {missing_named}")
+        print(f"WARNING: LIBULTRA_NAMES/NATIVE_NAMES vram not a derived function start: {missing_named}")
+    print(f"hook-named (toml ignored): {sorted(n for n in NATIVE_NAMES.values() if n in known)}")
     print(f"functions: {len(funcs)}  (jal+prologue-derived)")
     print(f"libultra-named: {len(named)}  {named}")
     print(f"stubs: {len(stubs)}  (auto CP0/branch-out: {n_auto}, force_stub.txt: {len(force & known)})")

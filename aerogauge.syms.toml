@@ -938,7 +938,7 @@ functions = [
     { name = "func_8006B7F0", vram = 0x8006b7f0, size = 0x1f0 },
     { name = "func_8006B9E0", vram = 0x8006b9e0, size = 0x24 },
     { name = "func_8006BA04", vram = 0x8006ba04, size = 0x5c },
-    { name = "func_8006BA60", vram = 0x8006ba60, size = 0x230 },
+    { name = "guPerspectiveF", vram = 0x8006ba60, size = 0x230 },
     { name = "func_8006BC90", vram = 0x8006bc90, size = 0x60 },
     { name = "func_8006BCF0", vram = 0x8006bcf0, size = 0x2b8 },
     { name = "func_8006BFA8", vram = 0x8006bfa8, size = 0x118 },

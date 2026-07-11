@@ -38,6 +38,26 @@ bool g_widescreen_fog_match = true;
 // enhancement family as the fog match; 1P/2P take the sky path natively anyway.
 bool g_widescreen_sky_match = true;
 
+// Far-clip-plane multiplier applied in the native guPerspectiveF (the game's
+// universal far plane is 500 units -- the pop-in). 1.0 = original game.
+//   0.0 = infinite far plane (m22=-1, m32=-2*n -- no clip whatsoever)
+//   1.0 = the unmodified game's 500-unit far plane
+//   >1  = finite scaled far plane; default 100 -> 50,000 units (the user's
+//         "we should no longer need to compromise on this" with margin)
+// Clamped to {0} U [1, 10000]: below 1 (non-zero) would SHRINK the frustum and
+// is almost certainly a typo, and beyond 10000 the s15.16 fixed-point matrix
+// loses precision faster than the geometry extends (the (n-f) divisor converges
+// to -f, the (n+f) to +f, and ULP noise in each term lands in screen space).
+float g_draw_distance_scale = 100.0f;
+
+float clamp_draw_distance(float v) {
+    if (!(v >= 0.0f)) return 1.0f;      // also catches NaN; <0 is meaningless
+    if (v == 0.0f) return 0.0f;        // 0 is the explicit "infinite" sentinel
+    if (v < 1.0f) return 1.0f;          // (0,1) would shrink the frustum
+    if (v > 10000.0f) return 10000.0f;
+    return v;
+}
+
 // Read a key into `out`, keeping the existing (default) value when the key is
 // missing or invalid. NLOHMANN_JSON_SERIALIZE_ENUM does NOT throw on an
 // unrecognised string -- it silently maps it to the FIRST enumerator, which for
@@ -80,6 +100,7 @@ nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
         {"texture_dump", g_texture_dump},
         {"widescreen_fog_match", g_widescreen_fog_match},
         {"widescreen_sky_match", g_widescreen_sky_match},
+        {"draw_distance_scale", g_draw_distance_scale},
     };
 }
 
@@ -101,6 +122,8 @@ void from_json(const nlohmann::json& j, ultramodern::renderer::GraphicsConfig& c
     from_or_default(j, "texture_dump", g_texture_dump);
     from_or_default(j, "widescreen_fog_match", g_widescreen_fog_match);
     from_or_default(j, "widescreen_sky_match", g_widescreen_sky_match);
+    from_or_default(j, "draw_distance_scale", g_draw_distance_scale);
+    g_draw_distance_scale = clamp_draw_distance(g_draw_distance_scale);
     // Sanity-bound the window size: below the N64 framebuffer is useless, above 8K
     // is a typo -- either way SDL_CreateWindow would fail and the port would run
     // permanently headless, so reset to defaults instead.
@@ -267,6 +290,16 @@ bool widescreen_fog_match() {
         return v[0] == '1';
     }
     return g_widescreen_fog_match;
+}
+
+// AERO_DRAW_DISTANCE_SCALE=<float> overrides the JSON key for A/B capture runs
+// (1 = original game's 500-unit far plane). Parsed once; called every frame from
+// the game thread via the native guPerspectiveF.
+float draw_distance_scale() {
+    if (const char* v = std::getenv("AERO_DRAW_DISTANCE_SCALE")) {
+        return clamp_draw_distance(std::strtof(v, nullptr));
+    }
+    return g_draw_distance_scale;
 }
 
 // AERO_SKY_MATCH_1P=1/0 overrides the JSON key for headless capture/testing.
