@@ -344,6 +344,7 @@ public:
             // single odd line as sampling noise, only a sustained pattern as signal.
             RT64::SharedQueueResources* sq = app->sharedQueueResources.get();
             uint32_t vi_rate, target_rate, swap_hz, interp_count, interp_presented;
+            float res_scale_x, res_scale_y;
             {
                 std::lock_guard<std::mutex> lock(sq->interpolatedMutex);
                 const RT64::InterpolatedFrameCounters& fc =
@@ -353,12 +354,20 @@ public:
                 swap_hz = sq->swapChainRate;
                 interp_count = fc.count;
                 interp_presented = fc.presented;
+                // Widescreen health (#widescreen): resolutionScale.x carries the
+                // aspectRatioScale factor (rt64_workload_queue.cpp:211) -- x > y means the
+                // Expand config reached the workload layer; x == y means the target aspect
+                // never derived (swapchain size unknown or config lost).
+                res_scale_x = sq->resolutionScale.x;
+                res_scale_y = sq->resolutionScale.y;
             }
             std::fprintf(stderr,
                          "[rt64] send_dl count=%d VI_ORIGIN=0x%08x VI_STATUS=0x%04x VI_WIDTH=%u"
-                         " | viRate=%u targetRate=%u swapHz=%u interp count=%u presented=%u\n",
+                         " | viRate=%u targetRate=%u swapHz=%u interp count=%u presented=%u"
+                         " | resScale=%.3fx%.3f\n",
                          count, vr->VI_ORIGIN_REG, vr->VI_STATUS_REG, vr->VI_WIDTH_REG,
-                         vi_rate, target_rate, swap_hz, interp_count, interp_presented);
+                         vi_rate, target_rate, swap_hz, interp_count, interp_presented,
+                         res_scale_x, res_scale_y);
         }
     }
 

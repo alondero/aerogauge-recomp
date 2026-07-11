@@ -1069,6 +1069,24 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                     bool load = (flags & 0x02) != 0;
                     bool push = (flags & 0x04) != 0;
                     if (proj) {
+                        // Projection-matrix probe (AERO_PROJ_PROBE=1, widescreen investigation):
+                        // RT64 only FOV-widens scenes whose PROJECTION matrix looks perspective
+                        // (m[3][3]==0 && m[1][1]!=0, rt64_rsp.cpp getCurrentProjectionType). Log
+                        // the first few proj loads so we can see what this ROM actually loads.
+                        static const bool s_proj_probe = (std::getenv("AERO_PROJ_PROBE") != nullptr);
+                        static int s_proj_probe_left = 24;
+                        if (s_proj_probe && s_proj_probe_left > 0) {
+                            --s_proj_probe_left;
+                            std::fprintf(stderr,
+                                "[projprobe] G_MTX proj load=%d push=%d addr=0x%08X\n"
+                                "  [%9.4f %9.4f %9.4f %9.4f]\n  [%9.4f %9.4f %9.4f %9.4f]\n"
+                                "  [%9.4f %9.4f %9.4f %9.4f]\n  [%9.4f %9.4f %9.4f %9.4f]\n",
+                                (int)load, (int)push, maddr,
+                                m.m[0],  m.m[1],  m.m[2],  m.m[3],
+                                m.m[4],  m.m[5],  m.m[6],  m.m[7],
+                                m.m[8],  m.m[9],  m.m[10], m.m[11],
+                                m.m[12], m.m[13], m.m[14], m.m[15]);
+                        }
                         if (load) s.proj = m; else mat_mul(s.proj, m, s.proj);
                     } else {
                         if (push && s.mv_top < 9) { s.mv_stack[s.mv_top + 1] = s.mv_stack[s.mv_top]; ++s.mv_top; }
@@ -1386,6 +1404,14 @@ public:
             static bool s_done = false;
             static int s_settle = 0;
             int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+            // AERO_DL_DUMP_AT=<send_dl count>: alternative trigger while the state global
+            // is unmapped -- dump at an absolute frame count (calibrate with a screenshot
+            // sequence; the HUD-derivation runs used A-pulse menu walks landing in-race
+            // around count 2500+).
+            static const char* s_dump_at = std::getenv("AERO_DL_DUMP_AT");
+            if (s_dump_at != nullptr && !s_done && count >= std::atoi(s_dump_at)) {
+                s_settle = 1000000; state = 8; // force the gate below
+            }
             if (!s_done && state >= 8 && ++s_settle >= 400) {
                 char path[512];
                 std::snprintf(path, sizeof(path), "%s.txt", s_race_dump);

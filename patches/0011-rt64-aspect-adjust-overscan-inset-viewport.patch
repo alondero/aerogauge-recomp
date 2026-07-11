@@ -1,0 +1,60 @@
+diff --git a/src/common/rt64_common.h b/src/common/rt64_common.h
+index f79adbf..657f285 100644
+--- a/src/common/rt64_common.h
++++ b/src/common/rt64_common.h
+@@ -96,6 +96,31 @@ namespace RT64 {
+         int32_t height(bool topCeil, bool bottomCeil) const;
+     };
+ 
++    // True if `rect` covers the full width of `fbRect`, allowing a small SYMMETRIC inset
++    // border. Games commonly render the 3D scene inside an overscan border instead of
++    // touching the framebuffer edges (e.g. AeroGauge draws at x 16..303 of a 320-wide
++    // framebuffer); requiring exact edge-to-edge coverage made the automatic aspect
++    // ratio widening reject such scenes entirely. The border allowance is 1/8th of the
++    // framebuffer width per side with at most 1/32nd asymmetry, so split-screen
++    // sub-viewports (half/quarter width, or flush to one side) are never widened.
++    inline bool coversWidthWithOverscan(const FixedRect &rect, const FixedRect &fbRect) {
++        if (rect.ulx >= rect.lrx) {
++            return false;
++        }
++        const int32_t leftBorder = rect.ulx - fbRect.ulx;
++        const int32_t rightBorder = fbRect.lrx - rect.lrx;
++        if ((leftBorder <= 0) && (rightBorder <= 0)) {
++            return true;
++        }
++        if ((leftBorder < 0) || (rightBorder < 0)) {
++            return false;
++        }
++        const int32_t fbWidth = fbRect.lrx - fbRect.ulx;
++        const int32_t maxBorder = fbWidth / 8;
++        const int32_t asymmetry = (leftBorder > rightBorder) ? (leftBorder - rightBorder) : (rightBorder - leftBorder);
++        return (leftBorder <= maxBorder) && (rightBorder <= maxBorder) && (asymmetry <= fbWidth / 32);
++    }
++
+     struct FixedMatrix {
+         int16_t integer[4][4];
+         uint16_t frac[4][4];
+diff --git a/src/render/rt64_projection_processor.cpp b/src/render/rt64_projection_processor.cpp
+--- a/src/render/rt64_projection_processor.cpp
++++ b/src/render/rt64_projection_processor.cpp
+@@ -100,7 +100,7 @@ namespace RT64 {
+                 }
+ 
+                 if (!intersectionRect.isEmpty()) {
+-                    bool coversWholeWidth = (intersectionRect.ulx <= fbPair.scissorRect.ulx) && (intersectionRect.lrx >= fbPair.scissorRect.lrx);
++                    bool coversWholeWidth = coversWidthWithOverscan(intersectionRect, fbPair.scissorRect);
+                     bool horizontalRatio = (intersectionRect.width(true, true) > intersectionRect.height(true, true));
+                     adjustAspectRatio = (viewportOrigin == G_EX_ORIGIN_NONE) && coversWholeWidth && horizontalRatio;
+                 }
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1488,7 +1488,7 @@ namespace RT64 {
+                 // The call's scissor spans the whole width of the framebuffer pair scissor. Custom origin must not be in use to be able to use the stretched viewport.
+                 const auto &viewport = drawData.rspViewports[proj.transformsIndex];
+                 FixedRect intersectionRect = proj.scissorRect.intersection(viewport.rect(viewportClipRatios));
+-                bool coversWholeWidth = !intersectionRect.isEmpty() && (intersectionRect.ulx <= fbPair.scissorRect.ulx) && (intersectionRect.lrx >= fbPair.scissorRect.lrx);
++                bool coversWholeWidth = !intersectionRect.isEmpty() && coversWidthWithOverscan(intersectionRect, fbPair.scissorRect);
+                 bool horizontalRatio = !intersectionRect.isEmpty() && (intersectionRect.width(true, true) > intersectionRect.height(true, true));
+                 // A split-screen quadrant (G_EX_ORIGIN_WIDE) skips the whole-width requirement:
+                 // its native viewport already lands in the correct output half (NDC [-1,0]/[0,1]),

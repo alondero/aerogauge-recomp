@@ -60,6 +60,25 @@ std::atomic<bool> g_first_nonsilent_logged{false};
 // runtime reports get_remaining_audio_bytes=100 -- see ultramodern/src/audio.cpp:52).
 std::mutex g_state_mtx;
 
+// Real AI hardware masks the length register to 18 bits (max DMA 256 KB); anything above
+// that ceiling is not a real audio frame. Early boot submits one garbage-sized buffer
+// (measured: byte_count 0xFFFF5000 = -0xB000 as a signed AI length) which must be dropped
+// BEFORE any write touches the payload (tests/test_audio_oversize_guard.cpp).
+constexpr size_t kMaxAiSamples = (256u * 1024u) / sizeof(int16_t);
+
+bool drop_oversize(size_t sample_count) {
+    if (sample_count <= kMaxAiSamples) {
+        return false;
+    }
+    static std::atomic<bool> s_oversize_logged{false};
+    bool exp = false;
+    if (s_oversize_logged.compare_exchange_strong(exp, true)) {
+        std::fprintf(stderr, "[probe] audio: dropped oversize submit (%zu samples > AI max)\n",
+                     sample_count);
+    }
+    return true;
+}
+
 void log_opened_once() {
     bool expected = false;
     if (g_init_logged.compare_exchange_strong(expected, true)) {
@@ -79,7 +98,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
     // a headless run without a drainable audio device (e.g. SDL_AUDIODRIVER=dummy under WSL, where
     // an undrained Pulse queue makes the game's backpressure stop synthesis) still reports whether
     // the game produced real PCM.
-    if (!g_first_nonsilent_logged.load() && sample_count <= (256u * 1024u) / sizeof(int16_t)) {
+    if (!g_first_nonsilent_logged.load() && sample_count <= kMaxAiSamples) {
         for (size_t i = 0; i < sample_count; i++) {
             if (pcm[i] != 0) {
                 bool exp2 = false;
@@ -97,18 +116,9 @@ void submit(const int16_t* pcm, size_t sample_count) {
         // for headless builds where no audio device is available.
         return;
     }
-    // Bounds guard (W135, #53): early boot submits one garbage-sized buffer (measured:
-    // byte_count 0xFFFF5000 = -0xB000 as a signed AI length) which overflowed the conversion
-    // buffer size below into a std::length_error abort. Real AI hardware masks the length
-    // register to 18 bits (max DMA 256 KB); anything above that ceiling is not a real audio
-    // frame, so drop it rather than reinterpret it.
-    if (sample_count > (256u * 1024u) / sizeof(int16_t)) {
-        static std::atomic<bool> s_oversize_logged{false};
-        bool exp = false;
-        if (s_oversize_logged.compare_exchange_strong(exp, true)) {
-            std::fprintf(stderr, "[probe] audio: dropped oversize submit (%zu samples > AI max)\n",
-                         sample_count);
-        }
+    // Bounds guard (W135, #53): kept as defence in depth for direct submit() callers;
+    // queue_samples applies the same guard before its payload memset.
+    if (drop_oversize(sample_count)) {
         return;
     }
 
@@ -194,6 +204,12 @@ void submit(const int16_t* pcm, size_t sample_count) {
 }
 
 void queue_samples(int16_t* pcm, size_t sample_count) {
+    // MUST run before the memset below: a garbage AI length here means the POINTER's
+    // extent is garbage too, and zeroing it is an instant access violation (the
+    // windowed-run crash this guards against -- tests/test_audio_oversize_guard.cpp).
+    if (pcm == nullptr || drop_oversize(sample_count)) {
+        return;
+    }
     // SCAFFOLD (retire with audio_ucode_noop, main.cpp): no aspMain runs yet, so the AI
     // buffer the game hands osAiSetNextBuffer is stale RDRAM, not PCM. Now that windowed
     // runs open a REAL SDL audio device, queueing it as-is emits loud garbage. Zero the

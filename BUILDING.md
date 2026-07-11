@@ -52,6 +52,8 @@ git -C lib/N64ModernRuntime apply ../../patches/0007-ultramodern-savestate-threa
 git -C lib/rt64 apply "$(pwd)/patches/0006-rt64-interp-angular-velocity-matching.patch"
 git -C lib/rt64 apply "$(pwd)/patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
 git -C lib/rt64 apply "$(pwd)/patches/0009-rt64-widescreen-split-subviewport.patch"
+git -C lib/rt64 apply "$(pwd)/patches/0010-rt64-viewproj-decompose-axis-aligned-pivot.patch"
+git -C lib/rt64 apply "$(pwd)/patches/0011-rt64-aspect-adjust-overscan-inset-viewport.patch"
 
 # RT64 renderer — Windows / MinGW only (absolute paths avoid depth confusion):
 git -C lib/rt64 apply "$(pwd)/patches/0005-rt64-mingw-gcc-compat.patch"

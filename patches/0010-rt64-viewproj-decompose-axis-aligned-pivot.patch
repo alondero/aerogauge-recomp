@@ -1,0 +1,25 @@
+diff --git a/src/common/rt64_math.cpp b/src/common/rt64_math.cpp
+index c20fb51..8a0772c 100644
+--- a/src/common/rt64_math.cpp
++++ b/src/common/rt64_math.cpp
+@@ -52,7 +52,19 @@ namespace RT64 {
+         v[2][2] = -vp[2][3];
+         v[3][2] = -vp[3][3];
+ 
+-        p[2][2] = vp[0][2] / v[0][2];
++        // Recover p[2][2] from the row with the largest |view z| component instead of
++        // hardcoding row 0: a camera whose world X axis is perpendicular to the view
++        // direction has vp[0][3] == 0 (axis-aligned cameras, common in attract demos),
++        // and dividing by it made the whole decomposition NaN out, dropping the scene
++        // back to the "orthographic" fallback below.
++        int pivot = 0;
++        for (int i = 1; i < 3; i++) {
++            if (abs((float)v[i][2]) > abs((float)v[pivot][2])) {
++                pivot = i;
++            }
++        }
++
++        p[2][2] = vp[pivot][2] / v[pivot][2];
+         p[3][2] = vp[3][2] - p[2][2] * v[3][2];
+ 
+         p[0][0] = sqrtf(sqr(vp[0][0]) + sqr(vp[1][0]) + sqr(vp[2][0]));

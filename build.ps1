@@ -137,6 +137,8 @@ try {
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0005-rt64-mingw-gcc-compat.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0009-rt64-widescreen-split-subviewport.patch' },
+        @{ Sub = 'lib/rt64';                   Patch = 'patches/0010-rt64-viewproj-decompose-axis-aligned-pivot.patch' },
+        @{ Sub = 'lib/rt64';                   Patch = 'patches/0011-rt64-aspect-adjust-overscan-inset-viewport.patch' },
         @{ Sub = 'lib/rt64/src/contrib/plume'; Patch = 'patches/0004-plume-d3d12-mingw-com-abi-struct-return.patch' }
     )
     foreach ($p in $patches) {
