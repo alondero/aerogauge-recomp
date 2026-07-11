@@ -1,1 +1,4 @@
-func_8006C800  # auto: Unhandled instruction: trunc.l.d
+# One name per line; '#' comments. Recompiler-error iteration loop (see gen_syms_toml.py).
+# func_8006C800 retired 2026-07-11: identified as osGetTime and routed via LIBULTRA_NAMES
+# (the trunc.l.d that broke recompilation is a prologue-less float leaf at 0x8006C890
+# absorbed into its span; the routed name is no longer emitted at all).

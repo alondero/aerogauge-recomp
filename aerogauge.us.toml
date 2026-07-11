@@ -12,9 +12,7 @@ rom_file_path = "AeroGauge (USA).z64"
 
 [patches]
 stubs = [
-    "func_80065E60",
     "func_8006AB10",
-    "func_8006C800",
     "func_8006CCD0",
     "func_80070860",
     "func_80070880",
@@ -22,8 +20,6 @@ stubs = [
     "func_80070ECC",
     "func_80071024",
     "func_800712F0",
-    "func_80076D10",
-    "func_80078670",
     "func_80078830",
     "func_80078840",
     "func_80078900",
