@@ -18,8 +18,18 @@
 //   == 0.0f  infinite far plane -- m22 = -1, m32 = -2*n (no clip whatsoever;
 //             user's explicit "we should be able to have an infinite draw distance")
 //   == 1.0f  original game (500 unit far plane)
-//   >  1.0f  finite scaled far plane (e.g. 100.0f = 50,000 units, the default)
+//   >  1.0f  finite scaled far plane (e.g. 100.0f = 50,000 units; this still
+//             revealed fog-fade pop-in, so the default is now 0 instead)
 //   <  0 or == NaN  rejected by clamp; the original 500-unit plane is used
+//
+// KNOWN LIMITATION: even with an infinite far plane, the game's fog band
+// (fm=25600 fo=-25344 => ndc_z [0.99, 1.0]) still hides everything beyond
+// ~1% of the depth buffer, so distant scenery fades in via fog rather than
+// popping in geometrically. Widening the fog requires finding the recompiled
+// function that emits G_MW_FOG -- it's not surfaced as a literal in the
+// disassembly (searched 2026-07-11), so a follow-up would either fork the
+// RT64 GBI parser or hook osSpTaskLoad to rewrite the DL bytes. The infinite
+// far plane removes the geometric clip wall but doesn't address the fog fade.
 //
 // This header is the pure math core, host-includable with no recomp dependencies
 // (tests/test_draw_distance.cpp). src/aero_draw_distance.cpp wraps it as the
