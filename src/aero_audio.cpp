@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // SDL2 push-audio backend for the ultramodern pivot. See aero_audio.h for the contract.
-// NOTE (W135, 2026-07-04): the old claim here that "this game uses a CPU/FPU synth, not an RSP
-// audio ucode -- there is no aspMain to translate" is FALSIFIED (graveyarded). The game submits
-// real M_AUDTASKs with a ~0x738-byte ACMD list every audio frame (measured at title, matching the
-// ares dump's list at 0x800df2f0 opcode-for-opcode); PCM is synthesised by the RSP aspMain at ROM
-// 0x88B90, now RSPRecomp'd into src/aspMain.cpp (see recomp/aspMain.us.toml).
+// NOTE (2026-07-12, #53): the game submits real M_AUDTASKs (task type 2) with an ACMD list every
+// audio frame; PCM is synthesised by the RSP aspMain microcode at AeroGauge ROM 0x7F330 -- byte-
+// identical to the Automobili Lamborghini port's audio-SDK mixer blob -- now RSPRecomp'd into
+// src/aspMain.cpp and routed from the M_AUDTASK path in main.cpp (see aspMain.us.toml for the
+// static ROM derivation). osAiSetNextBuffer (native) then queues the finished buffer into this sink.
 //
 // Design notes:
 //  * Format: int16 stereo at 48 kHz initially. SDL is asked for AUDIO_S16LSB
@@ -14,10 +14,10 @@
 //  * Thread model: the game's audio thread calls queue_samples (via the
 //    ultramodern shim). SDL_QueueAudio and SDL_GetQueuedAudioSize are
 //    thread-safe (per SDL2 docs) -- no extra lock needed.
-//  * First-AICall tripwire: queue_samples logs once the first time it sees a
-//    non-empty buffer. The producer cluster is currently stubbed (W96), so
-//    the log will not fire under the current headless boot. It becomes
-//    meaningful when the producer un-stub lands (Phase E.2).
+//  * First-AICall tripwire: submit() logs once the first time it sees a NON-SILENT
+//    buffer. With real aspMain synthesis wired (#53) it fires once the game starts
+//    mixing -- the headless boot-smoke's "first NON-SILENT buffer" line is the
+//    end-to-end proof that PCM is reaching the sink.
 
 #include "aero_audio.h"
 
@@ -116,12 +116,6 @@ void submit(const int16_t* pcm, size_t sample_count) {
         // for headless builds where no audio device is available.
         return;
     }
-    // Bounds guard (W135, #53): kept as defence in depth for direct submit() callers;
-    // queue_samples applies the same guard before its payload memset.
-    if (drop_oversize(sample_count)) {
-        return;
-    }
-
     // sample_count is total int16 samples (stereo: 2 per frame). Bytes =
     // sample_count * sizeof(int16_t).
     const uint32_t byte_count = (uint32_t)(sample_count * sizeof(int16_t));
@@ -204,18 +198,12 @@ void submit(const int16_t* pcm, size_t sample_count) {
 }
 
 void queue_samples(int16_t* pcm, size_t sample_count) {
-    // MUST run before the memset below: a garbage AI length here means the POINTER's
-    // extent is garbage too, and zeroing it is an instant access violation (the
-    // windowed-run crash this guards against -- tests/test_audio_oversize_guard.cpp).
+    // Oversize guard up-front (test_audio_oversize_guard.cpp): the extents behind any garbage AI
+    // length are garbage, so reject before touching the payload. submit() guards again (defence in
+    // depth) for non-queue_samples callers.
     if (pcm == nullptr || drop_oversize(sample_count)) {
         return;
     }
-    // SCAFFOLD (retire with audio_ucode_noop, main.cpp): no aspMain runs yet, so the AI
-    // buffer the game hands osAiSetNextBuffer is stale RDRAM, not PCM. Now that windowed
-    // runs open a REAL SDL audio device, queueing it as-is emits loud garbage. Zero the
-    // payload but keep the submit itself -- the queue depth is what paces the game's
-    // audio thread (get_frames_remaining), so timing behaviour stays faithful.
-    std::memset(pcm, 0, sample_count * sizeof(int16_t));
     submit(pcm, sample_count);
 }
 

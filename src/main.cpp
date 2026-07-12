@@ -230,33 +230,12 @@ static void vi_cb() {
     }
 }
 
-// Audio RSP ucode (M_AUDTASK = task type 2, aspMain). librecomp ships no audio ucode and a real
-// recompiled aspMain is a large standalone effort -- the faithful end state, tracked under the AUDIO
-// epic #53 (this no-op is the scaffold to retire when real aspMain lands). #58 is the descent-crash
-// epic this boundary belongs to.
-// SCAFFOLD: this no-op ucode signals RspExitReason::Broke so run_task() succeeds (rsp.cpp:55) and the
-// audio thread proceeds. It synthesises NO PCM, so it does NOT fill (or zero) the audio DMA buffer:
-// osAiSetNextBuffer (routed to the native, gen_syms_toml.py) queues whatever stale RDRAM sits in that
-// buffer into ultramodern's audio backend. That is inaudible TODAY only because the headless build has
-// no audio sink; once a real output device is driven, audio_ucode_noop must be replaced by real aspMain
-// (or made to zero the buffer) to avoid emitting garbage -- it is NOT a silence guarantee. The point of
-// the scaffold is purely to clear the CRASH boundary: the native route runs the submit path WITHOUT the
-// raw AI-MMIO poll that used to SIGSEGV in __osAiDeviceBusy (func_80080950). Same scaffold class as the
-// no-op __osViInit/osCreatePiManager. Gfx tasks (type 1) never reach here -- intercepted by the renderer.
-static RspExitReason audio_ucode_noop(uint8_t* /*rdram*/, uint32_t /*ucode_addr*/) {
-    static std::atomic<bool> logged{false};
-    if (!logged.exchange(true))
-        std::fprintf(stderr, "[probe] audio_ucode_noop: first M_AUDTASK (type 2) -> Broke (no PCM; #53)\n");
-    return RspExitReason::Broke;
-}
-
-// TODO(aerogauge): once the ROM's aspMain ucode location is derived (write aspMain.us.toml,
-// run RSPRecomp — see the Lamborghini template's aspMain.us.toml for the derivation recipe),
-// declare `RspExitReason aspMain(uint8_t*, uint32_t);` here and return it for task type 2,
-// retiring the audio_ucode_noop scaffold above.
+// RSPRecomp'd aspMain (#53): the M_AUDTASK audio microcode. Generation +
+// static-bytes ROM 0x7F330 derivation are documented in `aspMain.us.toml`.
+RspExitReason aspMain(uint8_t* rdram, uint32_t ucode_addr);
 
 static RspUcodeFunc* get_rsp_microcode_stub(const OSTask* task) {
-    if (task->t.type == 2) return audio_ucode_noop; // M_AUDTASK: scaffold until real aspMain lands
+    if (task->t.type == 2) return aspMain; // M_AUDTASK: RSPRecomp'd real synthesis (#53)
     static std::atomic<bool> logged{false};
     if (!logged.exchange(true))
         std::fprintf(stderr, "[probe] get_rsp_microcode: unhandled task type %u -> nullptr\n",

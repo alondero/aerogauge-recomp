@@ -19,8 +19,9 @@ is unclear.
   Boot: the entry trampoline clears the DMA table then `jr $t2` → 0x800653F0 (boot body).
   Game code NAGE, 8 MiB, XXH3-64 0x89ea0690f3e22201.
 - **`RecompiledFuncs/` and `src/aspMain.cpp` are ROM-derived and git-ignored** — regenerated
-  by BUILDING.md step 3. Never commit them. (aspMain.us.toml does not exist yet — the audio
-  ucode location has not been derived; RSP tasks currently hit the no-op scaffold.)
+  by BUILDING.md step 3. Never commit them. (`aspMain.us.toml` is derived: the audio ucode is at
+  ROM 0x7F330, byte-identical to the Lamborghini port's SDK mixer blob; RSPRecomp'd `aspMain`
+  runs the M_AUDTASK path — see `src/main.cpp`.)
 - **Lamborghini carry-overs deliberately disabled, marked `TODO(aerogauge)` in src/:**
   promote_vi_context (private VI-manager globals), state/menu/pace probes (state-machine
   globals), the SI controller-read bridge + __osViInit (libultra_stubs.c). Each needs its

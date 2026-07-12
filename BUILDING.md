@@ -79,9 +79,17 @@ The recompiler reads `rom_file_path` from the `.toml` (defaults to
 `AeroGauge (USA).z64` in the repo root). This produces the git-ignored, ROM-derived
 translation `RecompiledFuncs/` — never committed to the repository.
 
-> The RSP audio microcode step (`RSPRecomp aspMain.us.toml` in the Lamborghini
-> template) does not exist here yet: AeroGauge's aspMain ucode location has not been
-> derived. Audio tasks currently hit a no-op scaffold (see `src/main.cpp`).
+The RSP audio microcode is recompiled the same way. AeroGauge's aspMain ucode lives at
+ROM `0x7F330` (`aspMain.us.toml`); RSPRecomp translates it into the git-ignored
+`src/aspMain.cpp`, which the M_AUDTASK path in `src/main.cpp` runs to synthesise real PCM:
+
+```bash
+cmake --build build --target RSPRecomp
+./build/lib/N64ModernRuntime/librecomp/N64Recomp/RSPRecomp aspMain.us.toml
+```
+
+> `build.ps1` / `build.sh` run both recompiler steps automatically (RSPRecomp is gated on
+> `aspMain.us.toml` being present).
 
 ## 4. Build the port
 
