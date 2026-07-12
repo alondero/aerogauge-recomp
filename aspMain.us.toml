@@ -1,0 +1,28 @@
+# RSPRecomp config for AeroGauge's audio microcode (aspMain, M_AUDTASK type 2) -- #53.
+#
+# Ground truth (2026-07-12, static ROM derivation; see scratchpad find_aspmain.py/verify_aspmain.py):
+#   AeroGauge's aspMain TEXT is BYTE-IDENTICAL to the proven Automobili Lamborghini port's
+#   (both are the same libultra audio-SDK mixer blob) and lives at ROM 0x7F330, len 0xE1C.
+#   Verified as genuine RSP microcode (NOT the CPU-helper the earlier ef59a0c-revert pitfall
+#   claimed): across the 0xE1C blob 42% of words are COP2/LWC2/SWC2 vector ops, the mixer's
+#   command-fetch loop `j 0x04001118` appears 20x, and the 16-entry ACMD dispatch table at
+#   ucode_data+0x10 (ROM 0xC8610) matches the Lamborghini table exactly. The earlier revert
+#   misjudged the blob by sampling only its scalar DMA-setup prologue.
+#
+#   rspboot loads the main ucode at IMEM 0x04001080; the code proper ends by text_size 0xE1C
+#   (== Lamborghini, whose text is identical), so text_address = 0x04001080.
+#   ROM<->RAM: rom = vram - 0x80000400 + 0x1000 (this project's constant).
+#
+# Regenerate with (see BUILDING.md step 3):
+#   cmake --build build --target RSPRecomp
+#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/RSPRecomp aspMain.us.toml
+text_offset = 0x7F330
+text_size = 0xE1C
+text_address = 0x04001080
+rom_file_path = "AeroGauge (USA).z64"
+output_file_path = "src/aspMain.cpp"
+output_function_name = "aspMain"
+# The 16 ACMD handler entry points from the ucode's DMEM dispatch table (halfwords at DMEM 0x10,
+# indexed by the `jr` at the command dispatcher). Extracted from AeroGauge's ucode_data blob at
+# ROM 0xC8610 (== the OSTask ucode_data), byte-identical to the Lamborghini port's table.
+extra_indirect_branch_targets = [0x1118, 0x1470, 0x11dc, 0x1b38, 0x1214, 0x187c, 0x1254, 0x12d0, 0x12ec, 0x1328, 0x140c, 0x1294, 0x1e24, 0x138c, 0x170c, 0x144c]
