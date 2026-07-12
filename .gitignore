@@ -4,6 +4,10 @@
 *.n64
 *.v64
 *.rom
+# Per-session EEPROM save (4Kbit/512 B) written by main.cpp's recomp::SaveType::Eep4k
+# path to the repo root when the user hasn't set the librecomp save folder. Strip
+# from the index if it sneaks in: `git rm --cached "*.eeprom"`.
+*.eeprom
 
 # --- Recompiler output (regenerated from your ROM at build time) -----------
 # `scripts/gen_syms_toml.py` + the N64Recomp CLI produce these from the ROM.
