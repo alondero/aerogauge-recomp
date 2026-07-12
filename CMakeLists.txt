@@ -147,6 +147,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/libultra_stubs.c   # no-op symbols for ignored libultra CP0 helpers (e.g. __osSetSR)
         src/aero_draw_distance.cpp  # native guPerspectiveF: far-clip-plane scale (pop-in fix);
                                     # routed via `[patches] ignored` in aerogauge.us.toml
+        src/aero_warp.c        # developer warp menu (#3): F1-F6 / AERO_WARP race warp;
+                               # tick hooked at func_80015FD0 via [[patches.hook]]
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)

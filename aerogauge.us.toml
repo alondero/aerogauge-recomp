@@ -30,3 +30,16 @@ stubs = [
 ignored = [
     "guPerspectiveF",
 ]
+
+# Developer warp menu (issue #3, src/aero_warp.c). Hooked at the entry of the top-level
+# per-frame scene driver func_80015C8C (called every frame from the main game thread's
+# loop func_800658FC): it copies the scene request 0x8013FF84 into the current scene
+# 0x8013FF80 and jump-tables (0x800969C0, 10 scenes) to the active scene's runner. The
+# entry hook lets a pending warp perform the menu's own race-launch stores (race-param
+# block 0x8013FF90 + RACE confirm side effects) before this frame's request is consumed.
+# (NOT func_80015FD0 — that is merely the RACE scene's runner, case 5 of the table, so a
+# hook there goes silent in every other scene.)
+[[patches.hook]]
+func = "func_80015C8C"
+before_vram = 0x80015C8C
+text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"

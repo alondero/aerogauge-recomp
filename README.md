@@ -10,10 +10,10 @@ The stack is cloned from the
 port — same submodule pins, same runtime patches, same runtime glue — and the same
 approach as [Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp) and friends.
 
-**Status: early bring-up.** The whole-ROM recompile (1118 functions), build, and boot
-harness are wired; the libultra routing layer (which OS primitives the ROM uses and
-where) has not been mapped yet, so the game does not reach gameplay. See the issue
-tracker for the porting roadmap.
+**Status: renders and plays.** The whole-ROM recompile, libultra routing, RT64
+rendering (widescreen + display-rate interpolation), and input are live; races render
+and run. Audio ucode and menus/HUD polish are in progress. See the issue tracker for
+the porting roadmap.
 
 ## What you need
 
@@ -38,6 +38,20 @@ Then run from the repo root:
 ```
 ./build/aerogauge_modern
 ```
+
+## Developer warp menu
+
+Jump straight into a 1-player race on any track without driving the menus
+(issue #3; the launch path is the ROM's own — see `src/aero_warp.c`):
+
+- **F1–F6** — warp to that track any time after boot, including mid-race
+  (the current race exits through the game's own teardown first).
+- **`AERO_WARP=track[:craft]`** (track 1–6, craft 1–10) — one-shot warp at boot,
+  for scripted/headless runs.
+- **`AERO_WARP_AT=vi:track[:craft]`** — scripted warp at a given VI (harness runs).
+
+Tracks: 1 CANYON RUSH, 2 BIKINI ISLAND, 3 CHINATOWN, 4 NEO ARENA,
+5 CHINATOWN JAM, 6 NEO SPEED WAY.
 
 ## How it works
 
