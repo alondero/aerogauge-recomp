@@ -58,6 +58,64 @@ Capture recipe (windowed, this machine): set `hr_option` in
 wait ~40 s for the steady race HUD, PrintWindow-grab the "AeroGauge" window (flag 2 =
 PW_RENDERFULLCONTENT captures the D3D12 swapchain). 4:3 and 21:9 remain a human spot-check.
 
+## Shipped (issue #1, second increment): speedometer NEEDLE pin (2026-07-12)
+
+The first increment moved ONLY the cyan dial-ring texrect (`func_80018CF0`, DL slot
+`0x18C440`, decode `(247,172)-(300,224)`), leaving the orange needle and the "0" MPH digit
+behind (user-reported "split speedo"). The needle is now pinned too; live-derived facts:
+
+- **Orange needle = a single matrix-rotated triangle, NOT a texrect.** In the DL it is
+  `MTX 0x18C4C8 (01030040 -> 0x801854B0, push)`, `MTX 0x18C510 (01020040 -> 0x80185970,
+  load modelview)`, then `G_DL 0x18C518 (06000000 -> 0x800995C0)`. The sub-DL `0x800995C0`
+  is a STATIC ROM resource (`SETCOMBINE / SETPRIMCOLOR B56014FF (orange) / VTX 0x80099590 /
+  TRI1 0-2-4 / ENDDL`) — address-stable, so it is the robust discriminator: "the `0102/0103
+  0040` MTX immediately before a `G_DL -> 0x800995C0`" uniquely identifies the needle without
+  depending on the double-buffered matrix-pool address.
+- **No dedicated handler.** The needle is one node of the generic RECURSIVE scene-graph
+  transform walker `func_800226AC` (build mtx via `func_80024370` concat + `func_8006C230`
+  store to obj+0x9C, push `G_MTX`, recurse obj+0xA0/0xA4), reached `func_8001E8D8 ->
+  func_80022408 -> func_800222C0 -> func_800226AC(recursive)`. So the shift is NOT a
+  dedicated-handler bracket like the dial ring; it mirrors Lamborghini's `patch_load_mtx_dx`.
+- **Implementation** (`src/aero_hud_widescreen.c`, hooks in `scripts/gen_syms_toml.py`
+  PATCH_BLOCKS): a matched pair brackets the whole 2D dispatcher `func_80022408` (not
+  recursive, same holder `0x8016C508` buffer) — entry `before_vram=0x80022408`
+  (`aero_ws_hud_scan_begin`) latches the DL cursor; epilogue `before_vram=0x80022680`
+  (`aero_ws_needle_shift`, after every child handler appended, before the register restores)
+  walks `[start,end)`, finds the needle MTX by the `0x800995C0` key, and adds `dx` to its
+  matrix translate.x (element 12 = byte 24 int / byte 24+0x20 frac, s15.16 — identical layout
+  to Lamborghini's guMtxL; MEM_H/MEM_HU handle the endian + KSEG masking).
+- **Matrix convention differs from Lamborghini — calibrated live, not analytic.** The needle
+  modelview `0x80185970` is PROJECTION-COMBINED (decoded translate ~(-19713, 29184, 256),
+  `m[3][3]=0`, recurring `256` scale), so Lambo's `530 units` does NOT carry over. Calibrated
+  by windowed PrintWindow capture at 1616x939 (>=16:9 client => internal scale 1.0): the dial
+  ring pins right ~152 screen px, the needle travels ~3.73 px/unit, so **`AERO_WS_NEEDLE_DX =
+  41`** lands the needle hub back on the dial (needle centroid 1196 -> 1350 px vs target 1348
+  = native offset preserved). Env-overridable for recalibration. Scaled off
+  `aero_ws_get_hud_rect_aspect_bits()` => 0 at 4:3/Original (no-op, no config gate), caps at
+  16:9 under Clamp16x9.
+
+Before/after (real RT64 D3D12, 1616x939 16:9 canyon race; needle only — the "0" digit below
+is the retained follow-up):
+
+| before (needle detached, drifts inboard) | after (`AERO_WS_NEEDLE_DX=41`, needle on the dial) |
+|---|---|
+| ![needle before](../hud-widescreen-1p-needle-before-16x9.png) | ![needle after](../hud-widescreen-1p-needle-after-16x9.png) |
+
+Windowed capture recipe for recalibration: `scratchpad/capture.ps1 <out.png> <dx> [waitSec]`
+(recreate on demand — launches windowed `AERO_WARP=1:1`, waits for the steady HUD, PrintWindow
+flag 2 grabs the swapchain). Attribution harness: `.claude/needle-watch.gdb` (watches the
+needle modelview `0x80185970` write). `hr_option: Original` = unshifted reference.
+
+## NOT yet shipped: the "0" MPH digit (retained, 2026-07-12)
+
+The tan **"0" speed-readout box** (texrect slot `0x18CE08`, decode `(247,191)-(267,206)`)
+still stays centred — the other half of the "split". It is a texrect (rect-alignable in
+principle) but drawn through the MIXED handler `func_80018EA0` (attributed:
+`func_80018EA0 -> func_80019630 -> func_8001A750 -> func_8001F790 -> func_8001F998`, the
+low-level emitter). That is the SAME handler that draws TEMP (right) + GLPS (left), so the
+digit shares the exact per-object-seam problem below — pinning it needs the finer seam, which
+would unlock TEMP, GLPS AND the digit together. Attribute harness: `.claude/digit-watch.gdb`.
+
 ## NOT yet shipped (retained evidence, follow-up)
 
 - **TEMP (right) + GLPS (left)** share `func_80018EA0`, which draws both a left and a right

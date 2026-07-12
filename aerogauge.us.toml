@@ -64,3 +64,22 @@ text = "extern void aero_ws_speedo_pin(uint8_t*, recomp_context*); aero_ws_speed
 func = "func_80018CF0"
 before_vram = 0x80018D5C
 text = "extern void aero_ws_speedo_reset(uint8_t*, recomp_context*); aero_ws_speedo_reset(rdram, ctx);"
+
+# Widescreen speedo NEEDLE pinning (issue #1 "split speedo", src/aero_hud_widescreen.c). The
+# dial ring (above) is a texrect RT64 moves for us; the orange needle is a matrix-rotated
+# triangle drawn by the generic recursive scene-graph walker func_800226AC (NO dedicated
+# handler), so RT64 leaves it centred and it detaches from the pinned ring. Mirroring the
+# Lamborghini patch_load_mtx_dx approach: bracket the whole 2D dispatcher func_80022408 --
+# entry latches the DL write cursor, and the epilogue (before_vram 0x80022680, after every
+# child handler has appended, before the register restores) walks the emitted DL, pinpoints
+# the needle by its G_MTX -> static mesh sub-DL 0x800995C0, and shifts that matrix's
+# translate.x to track the ring. Scaled off the same effective rect aspect -> no-op at 4:3.
+[[patches.hook]]
+func = "func_80022408"
+before_vram = 0x80022408
+text = "extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_hud_scan_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80022408"
+before_vram = 0x80022680
+text = "extern void aero_ws_needle_shift(uint8_t*, recomp_context*); aero_ws_needle_shift(rdram, ctx);"
