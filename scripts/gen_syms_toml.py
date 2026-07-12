@@ -315,6 +315,27 @@ PATCH_BLOCKS = """
 func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
+
+# Widescreen 1P-HUD speedometer pinning (issue #1, src/aero_hud_widescreen.c). Live GDB
+# attribution (scratchpad/ATTRIBUTION.md) proved the bottom-right speedometer is drawn
+# EXCLUSIVELY by func_80018CF0, a small per-object handler reached from the 2D dispatcher
+# func_80022408. It reads the DL write cursor from the builder held in a0 (== ctx->r4 ==
+# 0x8016C508), draws, then writes the advanced cursor back at 0x80018D58. A matched pair of
+# before_vram hooks brackets it: the entry emits the RT64 RIGHT rect-align + wide scissor
+# (saving the holder from ctx->r4); the reset -- placed AFTER the cursor writeback at
+# 0x80018D58, before the epilogue -- pops the scissor and clears the alignment through the
+# saved holder. func_8003A190 (centred DAMAGE) and the other HUD groups are off this path,
+# so they are not bracketed. At 4:3 / non-Expand RT64 leaves the tagged rects put, so the
+# bracket is a no-op with no config gate.
+[[patches.hook]]
+func = "func_80018CF0"
+before_vram = 0x80018CF0
+text = "extern void aero_ws_speedo_pin(uint8_t*, recomp_context*); aero_ws_speedo_pin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80018CF0"
+before_vram = 0x80018D5C
+text = "extern void aero_ws_speedo_reset(uint8_t*, recomp_context*); aero_ws_speedo_reset(rdram, ctx);"
 """
 
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):

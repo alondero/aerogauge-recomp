@@ -149,6 +149,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                     # routed via `[patches] ignored` in aerogauge.us.toml
         src/aero_warp.c        # developer warp menu (#3): F1-F6 / AERO_WARP race warp;
                                # tick hooked at func_80015FD0 via [[patches.hook]]
+        src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning (#1): RT64 rect-align brackets
+                                   # around the speedometer handler func_80018CF0 via [[patches.hook]]
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)

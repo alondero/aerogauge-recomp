@@ -1,0 +1,69 @@
+# Widescreen 1P HUD pinning (issue #1)
+
+Under RT64 `ar_option: Expand`, untagged 2D is rendered centred in the 4:3 region, so the
+1P race HUD's edge-anchored elements float inboard of the widescreen edges. The fix tags
+each element's draw with RT64 extended-GBI `gEXSetRectAlign` (+ a wide scissor so the moved
+rect isn't clipped at the 4:3 edge), injected as N64Recomp `[[patches.hook]]` natives in
+`src/aero_hud_widescreen.c`. At 4:3 / non-Expand RT64 leaves the tagged rects put, so every
+bracket is a no-op there — no config gate needed. The pure scaling math (for elements that
+also carry 3D geometry) lives in `src/aero_hud_widescreen.h` with `tests/test_hud_shift_scale.c`.
+
+## How the HUD is drawn (live-derived; see the `.claude/hud-*.gdb` harnesses)
+
+AeroGauge does NOT use static per-element draw calls like the Lamborghini port. The 2D
+master dispatcher **`func_80022408`** walks object lists and calls each object's draw handler
+**indirectly** (`jalr` through a per-object function pointer at `obj+0x104` and `obj+0x34`).
+So there is no static per-element call site to bracket — the element identity lives in the
+handler function and the per-object data.
+
+- **DL write cursor holder = fixed global `0x8016C508`**; cursor = `MEM_W(0, holder)`. Every
+  2D helper reads it, stores a command, advances it by 8. At a handler's entry the holder is
+  passed in `a0` (== `ctx->r4`); it is clobbered inside the handler, so a bracket saves it at
+  entry and the reset re-reads the cursor through the saved value.
+- The DL is **double-buffered** (cursor alternates `0x8018xxxx` / `0x80173xxx` frame to
+  frame), so absolute DL addresses are never stable — always go through the holder. HUD
+  texrect offsets ARE stable *within* a buffer once the mode-4 race settles (~`send_dl` 900).
+
+## Element attribution (mode-4 1P canyon race, steady HUD)
+
+| element | screen x | anchor | handler | dispatcher site |
+|---|---|---|---|---|
+| speedometer box | 247..300 | RIGHT | `func_80018CF0` (exclusive) | `func_80022408` :10729 (obj+0x104) |
+| TEMP gauge | 291..300 | RIGHT | `func_80018EA0` (mixed) | `func_80022408` :10871 (obj+0x34) |
+| GLPS | 20..64 | LEFT | `func_80018EA0` (mixed) | `func_80022408` :10871 (obj+0x34) |
+
+Low-level texrect emitter for all: `func_80019D0C`. The centred DAMAGE bar `func_8003A190`
+is off both handler paths and is not drawn in the plain canyon race (never bracketed).
+
+## Shipped (issue #1, first increment): speedometer RIGHT pin
+
+`func_80018CF0` is small and speedo-exclusive (one call/frame). Matched bracket:
+- entry `before_vram = 0x80018CF0`  → `aero_ws_speedo_pin`  : RIGHT align + wide scissor push
+- reset `before_vram = 0x80018D5C`  → `aero_ws_speedo_reset` : pop + align NONE
+  (placed after the handler writes its cursor back at `0x80018D58`, before the epilogue).
+
+Verified at the DL level: exactly one bracket per frame wraps only the speedo texrect
+(`E44B0380 003DC2B0`); the other 36 texrects and DAMAGE are untouched.
+
+Visual before/after (real RT64 D3D12 render, 1600x900 16:9 canyon race). `hr_option: Original`
+leaves the tagged rects put (== pre-fix behaviour); `Clamp16x9` applies the pin. Note only the
+speedometer moves — TEMP / GLPS / lap-timer are the retained follow-up below:
+
+| before (`hr_option: Original`, unpinned) | after (`hr_option: Clamp16x9`, speedo pinned right) |
+|---|---|
+| ![before](../hud-widescreen-1p-before-16x9.png) | ![after](../hud-widescreen-1p-after-16x9.png) |
+
+Capture recipe (windowed, this machine): set `hr_option` in
+`%LOCALAPPDATA%\AeroGaugeRecomp\graphics.json`, run `AERO_WARP=1:1 ./build/aerogauge_modern.exe`,
+wait ~40 s for the steady race HUD, PrintWindow-grab the "AeroGauge" window (flag 2 =
+PW_RENDERFULLCONTENT captures the D3D12 swapchain). 4:3 and 21:9 remain a human spot-check.
+
+## NOT yet shipped (retained evidence, follow-up)
+
+- **TEMP (right) + GLPS (left)** share `func_80018EA0`, which draws both a left and a right
+  element — no single alignment, no static per-element seam. Needs a finer seam: gate the
+  per-object `jalr` at `func_80022408` :10871 by the object (a1) or resulting x-position, or
+  bracket inside `func_80018EA0` per sub-draw. Do NOT bracket the whole handler.
+- **~13 more HUD elements** (top lap-counter x228-301, place x170-216, bottom bars, side
+  gauges) are drawn by other, not-yet-attributed handlers. Attribute each with
+  `.claude/hud-watch.gdb` (point the watchpoint at its DL slot) before adding a bracket.
