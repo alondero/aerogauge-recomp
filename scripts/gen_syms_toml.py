@@ -297,6 +297,17 @@ NATIVE_NAMES = {
     # game's entire draw-distance limit. Replaced by src/aero_draw_distance.cpp
     # to scale the far plane (issue: pop-in).
     0x8006BA60: "guPerspectiveF",
+    # The two per-frame course-geometry registrars (byte-decoded 2026-07-16): both map
+    # craft section (u16 @ craft+4) -> zone via course-row byte map (row = 0x8008B290 +
+    # 0x14*track byte 0x8013FF9B, map = row[0]), then walk the 3-entry zone-visibility
+    # row (row[1], 3 bytes/zone) -- the hand-authored PVS behind the game's large-scale
+    # pop-in. aeroRegisterTrackSections (0x80007150) feeds the track-ribbon DL lists
+    # (craft+0xC4 / +0x2BE4, 8-byte {dlptr,type} pairs from row[+0x10]);
+    # aeroRegisterZoneObjects (0x80007310) feeds the landmark lists (craft+0x5704 /
+    # +0x8224 / +0xAD44, 0x28-stride entries from *(0x8013FF44)). Replaced by
+    # src/aero_full_track.cpp to register EVERY zone once (full-track rendering).
+    0x80007150: "aeroRegisterTrackSections",
+    0x80007310: "aeroRegisterZoneObjects",
 }
 
 # Hand-authored [[patches.hook]] / [[patches.instruction]] blocks appended verbatim to the

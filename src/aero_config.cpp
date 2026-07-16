@@ -50,6 +50,11 @@ bool g_widescreen_sky_match = true;
 // to -f, the (n+f) to +f, and ULP noise in each term lands in screen space).
 float g_draw_distance_scale = 100.0f;
 
+// Register EVERY course zone's geometry each frame instead of the game's 3-zone
+// visibility window (the large-scale pop-in that the extended far plane exposed;
+// see src/aero_full_track.cpp). Enhancement default-on like the far plane.
+bool g_full_track = true;
+
 float clamp_draw_distance(float v) {
     if (!(v >= 0.0f)) return 1.0f;      // also catches NaN; <0 is meaningless
     if (v == 0.0f) return 0.0f;        // 0 is the explicit "infinite" sentinel
@@ -101,6 +106,7 @@ nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
         {"widescreen_fog_match", g_widescreen_fog_match},
         {"widescreen_sky_match", g_widescreen_sky_match},
         {"draw_distance_scale", g_draw_distance_scale},
+        {"full_track", g_full_track},
     };
 }
 
@@ -123,6 +129,7 @@ void from_json(const nlohmann::json& j, ultramodern::renderer::GraphicsConfig& c
     from_or_default(j, "widescreen_fog_match", g_widescreen_fog_match);
     from_or_default(j, "widescreen_sky_match", g_widescreen_sky_match);
     from_or_default(j, "draw_distance_scale", g_draw_distance_scale);
+    from_or_default(j, "full_track", g_full_track);
     g_draw_distance_scale = clamp_draw_distance(g_draw_distance_scale);
     // Sanity-bound the window size: below the N64 framebuffer is useless, above 8K
     // is a typo -- either way SDL_CreateWindow would fail and the port would run
@@ -300,6 +307,15 @@ float draw_distance_scale() {
         return clamp_draw_distance(std::strtof(v, nullptr));
     }
     return g_draw_distance_scale;
+}
+
+// AERO_FULL_TRACK=1/0 overrides the JSON key for A/B capture runs
+// (0 = the original game's 3-zone visibility window).
+bool full_track() {
+    if (const char* v = std::getenv("AERO_FULL_TRACK")) {
+        return v[0] == '1';
+    }
+    return g_full_track;
 }
 
 // AERO_SKY_MATCH_1P=1/0 overrides the JSON key for headless capture/testing.

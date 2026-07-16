@@ -389,6 +389,66 @@ static void dump_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16
     }
 }
 
+// Geometry-set sampler (draw-distance pop-in attribution, follow-up to #2): collect the
+// frame's set of resolved G_DL branch targets, G_VTX source pages (phys >> 12), and the
+// triangle/CULLDL totals. Consecutive samples get diffed offline to catch geometry
+// appearing/disappearing as the attract-demo craft moves -- the residual large-scale
+// pop-in that the far-plane extension exposed.
+struct GeomSet {
+    static constexpr int MAX_DL = 2048;
+    static constexpr int MAX_PG = 2048;
+    uint32_t dls[MAX_DL];   int ndl = 0;
+    uint32_t pages[MAX_PG]; int npg = 0;
+    uint32_t tris = 0, culls = 0, vtx = 0;
+    void add_dl(uint32_t a) {
+        for (int i = 0; i < ndl; ++i) if (dls[i] == a) return;
+        if (ndl < MAX_DL) dls[ndl++] = a;
+    }
+    void add_page(uint32_t p) {
+        for (int i = 0; i < npg; ++i) if (pages[i] == p) return;
+        if (npg < MAX_PG) pages[npg++] = p;
+    }
+};
+
+static void geom_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16],
+                      GeomSet& gs, int depth) {
+    if (depth > 12) return;
+    uint32_t off;
+    if (!resolve(start_addr, seg, &off)) return;
+    for (uint32_t i = 0; i < 200000; ++i) {
+        if (off + 8 > 0x00800000) return;
+        uint32_t w0 = *(const uint32_t*)(rdram + off);
+        uint32_t w1 = *(const uint32_t*)(rdram + off + 4);
+        uint8_t  op = (w0 >> 24) & 0xFF;
+        switch (op) {
+            case G_VTX: {
+                gs.vtx += (w0 >> 10) & 0x3F;
+                uint32_t voff;
+                if (resolve(w1, seg, &voff)) gs.add_page(voff >> 12);
+                break;
+            }
+            case G_TRI1: ++gs.tris; break;
+            case G_TRI2:
+            case G_QUAD: gs.tris += 2; break;
+            case G_CULLDL: ++gs.culls; break;
+            case G_MOVEWORD:
+                if ((w0 & 0xFF) == G_MW_SEGMENT)
+                    seg[(((w0 >> 8) & 0xFFFF) >> 2) & 0xF] = w1;
+                break;
+            case G_DL: {
+                uint32_t doff;
+                if (resolve(w1, seg, &doff)) gs.add_dl(doff);
+                if (((w0 >> 16) & 0xFF) != 0) { if (!resolve(w1, seg, &off)) return; continue; }
+                geom_walk(rdram, w1, seg, gs, depth + 1);
+                break;
+            }
+            case G_ENDDL: return;
+            default: break;
+        }
+        off += 8;
+    }
+}
+
 } // namespace dlinspect
 
 // ---------------------------------------------------------------------------
@@ -1431,6 +1491,25 @@ public:
                                  dl_addr, s_race_dump);
                     s_done = true;
                 }
+            }
+        }
+        // Geometry-set sampler (AERO_DL_GEOMSET=<stride>, draw-distance pop-in attribution):
+        // every <stride> frames, walk the DL and print the frame's set of resolved G_DL
+        // targets + G_VTX pages + tri/CULLDL totals as one line for offline diffing.
+        static const char* s_geomset = std::getenv("AERO_DL_GEOMSET");
+        if (s_geomset && t && g_aero_rdram) {
+            int stride = std::atoi(s_geomset);
+            if (stride < 1) stride = 1;
+            if (count % stride == 0) {
+                uint32_t seg[16] = {0};
+                dlinspect::GeomSet gs;
+                dlinspect::geom_walk(g_aero_rdram, (uint32_t)(int32_t)t->t.data_ptr, seg, gs, 0);
+                std::fprintf(stderr, "[geomset] f=%d tris=%u vtx=%u culls=%u ndl=%d dls=",
+                             count, gs.tris, gs.vtx, gs.culls, gs.ndl);
+                for (int i = 0; i < gs.ndl; ++i) std::fprintf(stderr, "%06X,", gs.dls[i]);
+                std::fprintf(stderr, " pgs=");
+                for (int i = 0; i < gs.npg; ++i) std::fprintf(stderr, "%03X,", gs.pages[i]);
+                std::fputc('\n', stderr);
             }
         }
         // Menu-DL trace (issue #32, AERO_MENU_DL_TRACE=1): per-frame command census keyed by
