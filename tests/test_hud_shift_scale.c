@@ -4,6 +4,9 @@
 // isolation — compile and run directly with the host compiler, no ROM build needed:
 //   gcc -I. tests/test_hud_shift_scale.c -lm -o test_hud_shift_scale && ./test_hud_shift_scale
 
+// This is a test binary: asserts ARE the test, so they must survive a Release
+// (NDEBUG) build -- without this the whole file compiles to a vacuous pass.
+#undef NDEBUG
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -90,6 +93,24 @@ int main(void) {
     // ...while a rect of the same shape outside the minimap band stays centred.
     assert(aero_ws_classify_rect_qp(QP(96), QP(104), QP(200)) == AERO_WS_PIN_NONE);
 #undef QP
+
+    // --- steady-HUD gate (retag + needle shift) ---------------------------------------
+    // gate(scene, phase, countdown_step). Live-traced timeline of a race entry (warp,
+    // AERO_WS_TRACE): phase 2 hosts the whole pre-race sequence -- fade-in + bottom
+    // ticker sweep (step 0, moving rects, must NOT pin), READY banner (step 1, no HUD),
+    // then the full HUD at final steady positions from step 2 (the frame the step flips)
+    // until GO flips phase to 3. Pinning must cover the step >= 2 window or the HUD
+    // visibly snaps to widescreen at race start (issue #1 follow-up).
+    assert(!aero_ws_hud_gate(4, 3, 0)); // menus never pin, whatever the phase word says
+    assert(!aero_ws_hud_gate(5, 6, 0)); // race scene, fresh-entry phase
+    assert(!aero_ws_hud_gate(5, 1, 0)); // entry transition
+    assert(!aero_ws_hud_gate(5, 2, 0)); // fade-in + ticker sweep: moving rects, no pin
+    assert(!aero_ws_hud_gate(5, 2, 1)); // READY banner only (centred, no HUD yet)
+    assert(aero_ws_hud_gate(5, 2, 2));  // HUD at steady positions during the countdown
+    assert(aero_ws_hud_gate(5, 3, 3));  // GO banner, steady race
+    assert(aero_ws_hud_gate(5, 3, 0));  // steady race after the GO banner clears
+    assert(aero_ws_hud_gate(5, 7, 0));  // attract-demo race
+    assert(!aero_ws_hud_gate(5, 5, 0)); // race exit / teardown phases stay unpinned
 
     printf("all HUD shift-scale assertions passed\n");
     return 0;

@@ -137,12 +137,11 @@ texrects, each rect classified **by its own coordinates** in the original 320-wi
   fill rect (117..117 when empty, growing rightward) never pins at any damage level.
 - everything else stays: DAMAGE 117..229, the 71..247 bottom panel, countdown numerals.
 
-Safety posture (each verified against the pre capture): race scene + steady-phase gate
-(`0x8013FF80 == 5` and phase `0x8013FF88` in {3 = steady race, 7 = steady attract};
-menus compose 4:3 layouts and the race entry phases 1/2 sweep full-screen wipe rects —
-neither may pin; the gate covers the needle shift too, so the needle never moves while
-the unpinned dial is still centred), whole-frame skip if any in-range `G_DL` target,
-force-close on the
+Safety posture (each verified against the pre capture): race scene + steady-HUD gate
+(`aero_ws_hud_gate`, host-tested — see the countdown section below for why the race
+sequencer's countdown step participates; the gate covers the needle shift too, so the
+needle never moves while the unpinned dial is still centred), whole-frame skip if any
+in-range `G_DL` target, force-close on the
 game's raw mid-HUD `G_SETSCISSOR` and on 3D commands, bounded growth (~10 commands per
 bracket, ~7 brackets/frame) against a measured >=4KB of free space after the frame DL
 end, `AERO_WS_RETAG=0` kill-switch for pre/post captures.
@@ -160,6 +159,43 @@ image edges preserving each element's NATIVE margin (timer's rightmost rect is n
 19/320 from the screen edge, GLPS/minimap natively 20/320 — those margins scale up with
 the window and are intentional); the needle/digit offsets relative to the dial match the
 Original layout within 3 px; `Original` re-measures pixel-identical to pre-change.
+
+## Shipped (issue #1, fourth increment): pin through the pre-race countdown (2026-07-16)
+
+User report: during the READY/SET countdown the HUD sat 4:3-centred and visibly snapped
+to the widescreen edges at GO. Cause: the original gate required phase `0x8013FF88` in
+{3, 7}, but the whole pre-race sequence lives in **phase 2** — the countdown included.
+
+ROM derivation (race runner + sequencer disassembly): `0x8013FF8C` is really the
+*requested* phase — `func_800162C0` copies it into the current-phase word and runs a
+per-transition handler (tables `0x800969F0` / `0x80096A10`). The per-frame sequencer
+`func_80016464` drives phase 2 via `func_80016890`: with `elapsed = frameCounter(block+0)
+- latch(block+0x2C0)`, the countdown step word `block+0x2B0` (block = `0x8013FC88`, so
+step = `0x8013FF38`) goes 1/2/3 at 105/150/195 frames (jingles 0x21/0x22/0x23), and
+step 3 requests phase 3. Frame-exact live trace (`AERO_WS_TRACE=1/2`, headless
+`AERO_WARP=1` run) of the phase-2 timeline:
+
+- frames ~1..181 (step 0): fade-in (fade struct `0x8019DDF0`, channel bytes +0x244/+0x245
+  count 30→-1, drawer `0x800193xx` skips at <0) plus a bottom **ticker** — a train of
+  10x14 rects marching horizontally through a full-width banner. Moving fragments
+  transiently satisfy the LEFT/RIGHT thresholds → must NOT pin (tears the animation).
+- READY window (step 1, frames ~181..225): exactly ONE rect — the centred READY banner.
+  No HUD at all; pinning would be a no-op.
+- step 2 flip (frame 226 in the trace): the full 38-rect HUD appears **already at its
+  final steady coordinates**, same layout as phase 3, plus the centred SET banner.
+  This was the user-visible bug window (~45 frames, 1.5 s).
+- GO (step 3) flips phase to 3 within the same layout.
+
+Fix: the gate is now the pure host-tested predicate `aero_ws_hud_gate(scene, phase,
+countdown_step)` in `aero_hud_widescreen.h` — scene 5 and (phase 3/7, or phase 2 with
+step >= 2). The step word is the game's own countdown state (reset to 0 by the sequencer
+itself while `elapsed < 105`), so nothing is invented. Verified: host test timeline
+cases (`ctest`), gate-transition trace (off through fade/ticker/READY, on at the exact
+HUD-appearance frame, attract path unchanged), and windowed RT64 16:9 captures — SET
+frame shows the HUD pinned flush to the widescreen edges, GO identical to before.
+
+`AERO_WS_TRACE` (kept, env-gated): 1 = per-frame race-scene line (phase, countdown step,
+fade bytes, gate, rect classification counts); 2 = adds per-rect dumps every 25th frame.
 
 ## Remaining follow-ups
 

@@ -25,6 +25,7 @@
 #include "recomp.h"
 #include "rt64_extended_gbi.h"
 #include "aero_hud_widescreen.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,8 +35,7 @@
 #define AERO_SCENE_CUR         0x8013FF80u /* scene manager: current scene id (5 = race) */
 #define AERO_SCENE_RACE        5u
 #define AERO_SCENE_PHASE       0x8013FF88u /* scene-local phase (see aero_warp.c) */
-#define AERO_PHASE_RACE_STEADY 3u          /* steady racing HUD, menu-launched/warp race */
-#define AERO_PHASE_ATTRACT     7u          /* steady attract-demo race */
+#define AERO_RACE_CDOWN_STEP   0x8013FF38u /* race block +0x2B0: countdown step 0..3 */
 
 static void emit_at(uint8_t* rdram, gpr* cur, uint32_t w0, uint32_t w1) {
     MEM_W(0, *cur) = (int32_t)w0;
@@ -135,17 +135,12 @@ static float aero_ws_needle_shift_scale(void) {
     return aero_ws_hud_shift_scale_for_aspect(aspect);
 }
 
-// Steady-HUD gate shared by the needle shift and the retag pass: race scene only (menus
-// compose 4:3 layouts that must not be pinned), steady phases only (the race entry
-// phases 1/2 drive full-screen wipe transitions -- fragments of a wipe must not pin to
-// an edge, and the needle must not shift while the unpinned dial is still centred).
+// Steady-HUD gate shared by the needle shift and the retag pass; the policy (and why the
+// countdown step participates) lives with aero_ws_hud_gate in aero_hud_widescreen.h.
 static int aero_ws_in_steady_race(uint8_t* rdram) {
-    uint32_t scene = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR);
-    if (scene != AERO_SCENE_RACE) {
-        return 0;
-    }
-    uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
-    return phase == AERO_PHASE_RACE_STEADY || phase == AERO_PHASE_ATTRACT;
+    return aero_ws_hud_gate((uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR),
+                            (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE),
+                            (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_RACE_CDOWN_STEP));
 }
 
 static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end) {
@@ -327,6 +322,56 @@ void aero_ws_hud_scan_begin(uint8_t* rdram, recomp_context* ctx) {
     s_hud_scan_open = 1;
 }
 
+// Diagnostic probe (AERO_WS_TRACE=1, =2 adds per-rect dumps every 25th frame): per-frame
+// race-scene log of the scene phase, the fade/wipe channel bytes (0x8019DDF0 +0x244/+0x245),
+// the countdown step, the gate decision, and how the frame's rects classify. This is how
+// the phase-2 countdown timeline in docs/notes/hud-widescreen.md was measured.
+static void aero_ws_trace(uint8_t* rdram, gpr start, gpr end) {
+    static int s_on = -1;
+    if (s_on < 0) {
+        const char* env = getenv("AERO_WS_TRACE");
+        s_on = (env != NULL) ? atoi(env) : 0;
+    }
+    if (!s_on) {
+        return;
+    }
+    uint32_t scene = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR);
+    if (scene != AERO_SCENE_RACE) {
+        return;
+    }
+    uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
+    uint32_t frame = (uint32_t)MEM_W(0, (gpr)(int32_t)0x8013FC88u); /* race frame counter */
+    uint32_t cdown = (uint32_t)MEM_W(0, (gpr)(int32_t)0x8013FF38u); /* countdown step +0x2B0 */
+    int8_t w244 = (int8_t)MEM_B(0, (gpr)(int32_t)0x8019E034u);      /* fade ch A +0x244 */
+    int8_t w245 = (int8_t)MEM_B(0, (gpr)(int32_t)0x8019E035u);      /* fade ch B +0x245 */
+    int rects = 0, left = 0, right = 0, minulx = 4096, maxlrx = -1;
+    int ext_aligned = 0;
+    for (gpr p = start; p + 8 <= end; p += 8) {
+        uint32_t w0 = (uint32_t)MEM_W(0, p);
+        uint32_t w1 = (uint32_t)MEM_W(4, p);
+        uint32_t op = w0 >> 24;
+        if (op == 0xE4u || op == 0xE5u) {
+            int ulx = (int)((w1 >> 12) & 0xFFFu), lrx = (int)((w0 >> 12) & 0xFFFu);
+            int uly = (int)(w1 & 0xFFFu), lry = (int)(w0 & 0xFFFu);
+            int cls = aero_ws_retag_step(w0, w1, &ext_aligned);
+            rects++;
+            if (cls == AERO_WS_PIN_LEFT) left++;
+            if (cls == AERO_WS_PIN_RIGHT) right++;
+            if (ulx < minulx) minulx = ulx;
+            if (lrx > maxlrx) maxlrx = lrx;
+            if (s_on >= 2 && (frame % 25) == 0) {
+                fprintf(stderr, "[wsrect] frame=%u (%d,%d)-(%d,%d) cls=%d\n",
+                        frame, ulx / 4, uly / 4, lrx / 4, lry / 4, cls);
+            }
+        }
+    }
+    fprintf(stderr,
+            "[wstrace] frame=%u phase=%u cdown=%u wipe=%d/%d gate=%d rects=%d L=%d R=%d ulx_min=%d lrx_max=%d\n",
+            frame, phase, cdown, (int)w244, (int)w245,
+            aero_ws_hud_gate(scene, phase, cdown), rects, left, right,
+            minulx == 4096 ? -1 : minulx / 4, maxlrx < 0 ? -1 : maxlrx / 4);
+}
+
 // before_vram = 0x80022680 (func_80022408 epilogue, after every child handler has appended
 // its commands, before the register restores). Shift the needle matrix (on the original
 // range), then re-emit the range with the per-rect pin brackets.
@@ -336,6 +381,7 @@ void aero_ws_hud_frame_end(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     s_hud_scan_open = 0;
+    aero_ws_trace(rdram, s_hud_scan_start, MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER));
     if (!aero_ws_in_steady_race(rdram)) {
         return;
     }
