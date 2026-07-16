@@ -13,8 +13,13 @@
 //   4. An explicit craft forges the craft byte; the hotkey default (-1) leaves it.
 //
 // Standalone host test, no ROM build needed. Compile from the repo root (both files
-// as C11 -- aero_warp.c uses C11 atomics and this test is plain C):
-//   gcc -std=c11 -I lib/N64ModernRuntime/N64Recomp/include -x c tests/test_warp_gating.cpp src/aero_warp.c -o build/test_warp_gating
+// as C11 -- aero_warp.c uses C11 atomics and this test is plain C). aero_warp.c
+// now calls func_80036C54 (race-BGM preload); the standalone test can't link the
+// recompiled ROM image, so we link the test-only stub in tests/warp_loader_stub.c
+// instead. The stub pins the contract the warp is supposed to forge (RP_GROUP =
+// (track<4)?1:2, RP_TRACK = requested track); the assertions below read the
+// stub's introspection back to verify.
+//   gcc -std=c11 -I lib/N64ModernRuntime/N64Recomp/include -x c tests/test_warp_gating.cpp src/aero_warp.c tests/warp_loader_stub.c -o build/test_warp_gating
 //   ./build/test_warp_gating
 #include <stdint.h>
 #include <stdio.h>
@@ -25,6 +30,13 @@
 
 extern void aero_warp_request(int track0, int craft);
 extern void aero_warp_tick(uint8_t* rdram, recomp_context* ctx);
+// From tests/warp_loader_stub.c (linked only here, not into aerogauge_modern).
+extern uint32_t warp_loader_stub_last_track(void);
+extern uint8_t  warp_loader_stub_last_group(void);
+extern uint8_t  warp_loader_stub_last_track_byte(void);
+extern uint8_t  warp_loader_stub_called(void);
+extern uint8_t  warp_loader_stub_skipped(void);
+extern void     warp_loader_stub_reset(void);
 
 static int failures = 0;
 #define CHECK(cond, msg)                                                    \
@@ -95,6 +107,14 @@ int main(void) {
     CHECK(r32(0x8013FF44u) == 0, "course table cleared");
     CHECK(r32(0x8013FF88u) == 6, "phase = fresh entry");
     CHECK(r8(0x8013FF95u) == 0, "hotkey default keeps craft byte");
+    // Loader preload (issue #7 — race-BGM fix): the warp forges the course
+    // group byte before the loader sees it. tracks 0-3 → group 1 (music ids
+    // 1-4); tracks 4-5 → group 2 (music ids 5-6). The stub records what the
+    // loader saw so the contract is pinned in the test.
+    CHECK(warp_loader_stub_called() == 1, "race-BGM loader invoked exactly once on fire");
+    CHECK(warp_loader_stub_last_track_byte() == 2, "loader saw RP_TRACK = requested track (2)");
+    CHECK(warp_loader_stub_last_group() == 1, "loader saw RP_GROUP = 1 for track < 4");
+    CHECK(warp_loader_stub_skipped() == 0, "loader did not skip (non-zero group → loads)");
     tick_n(60);
     CHECK(r32(0x8013FF84u) == 5, "request consumed (no double fire)");
 
@@ -118,6 +138,23 @@ int main(void) {
     tick_n(40);
     CHECK(r8(0x8013FF95u) == 3, "explicit craft forged");
     CHECK(r8(0x8013FF97u) == 0, "duplicate-craft colour flag cleared");
+
+    // 5. Track >= 4 (group 2 branch): loader must see RP_GROUP = 2.
+    warp_loader_stub_reset();
+    reset_guest(4);
+    aero_warp_request(4, -1);
+    tick_n(40);
+    CHECK(r8(0x8013FF9Bu) == 4, "track 4 written to RP_TRACK");
+    CHECK(warp_loader_stub_last_group() == 2, "loader saw RP_GROUP = 2 for track >= 4");
+
+    // 6. Loader must NOT fire on holds / transitions / race-scene requests
+    //    (the warp's stores run only inside the actual fire path).
+    warp_loader_stub_reset();
+    reset_guest(4);
+    w8(0x8013FFAAu, 0);
+    aero_warp_request(0, -1);
+    tick_n(40);
+    CHECK(warp_loader_stub_called() == 0, "loader not invoked while block uninitialized");
 
     if (failures == 0) printf("test_warp_gating: all checks passed\n");
     return failures == 0 ? 0 : 1;
