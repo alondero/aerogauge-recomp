@@ -85,6 +85,31 @@ enum aero_ws_pin {
 #define AERO_WS_MAP_MIN_ULY_QP (66 * 4)
 #define AERO_WS_MAP_MAX_ULY_QP (176 * 4)
 
+// Steady-HUD gate shared by the needle shift and the retag pass, on the scene manager's
+// words (scene 0x8013FF80, scene-local phase 0x8013FF88) plus the race sequencer's
+// countdown step (race block +0x2B0 = 0x8013FF38, stepped 1/2/3 by func_80016890 at
+// 105/150/195 frames after the phase-2 latch). Pin only while the HUD sits at its steady
+// positions, live-traced (AERO_WS_TRACE) frame-exact on a warp race entry:
+//  - menus (scene != 5) compose 4:3 layouts that must not pin;
+//  - race entry phases 1/2 host the fade-in and a bottom ticker whose rect train marches
+//    across the screen -- moving fragments transiently satisfy the LEFT/RIGHT thresholds
+//    and pinning them tears the animation (countdown step 0);
+//  - the READY banner window (step 1) draws no HUD at all;
+//  - the HUD first appears, already at its final steady coordinates, on the very frame
+//    the step flips to 2 -- pin from here, or the HUD sits 4:3-centred through the
+//    countdown and visibly snaps to the widescreen edges at GO (phase 3);
+//  - phase 7 is the steady attract-demo race, pinned as before; every other phase
+//    (fresh entry 6, exit/teardown walks) stays unpinned.
+static inline int aero_ws_hud_gate(unsigned scene, unsigned phase, unsigned countdown_step) {
+    if (scene != 5u) {
+        return 0;
+    }
+    if (phase == 3u || phase == 7u) {
+        return 1;
+    }
+    return phase == 2u && countdown_step >= 2u;
+}
+
 static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
     if (lrx_qp <= AERO_WS_LEFT_MAX_QP) {
         return AERO_WS_PIN_LEFT;
