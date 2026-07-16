@@ -33,6 +33,10 @@ Thumbs.db
 # --- Bundled emulator + debug captures (not source; regenerable/large) ------
 # ares reference emulator for live-debug skills (ares-debugger / port-vs-ares-harness)
 tools/emulators/
+# ares↔port live-debug harness (Python GDB client; copied from
+# automobililamborghini-recomp on demand). Land as its own PR when first user
+# needs it — see issue #7's "Tooling" note.
+tools/emu_instrumentation/
 # RDRAM / framebuffer / DL dumps captured from ares or the port
 *.bin
 dma_validation/
