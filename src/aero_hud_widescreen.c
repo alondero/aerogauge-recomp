@@ -33,6 +33,9 @@
 #define AERO_HUD_CURSOR_HOLDER 0x8016C508u /* fixed DL write-cursor holder (live-derived) */
 #define AERO_SCENE_CUR         0x8013FF80u /* scene manager: current scene id (5 = race) */
 #define AERO_SCENE_RACE        5u
+#define AERO_SCENE_PHASE       0x8013FF88u /* scene-local phase (see aero_warp.c) */
+#define AERO_PHASE_RACE_STEADY 3u          /* steady racing HUD, menu-launched/warp race */
+#define AERO_PHASE_ATTRACT     7u          /* steady attract-demo race */
 
 static void emit_at(uint8_t* rdram, gpr* cur, uint32_t w0, uint32_t w1) {
     MEM_W(0, *cur) = (int32_t)w0;
@@ -111,13 +114,15 @@ static void bracket_close_at(uint8_t* rdram, gpr* cur) {
 
 #define AERO_NEEDLE_MESH_ADDR 0x800995C0u /* static needle VTX+TRI1 sub-DL (live-derived) */
 
-// 16:9 shift magnitude in the needle matrix's translate.x units (the projection-combined
-// modelview, NOT Lamborghini's 10-units/px convention -- so 530 does NOT carry over).
-// Live-calibrated 2026-07-12: at a >=16:9 Clamp16x9 window (internal scale == 1.0) the dial
-// ring pins right by ~152 screen px and the needle travels ~3.73 px per unit, so 41 units
-// lands the needle hub back on the dial (verified: needle centroid 1196 -> 1350 px, target
-// 1348 = native offset preserved). AERO_WS_NEEDLE_DX overrides it for recalibration.
-#define AERO_WS_NEEDLE_DX 41.0f
+// 16:9 shift magnitude in the needle matrix's translate.x units. The unit is ONE
+// 320-space pixel: live-logged at the hook, the needle modelview's translate.x int part
+// is 114 and 160 + 114 = 274 = the needle's screen x -- and pixel-measuring a probe
+// confirmed the ratio (a 41-unit shift moved the needle 158 px while the rect-aligned
+// dial travelled 203 px; 41/53.3 == 158/205). So the needle must travel exactly the
+// rects' 16:9 travel in the same space: 320 * (16/9 / (4/3) - 1) / 2 = 53.33 px. (The
+// original hand calibration of 41 was systematically short -- the "split speedo" the
+// user reported.) AERO_WS_NEEDLE_DX overrides it for recalibration.
+#define AERO_WS_NEEDLE_DX 53.333f
 
 static float aero_ws_needle_shift_scale(void) {
     extern uint32_t aero_ws_get_hud_rect_aspect_bits(void);
@@ -170,7 +175,8 @@ static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end) {
 // advanced past the new end (later frame-closing commands append there as normal).
 //
 // Safety posture (all verified against the mode-4 race capture, hud-pre dump):
-//  - only runs in the race scene (menus compose 4:3 layouts that must not be pinned);
+//  - only runs in the race scene's steady phases (menus compose 4:3 layouts and the race
+//    entry phases sweep full-screen wipe rects; neither must be pinned);
 //  - skipped whole-frame if any G_DL in the range targets the range itself (re-emitting
 //    would move the branch target; the real stream's sub-DL targets are all static);
 //  - a bracket force-closes on the game's own raw G_SETSCISSOR (one occurs mid-HUD; a
@@ -207,6 +213,13 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
         return;
     }
     if ((uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR) != AERO_SCENE_RACE) {
+        return;
+    }
+    // Steady-HUD phases only: the race scene's entry phases (1/2) drive full-screen
+    // wipe transitions with rects sweeping the whole 320 width -- fragments of a wipe
+    // must not pin to an edge mid-sweep.
+    uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
+    if (phase != AERO_PHASE_RACE_STEADY && phase != AERO_PHASE_ATTRACT) {
         return;
     }
     size_t n = (size_t)(end - start) / 8;

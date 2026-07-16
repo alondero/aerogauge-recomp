@@ -82,15 +82,16 @@ behind (user-reported "split speedo"). The needle is now pinned too; live-derive
   walks `[start,end)`, finds the needle MTX by the `0x800995C0` key, and adds `dx` to its
   matrix translate.x (element 12 = byte 24 int / byte 24+0x20 frac, s15.16 — identical layout
   to Lamborghini's guMtxL; MEM_H/MEM_HU handle the endian + KSEG masking).
-- **Matrix convention differs from Lamborghini — calibrated live, not analytic.** The needle
-  modelview `0x80185970` is PROJECTION-COMBINED (decoded translate ~(-19713, 29184, 256),
-  `m[3][3]=0`, recurring `256` scale), so Lambo's `530 units` does NOT carry over. Calibrated
-  by windowed PrintWindow capture at 1616x939 (>=16:9 client => internal scale 1.0): the dial
-  ring pins right ~152 screen px, the needle travels ~3.73 px/unit, so **`AERO_WS_NEEDLE_DX =
-  41`** lands the needle hub back on the dial (needle centroid 1196 -> 1350 px vs target 1348
-  = native offset preserved). Env-overridable for recalibration. Scaled off
-  `aero_ws_get_hud_rect_aspect_bits()` => 0 at 4:3/Original (no-op, no config gate), caps at
-  16:9 under Clamp16x9.
+- **Matrix unit = one 320-space pixel; the shift is ANALYTIC, not calibrated** (corrected
+  2026-07-16 — the original hand calibration of `41` was systematically short and left the
+  needle ~45 px inboard of the pinned dial, user-reported). Live-logging the modelview at
+  the hook shows translate.x int part `114` with the needle at screen x `160+114=274`, and
+  a probe confirmed the ratio (41 units moved the needle 158 px while the dial travelled
+  203 px; `41/53.3 == 158/205`). So **`AERO_WS_NEEDLE_DX = 53.333`** = the rects' own 16:9
+  travel in the same space, `320*(16/9 / (4/3) - 1)/2`. Env-overridable. Scaled off
+  `aero_ws_get_hud_rect_aspect_bits()` => 0 at 4:3/Original (no-op, no config gate), caps
+  at 16:9 under Clamp16x9. Verified: needle/digit offsets relative to the dial's right
+  edge now match the Original layout within 3 px.
 
 Before/after (real RT64 D3D12, 1616x939 16:9 canyon race; needle only — the "0" digit below
 is the retained follow-up):
@@ -120,20 +121,27 @@ texrects, each rect classified **by its own coordinates** in the original 320-wi
 (`aero_ws_classify_rect_qp`, thresholds measured from the steady mode-4 capture):
 
 - RIGHT if `ulx >= 168`: dial ring 247..300, lap-time row 171..301, MPH digit 247..267 +
-  its scale ticks 187.., TEMP 274..300, top lap/position row 170..302.
-- LEFT if `lrx <= 100` **and** `uly >= 180` (the bottom band): the GLPS ladder 20..64.
-  The 100 bound stays below the DAMAGE bar's left edge (117) so its left-anchored fill
-  rect (117..117 when empty, growing rightward) never pins at any damage level.
-  The band gate keeps the minimap (bg rect 20..100 at y70..172 + craft blips) centred —
-  its track polyline is matrix-drawn geometry a rect-align cannot carry (follow-up below).
-- everything else stays: DAMAGE 117..229, the 71..247 bottom panel, top-centre bar
-  107..169, countdown numerals.
+  its scale ticks 187.., TEMP 274..300, top lap/position row 170..302. The white
+  "TOTAL.TIME" header (107..169, y23..31) crosses the deadband but natively sits
+  immediately left of the big digits, so it is special-case matched (top strip only) and
+  travels with the timer group.
+- LEFT if `lrx <= 100`: the GLPS ladder 20..64 AND **the whole minimap**. Live G_MTX
+  probing (2026-07-16) disproved the earlier "polyline geometry" note: shifting every
+  live modelview matrix moved the sky backdrop, the craft and the whole 3D scene but
+  never the white track outline — it is baked into the TEXTURE of the 20..100 x y70..172
+  texrect (and sits exactly inside it), so the map + its craft-blip rect pin LEFT like
+  any other rect. The 100 bound stays below the DAMAGE bar's left edge (117) so its
+  left-anchored fill rect (117..117 when empty, growing rightward) never pins at any
+  damage level.
+- everything else stays: DAMAGE 117..229, the 71..247 bottom panel, countdown numerals.
 
-Safety posture (each verified against the pre capture): race scene gate (`0x8013FF80 == 5`;
-menus compose 4:3 layouts that must not be pinned), whole-frame skip if any in-range `G_DL`
-target, force-close on the game's raw mid-HUD `G_SETSCISSOR` and on 3D commands, bounded
-growth (~10 commands per bracket, ~6 brackets/frame) against a measured >=4KB of free
-space after the frame DL end, `AERO_WS_RETAG=0` kill-switch for pre/post captures.
+Safety posture (each verified against the pre capture): race scene + steady-phase gate
+(`0x8013FF80 == 5` and phase `0x8013FF88` in {3 = steady race, 7 = steady attract};
+menus compose 4:3 layouts and the race entry phases 1/2 sweep full-screen wipe rects —
+neither may pin), whole-frame skip if any in-range `G_DL` target, force-close on the
+game's raw mid-HUD `G_SETSCISSOR` and on 3D commands, bounded growth (~10 commands per
+bracket, ~7 brackets/frame) against a measured >=4KB of free space after the frame DL
+end, `AERO_WS_RETAG=0` kill-switch for pre/post captures.
 
 Before/after (real RT64 D3D12, 1600x900 16:9 canyon race; `hr_option: Original` = the
 unpinned reference layout, `Clamp16x9` = every rect element pinned):
@@ -142,16 +150,18 @@ unpinned reference layout, `Clamp16x9` = every rect element pinned):
 |---|---|
 | ![retag before](../hud-widescreen-1p-retag-original-16x9.png) | ![retag after](../hud-widescreen-1p-retag-after-16x9.png) |
 
-Known cosmetic gap: the white "TOTAL.TIME" header (107..169, y23) straddles the centre
-deadband so it stays centred while its digit row pins right — per-rect geometry alone
-cannot attribute it to the timer group. Candidate refinement alongside the minimap work.
+Alignment was verified by pixel measurement, not by eye: at eff-16:9 the rect travel is
+`(16/9-4/3)*H/2` ≈ 191 px and the dial/TEMP/timer/GLPS/minimap all land flush at the
+image edges preserving each element's NATIVE margin (timer's rightmost rect is natively
+19/320 from the screen edge, GLPS/minimap natively 20/320 — those margins scale up with
+the window and are intentional); the needle/digit offsets relative to the dial match the
+Original layout within 3 px; `Original` re-measures pixel-identical to pre-change.
 
-## NOT yet shipped (retained, follow-up)
+## Remaining follow-ups
 
-- **Minimap → LEFT**: needs a G_MTX translate shift for the track polyline (same approach
-  and calibration recipe as the needle; the polyline G_MTX/G_DL pairs sit well before the
-  HUD rects in the frame DL), then the classifier's bottom-band LEFT gate can be relaxed
-  so the bg rect + blips travel with it.
+- **Rival craft markers on the minimap** (multi-craft GP races): five white 2-triangle
+  meshes (`G_DL -> 0x803AF560..680`, matrix-positioned) are culled in 1P warp races and
+  were NOT exercised by this work — in a multi-craft race they may need a matrix shift to
+  track the LEFT-pinned map texture. Spot-check in a GP race.
 - **Human spot-check** at 4:3 / 16:9 / 21:9 with Original/Clamp16x9/Full HUD modes, plus
-  the race pause overlay and 2P behaviour (the retag currently applies wherever scene 5
-  draws, including the attract-race and pause overlays).
+  the race pause overlay and 2P behaviour.

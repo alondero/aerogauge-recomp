@@ -73,13 +73,16 @@ int main(void) {
     // a 152 LEFT bound pinned the empty fill while the bar frame stayed put).
     assert(aero_ws_classify_rect_qp(QP(117), QP(117), QP(216)) == AERO_WS_PIN_NONE);
     assert(aero_ws_classify_rect_qp(QP(117), QP(140), QP(216)) == AERO_WS_PIN_NONE);
-    // top-centre bar (107..169, y23): straddles the deadband, stays.
-    assert(aero_ws_classify_rect_qp(QP(107), QP(169), QP(23)) == AERO_WS_PIN_NONE);
-    // minimap background (20..100, y70) and a craft blip (80..88, y100): left by x but
-    // ABOVE the bottom band -- must stay centred with the matrix-drawn track polyline
-    // until the polyline gets its own G_MTX shift (retained follow-up).
-    assert(aero_ws_classify_rect_qp(QP(20), QP(100), QP(70)) == AERO_WS_PIN_NONE);
-    assert(aero_ws_classify_rect_qp(QP(80), QP(88), QP(100)) == AERO_WS_PIN_NONE);
+    // the white TOTAL.TIME header (107..169, y23) crosses the deadband but is part of
+    // the timer group (natively adjacent to the big digits at 170..): special-cased RIGHT.
+    assert(aero_ws_classify_rect_qp(QP(107), QP(169), QP(23)) == AERO_WS_PIN_RIGHT);
+    // ...but a similar-width rect lower on screen is NOT the header: stays centred.
+    assert(aero_ws_classify_rect_qp(QP(107), QP(169), QP(120)) == AERO_WS_PIN_NONE);
+    // minimap texture rect (20..100, y70 -- the track outline is baked into the texture,
+    // not drawn as geometry) and the craft blip riding it (80..88, y100): LEFT, so the
+    // whole minimap travels together with GLPS.
+    assert(aero_ws_classify_rect_qp(QP(20), QP(100), QP(70)) == AERO_WS_PIN_LEFT);
+    assert(aero_ws_classify_rect_qp(QP(80), QP(88), QP(100)) == AERO_WS_PIN_LEFT);
 #undef QP
 
     printf("all HUD shift-scale assertions passed\n");
