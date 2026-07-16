@@ -2,11 +2,11 @@
 
 Under RT64 `ar_option: Expand`, untagged 2D is rendered centred in the 4:3 region, so the
 1P race HUD's edge-anchored elements float inboard of the widescreen edges. The fix tags
-each element's draw with RT64 extended-GBI `gEXSetRectAlign` (+ a wide scissor so the moved
-rect isn't clipped at the 4:3 edge), injected as N64Recomp `[[patches.hook]]` natives in
+the HUD's texrects with RT64 extended-GBI `gEXSetRectAlign` (+ a wide scissor so the moved
+rects aren't clipped at the 4:3 edge), injected as N64Recomp `[[patches.hook]]` natives in
 `src/aero_hud_widescreen.c`. At 4:3 / non-Expand RT64 leaves the tagged rects put, so every
-bracket is a no-op there — no config gate needed. The pure scaling math (for elements that
-also carry 3D geometry) lives in `src/aero_hud_widescreen.h` with `tests/test_hud_shift_scale.c`.
+bracket is a no-op there — no config gate needed. The pure classification/scaling math
+lives in `src/aero_hud_widescreen.h` with `tests/test_hud_shift_scale.c`.
 
 ## How the HUD is drawn (live-derived; see the `.claude/hud-*.gdb` harnesses)
 
@@ -37,13 +37,11 @@ is off both handler paths and is not drawn in the plain canyon race (never brack
 
 ## Shipped (issue #1, first increment): speedometer RIGHT pin
 
-`func_80018CF0` is small and speedo-exclusive (one call/frame). Matched bracket:
-- entry `before_vram = 0x80018CF0`  → `aero_ws_speedo_pin`  : RIGHT align + wide scissor push
-- reset `before_vram = 0x80018D5C`  → `aero_ws_speedo_reset` : pop + align NONE
-  (placed after the handler writes its cursor back at `0x80018D58`, before the epilogue).
-
-Verified at the DL level: exactly one bracket per frame wraps only the speedo texrect
-(`E44B0380 003DC2B0`); the other 36 texrects and DAMAGE are untouched.
+Historical: the first increment bracketed `func_80018CF0` (small and speedo-exclusive, one
+call/frame) with a dedicated hook pair at `0x80018CF0`/`0x80018D5C`. That bracket was
+verified at the DL level (exactly one bracket per frame wrapping only the speedo texrect)
+and later subsumed by the whole-frame retag pass below, which classifies the dial ring
+RIGHT from its own coordinates — the dedicated hooks were removed with the retag increment.
 
 Visual before/after (real RT64 D3D12 render, 1600x900 16:9 canyon race). `hr_option: Original`
 leaves the tagged rects put (== pre-fix behaviour); `Clamp16x9` applies the pin. Note only the
@@ -106,22 +104,54 @@ Windowed capture recipe for recalibration: `scratchpad/capture.ps1 <out.png> <dx
 flag 2 grabs the swapchain). Attribution harness: `.claude/needle-watch.gdb` (watches the
 needle modelview `0x80185970` write). `hr_option: Original` = unshifted reference.
 
-## NOT yet shipped: the "0" MPH digit (retained, 2026-07-12)
+## Shipped (issue #1, third increment): whole-frame per-texrect retag pass (2026-07-16)
 
-The tan **"0" speed-readout box** (texrect slot `0x18CE08`, decode `(247,191)-(267,206)`)
-still stays centred — the other half of the "split". It is a texrect (rect-alignable in
-principle) but drawn through the MIXED handler `func_80018EA0` (attributed:
-`func_80018EA0 -> func_80019630 -> func_8001A750 -> func_8001F790 -> func_8001F998`, the
-low-level emitter). That is the SAME handler that draws TEMP (right) + GLPS (left), so the
-digit shares the exact per-object-seam problem below — pinning it needs the finer seam, which
-would unlock TEMP, GLPS AND the digit together. Attribute harness: `.claude/digit-watch.gdb`.
+The remaining rect elements ("0" MPH digit, TEMP, GLPS, lap times, top row, …) all flow
+through MIXED handlers — `func_80018EA0` draws TEMP (right) **and** GLPS (left) inside one
+call — and the dispatcher disassembly killed the hoped-for finer seam: `func_80022408`'s
+`jalr group+0x34` site (`0x80022644`) is called once per *group* (four groups per frame,
+`v0 += 0x38` stride), not per element, so no call-boundary bracket can ever separate them.
 
-## NOT yet shipped (retained evidence, follow-up)
+The shipped mechanism instead post-processes what the frame actually emitted. The existing
+dispatcher bracket (`aero_ws_hud_scan_begin` at entry, `aero_ws_hud_frame_end` at the
+`0x80022680` epilogue) snapshots the emitted `[start, end)` and re-emits it in place with
+pin brackets (rect-align + wide scissor push/pop) inserted around runs of same-anchor
+texrects, each rect classified **by its own coordinates** in the original 320-wide space
+(`aero_ws_classify_rect_qp`, thresholds measured from the steady mode-4 capture):
 
-- **TEMP (right) + GLPS (left)** share `func_80018EA0`, which draws both a left and a right
-  element — no single alignment, no static per-element seam. Needs a finer seam: gate the
-  per-object `jalr` at `func_80022408` :10871 by the object (a1) or resulting x-position, or
-  bracket inside `func_80018EA0` per sub-draw. Do NOT bracket the whole handler.
-- **~13 more HUD elements** (top lap-counter x228-301, place x170-216, bottom bars, side
-  gauges) are drawn by other, not-yet-attributed handlers. Attribute each with
-  `.claude/hud-watch.gdb` (point the watchpoint at its DL slot) before adding a bracket.
+- RIGHT if `ulx >= 168`: dial ring 247..300, lap-time row 171..301, MPH digit 247..267 +
+  its scale ticks 187.., TEMP 274..300, top lap/position row 170..302.
+- LEFT if `lrx <= 100` **and** `uly >= 180` (the bottom band): the GLPS ladder 20..64.
+  The 100 bound stays below the DAMAGE bar's left edge (117) so its left-anchored fill
+  rect (117..117 when empty, growing rightward) never pins at any damage level.
+  The band gate keeps the minimap (bg rect 20..100 at y70..172 + craft blips) centred —
+  its track polyline is matrix-drawn geometry a rect-align cannot carry (follow-up below).
+- everything else stays: DAMAGE 117..229, the 71..247 bottom panel, top-centre bar
+  107..169, countdown numerals.
+
+Safety posture (each verified against the pre capture): race scene gate (`0x8013FF80 == 5`;
+menus compose 4:3 layouts that must not be pinned), whole-frame skip if any in-range `G_DL`
+target, force-close on the game's raw mid-HUD `G_SETSCISSOR` and on 3D commands, bounded
+growth (~10 commands per bracket, ~6 brackets/frame) against a measured >=4KB of free
+space after the frame DL end, `AERO_WS_RETAG=0` kill-switch for pre/post captures.
+
+Before/after (real RT64 D3D12, 1600x900 16:9 canyon race; `hr_option: Original` = the
+unpinned reference layout, `Clamp16x9` = every rect element pinned):
+
+| `Original` (unpinned reference) | `Clamp16x9` (retag pass live) |
+|---|---|
+| ![retag before](../hud-widescreen-1p-retag-original-16x9.png) | ![retag after](../hud-widescreen-1p-retag-after-16x9.png) |
+
+Known cosmetic gap: the white "TOTAL.TIME" header (107..169, y23) straddles the centre
+deadband so it stays centred while its digit row pins right — per-rect geometry alone
+cannot attribute it to the timer group. Candidate refinement alongside the minimap work.
+
+## NOT yet shipped (retained, follow-up)
+
+- **Minimap → LEFT**: needs a G_MTX translate shift for the track polyline (same approach
+  and calibration recipe as the needle; the polyline G_MTX/G_DL pairs sit well before the
+  HUD rects in the frame DL), then the classifier's bottom-band LEFT gate can be relaxed
+  so the bg rect + blips travel with it.
+- **Human spot-check** at 4:3 / 16:9 / 21:9 with Original/Clamp16x9/Full HUD modes, plus
+  the race pause overlay and 2P behaviour (the retag currently applies wherever scene 5
+  draws, including the attract-race and pause overlays).

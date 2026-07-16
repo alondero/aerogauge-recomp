@@ -44,36 +44,19 @@ func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
 
-# Widescreen 1P-HUD speedometer pinning (issue #1, src/aero_hud_widescreen.c). Live GDB
-# attribution (scratchpad/ATTRIBUTION.md) proved the bottom-right speedometer is drawn
-# EXCLUSIVELY by func_80018CF0, a small per-object handler reached from the 2D dispatcher
-# func_80022408. It reads the DL write cursor from the builder held in a0 (== ctx->r4 ==
-# 0x8016C508), draws, then writes the advanced cursor back at 0x80018D58. A matched pair of
-# before_vram hooks brackets it: the entry emits the RT64 RIGHT rect-align + wide scissor
-# (saving the holder from ctx->r4); the reset -- placed AFTER the cursor writeback at
-# 0x80018D58, before the epilogue -- pops the scissor and clears the alignment through the
-# saved holder. func_8003A190 (centred DAMAGE) and the other HUD groups are off this path,
-# so they are not bracketed. At 4:3 / non-Expand RT64 leaves the tagged rects put, so the
-# bracket is a no-op with no config gate.
-[[patches.hook]]
-func = "func_80018CF0"
-before_vram = 0x80018CF0
-text = "extern void aero_ws_speedo_pin(uint8_t*, recomp_context*); aero_ws_speedo_pin(rdram, ctx);"
-
-[[patches.hook]]
-func = "func_80018CF0"
-before_vram = 0x80018D5C
-text = "extern void aero_ws_speedo_reset(uint8_t*, recomp_context*); aero_ws_speedo_reset(rdram, ctx);"
-
-# Widescreen speedo NEEDLE pinning (issue #1 "split speedo", src/aero_hud_widescreen.c). The
-# dial ring (above) is a texrect RT64 moves for us; the orange needle is a matrix-rotated
-# triangle drawn by the generic recursive scene-graph walker func_800226AC (NO dedicated
-# handler), so RT64 leaves it centred and it detaches from the pinned ring. Mirroring the
-# Lamborghini patch_load_mtx_dx approach: bracket the whole 2D dispatcher func_80022408 --
-# entry latches the DL write cursor, and the epilogue (before_vram 0x80022680, after every
-# child handler has appended, before the register restores) walks the emitted DL, pinpoints
-# the needle by its G_MTX -> static mesh sub-DL 0x800995C0, and shifts that matrix's
-# translate.x to track the ring. Scaled off the same effective rect aspect -> no-op at 4:3.
+# Widescreen 1P-HUD pinning (issue #1, src/aero_hud_widescreen.c). AeroGauge's HUD has no
+# static per-element draw calls to bracket: the 2D dispatcher func_80022408 walks object
+# lists and calls per-object handlers indirectly, and those handlers mix LEFT and RIGHT
+# elements inside a single call (func_80018EA0 draws TEMP right + GLPS left), so no call
+# boundary separates them. The whole dispatcher is bracketed instead: the entry hook
+# latches the DL write cursor (holder 0x8016C508); the epilogue hook (before_vram
+# 0x80022680, after every child handler has appended, before the register restores)
+# post-processes the emitted range --
+#   1. re-emits it with RT64 rect-align + wide-scissor brackets around runs of texrects,
+#      each rect classified LEFT/RIGHT/centred by its own coordinates (race scene only);
+#   2. shifts the speedo needle's G_MTX translate.x (matrix-rotated geometry that a
+#      rect-align cannot carry), pinpointed by its G_DL -> static mesh 0x800995C0.
+# Scaled/tagged so the whole pass is a no-op at 4:3 / hr_option Original.
 [[patches.hook]]
 func = "func_80022408"
 before_vram = 0x80022408
@@ -82,4 +65,4 @@ text = "extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_h
 [[patches.hook]]
 func = "func_80022408"
 before_vram = 0x80022680
-text = "extern void aero_ws_needle_shift(uint8_t*, recomp_context*); aero_ws_needle_shift(rdram, ctx);"
+text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"

@@ -48,4 +48,47 @@ static inline float aero_ws_hud_effective_rect_aspect(float display, float sourc
     return source + (display - source) * ext_percentage;
 }
 
+// --- per-texrect pin classification (whole-frame DL retag pass, issue #1) ---
+//
+// The 2D dispatcher's per-group handlers mix LEFT and RIGHT elements inside a single
+// call (e.g. func_80018EA0 draws TEMP right + GLPS left), so no call-boundary bracket
+// can split them. Instead the retag pass classifies each texrect the frame actually
+// emitted, by its extent in the original 320-wide coordinate space. Everything here is
+// in the texrect command's native quarter-pixel units and pure math, so it is
+// host-testable without RDRAM.
+
+enum aero_ws_pin {
+    AERO_WS_PIN_NONE = 0,
+    AERO_WS_PIN_LEFT = 1,
+    AERO_WS_PIN_RIGHT = 2,
+};
+
+// Asymmetric deadband around the 320-wide centre (160): a rect pins only when it sits
+// fully on one side with margin, so centred elements (DAMAGE 117..229, the 71..247 bottom
+// panel, the countdown numerals) never move. Bounds measured from the mode-4 race capture:
+// GLPS reaches 64 (left); the leftmost right-side rects (lap-time label 171.., top row
+// 170..) start at 170. The LEFT bound must stay below 117: the DAMAGE bar's fill rect
+// anchors at its left edge x=117 and grows rightward with damage (117..117 when empty),
+// so any bound >= 117 would pin the low-damage fill LEFT while the rest of the bar stays
+// centred.
+#define AERO_WS_LEFT_MAX_QP    (100 * 4)
+#define AERO_WS_RIGHT_MIN_QP   (168 * 4)
+// LEFT additionally requires the bottom band: in this HUD the only left-pinned elements
+// (the GLPS ladder, y 194..224) live below y=180, while the minimap (bg rect x 20..100,
+// y 70..172, plus its craft blips) also classifies left by x but must NOT move -- its
+// track polyline is matrix-drawn geometry that a rect-align cannot carry (it needs its
+// own G_MTX translate shift, like the needle; retained follow-up on issue #1). A moved
+// bg with a centred polyline would split the minimap the same way the ring/needle split.
+#define AERO_WS_LEFT_MIN_ULY_QP (180 * 4)
+
+static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
+    if (lrx_qp <= AERO_WS_LEFT_MAX_QP) {
+        return uly_qp >= AERO_WS_LEFT_MIN_ULY_QP ? AERO_WS_PIN_LEFT : AERO_WS_PIN_NONE;
+    }
+    if (ulx_qp >= AERO_WS_RIGHT_MIN_QP) {
+        return AERO_WS_PIN_RIGHT;
+    }
+    return AERO_WS_PIN_NONE;
+}
+
 #endif // AERO_HUD_WIDESCREEN_H

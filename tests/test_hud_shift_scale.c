@@ -45,6 +45,43 @@ int main(void) {
     // 16:9 Clamp16x9: the shipped default uses the measured displacement unchanged.
     assert(approx(end_to_end(16.0f / 9.0f, 1.0f), 1.0f));
 
+    // --- per-texrect pin classification (retag pass) ---------------------------------
+    // Cases are the real rects from the mode-4 1P canyon-race capture (hud-pre dump),
+    // in the texrect command's quarter-pixel units: classify(ulx, lrx, uly).
+#define QP(px) ((px) * 4)
+    // speedometer dial ring (247..300, y172): RIGHT.
+    assert(aero_ws_classify_rect_qp(QP(247), QP(300), QP(172)) == AERO_WS_PIN_RIGHT);
+    // TOTAL.TIME / LAPTIME row (label 171.., digits ..301, y31): every rect RIGHT.
+    assert(aero_ws_classify_rect_qp(QP(171), QP(227), QP(31)) == AERO_WS_PIN_RIGHT);
+    assert(aero_ws_classify_rect_qp(QP(293), QP(301), QP(33)) == AERO_WS_PIN_RIGHT);
+    // "0" MPH digit (247..267, y191) and its scale ticks (187.., y191): RIGHT.
+    assert(aero_ws_classify_rect_qp(QP(247), QP(267), QP(191)) == AERO_WS_PIN_RIGHT);
+    assert(aero_ws_classify_rect_qp(QP(187), QP(207), QP(191)) == AERO_WS_PIN_RIGHT);
+    // TEMP gauge (274..300, y106..157): RIGHT.
+    assert(aero_ws_classify_rect_qp(QP(291), QP(297), QP(110)) == AERO_WS_PIN_RIGHT);
+    assert(aero_ws_classify_rect_qp(QP(274), QP(300), QP(157)) == AERO_WS_PIN_RIGHT);
+    // top lap/position row (170..302, y16): RIGHT, including the leftmost rect at 170.
+    assert(aero_ws_classify_rect_qp(QP(170), QP(190), QP(16)) == AERO_WS_PIN_RIGHT);
+    // GLPS ladder (20..64, y194..224 -- the bottom-left band): LEFT.
+    assert(aero_ws_classify_rect_qp(QP(22), QP(51), QP(197)) == AERO_WS_PIN_LEFT);
+    assert(aero_ws_classify_rect_qp(QP(20), QP(64), QP(194)) == AERO_WS_PIN_LEFT);
+    // DAMAGE bar (117..229) and the 71..247 bottom panel straddle centre: never move.
+    assert(aero_ws_classify_rect_qp(QP(117), QP(229), QP(216)) == AERO_WS_PIN_NONE);
+    assert(aero_ws_classify_rect_qp(QP(71), QP(247), QP(207)) == AERO_WS_PIN_NONE);
+    // the DAMAGE fill rect anchors at the bar's left edge and grows with damage: it must
+    // stay centred at EVERY fill level, including the empty 117..117 sliver (caught live:
+    // a 152 LEFT bound pinned the empty fill while the bar frame stayed put).
+    assert(aero_ws_classify_rect_qp(QP(117), QP(117), QP(216)) == AERO_WS_PIN_NONE);
+    assert(aero_ws_classify_rect_qp(QP(117), QP(140), QP(216)) == AERO_WS_PIN_NONE);
+    // top-centre bar (107..169, y23): straddles the deadband, stays.
+    assert(aero_ws_classify_rect_qp(QP(107), QP(169), QP(23)) == AERO_WS_PIN_NONE);
+    // minimap background (20..100, y70) and a craft blip (80..88, y100): left by x but
+    // ABOVE the bottom band -- must stay centred with the matrix-drawn track polyline
+    // until the polyline gets its own G_MTX shift (retained follow-up).
+    assert(aero_ws_classify_rect_qp(QP(20), QP(100), QP(70)) == AERO_WS_PIN_NONE);
+    assert(aero_ws_classify_rect_qp(QP(80), QP(88), QP(100)) == AERO_WS_PIN_NONE);
+#undef QP
+
     printf("all HUD shift-scale assertions passed\n");
     return 0;
 }
