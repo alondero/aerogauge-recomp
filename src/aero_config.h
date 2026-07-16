@@ -70,6 +70,11 @@ bool widescreen_sky_match();
 // overridable by AERO_DRAW_DISTANCE_SCALE=<float> for A/B capture runs.
 float draw_distance_scale();
 
+// Register the whole course's geometry every frame instead of the game's 3-zone
+// visibility window (the residual large-scale pop-in; see src/aero_full_track.cpp).
+// graphics.json key "full_track" (default true), overridable by AERO_FULL_TRACK=1/0.
+bool full_track();
+
 } // namespace config
 } // namespace aero
 

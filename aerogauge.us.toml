@@ -28,6 +28,8 @@ stubs = [
     "func_8007BD70",
 ]
 ignored = [
+    "aeroRegisterTrackSections",
+    "aeroRegisterZoneObjects",
     "guPerspectiveF",
 ]
 
