@@ -3,13 +3,9 @@
 
 // Widescreen HUD rect-pin scaling math.
 //
-// Inherited from the Lamborghini port where these helpers were tuned for that game's
-// race HUD's gEXSetRectAlign rect-pin travel and corresponding game-space geometry
-// shifts. AeroGauge's HUD is structurally different (no rev needle; different 2D
-// overlay layout), so the GAME-SPACE shift constants and the issue-67 narrative do
-// NOT carry over verbatim. TODO(aerogauge): re-measure from this ROM's HUD once it
-// renders; the math helpers themselves (which depend only on `aspect` / RT64's
-// `extAspectPercentage`) are generic enough to keep in the meantime.
+// The aspect-scale helpers are inherited from the Lamborghini port (they depend only on
+// `aspect` / RT64's `extAspectPercentage`, nothing game-specific); the classification
+// thresholds below were measured from THIS ROM's steady mode-4 race capture.
 //
 // `aspect` is the EFFECTIVE rect-pin aspect (see below), always >= 4/3 by
 // construction; the clamp is only a guard.
@@ -73,11 +69,28 @@ enum aero_ws_pin {
 // must stay below 117: the DAMAGE bar's fill rect anchors at its left edge x=117 and
 // grows rightward with damage (117..117 when empty), so any bound >= 117 would pin the
 // low-damage fill LEFT while the rest of the bar stays centred.
+// Each bound is the measured value plus 2-3 px of slack, because HUD rects jitter by a
+// pixel or two frame-to-frame (interpolation/rounding) and a rect drifting across a hard
+// measured bound would flip anchors mid-race.
 #define AERO_WS_LEFT_MAX_QP    (100 * 4)
 #define AERO_WS_RIGHT_MIN_QP   (168 * 4)
 
+// The minimap band (texture rect measured 20..100 x y70..172). The craft blip rides the
+// map, so its coordinates are DYNAMIC -- near the map's right edge its lrx exceeds the
+// static LEFT bound and a pure-threshold rule would snap it back to centre mid-race (the
+// same moving-rect class as the DAMAGE fill). Any rect contained in this box is part of
+// the minimap and pins LEFT.
+#define AERO_WS_MAP_MIN_ULX_QP (16 * 4)
+#define AERO_WS_MAP_MAX_LRX_QP (108 * 4)
+#define AERO_WS_MAP_MIN_ULY_QP (66 * 4)
+#define AERO_WS_MAP_MAX_ULY_QP (176 * 4)
+
 static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
     if (lrx_qp <= AERO_WS_LEFT_MAX_QP) {
+        return AERO_WS_PIN_LEFT;
+    }
+    if (ulx_qp >= AERO_WS_MAP_MIN_ULX_QP && lrx_qp <= AERO_WS_MAP_MAX_LRX_QP &&
+        uly_qp >= AERO_WS_MAP_MIN_ULY_QP && uly_qp <= AERO_WS_MAP_MAX_ULY_QP) {
         return AERO_WS_PIN_LEFT;
     }
     if (ulx_qp >= AERO_WS_RIGHT_MIN_QP) {
@@ -86,8 +99,10 @@ static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
     // The white "TOTAL.TIME" header (measured 107..169, y23..31) is part of the timer
     // group -- natively it sits immediately left of the big time digits (170..302,
     // y16..31) -- but it crosses the centre deadband, so pure thresholds leave it
-    // behind when its digits pin right. Match it tightly (top strip only) and keep it
-    // travelling with the group.
+    // behind when its digits pin right. Match it tightly (top strip only; same 2-3 px
+    // slack as the bounds above) and keep it travelling with the group. This is a
+    // coordinate-matched heuristic: if another top-strip rect ever appears in this box
+    // it would pin too -- tracked on issue #1.
     if (ulx_qp >= 104 * 4 && lrx_qp <= 172 * 4 && uly_qp <= 26 * 4) {
         return AERO_WS_PIN_RIGHT;
     }

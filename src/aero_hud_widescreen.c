@@ -124,12 +124,28 @@ static void bracket_close_at(uint8_t* rdram, gpr* cur) {
 // user reported.) AERO_WS_NEEDLE_DX overrides it for recalibration.
 #define AERO_WS_NEEDLE_DX 53.333f
 
+// Bridge from rt64_renderer.cpp: the effective rect-pin aspect as raw float bits (a
+// uint32_t crosses the C/C++ boundary without a shared float ABI assumption).
+extern uint32_t aero_ws_get_hud_rect_aspect_bits(void);
+
 static float aero_ws_needle_shift_scale(void) {
-    extern uint32_t aero_ws_get_hud_rect_aspect_bits(void);
     uint32_t bits = aero_ws_get_hud_rect_aspect_bits();
     float aspect;
     memcpy(&aspect, &bits, sizeof(aspect));
     return aero_ws_hud_shift_scale_for_aspect(aspect);
+}
+
+// Steady-HUD gate shared by the needle shift and the retag pass: race scene only (menus
+// compose 4:3 layouts that must not be pinned), steady phases only (the race entry
+// phases 1/2 drive full-screen wipe transitions -- fragments of a wipe must not pin to
+// an edge, and the needle must not shift while the unpinned dial is still centred).
+static int aero_ws_in_steady_race(uint8_t* rdram) {
+    uint32_t scene = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR);
+    if (scene != AERO_SCENE_RACE) {
+        return 0;
+    }
+    uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
+    return phase == AERO_PHASE_RACE_STEADY || phase == AERO_PHASE_ATTRACT;
 }
 
 static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end) {
@@ -208,19 +224,31 @@ static int aero_ws_is_geometry_op(uint32_t op) {
            op == 0x06u /* G_DL */ || op == 0xBFu /* G_TRI1 */;
 }
 
+// The retag state machine, one command per call, shared verbatim by the analysis and
+// re-emit passes so the growth computed by the first is exact for the second.
+// Returns the desired anchor after this command: AERO_WS_PIN_* on a transition point
+// (rects carry their classification; raw scissors and 3D commands force NONE so a wipe
+// or geometry never inherits a bracket), or -1 for "no state change".
+static int aero_ws_retag_step(uint32_t w0, uint32_t w1, int* ext_aligned) {
+    uint32_t op = w0 >> 24;
+    if (op == RT64_EXTENDED_OPCODE && (w0 & 0xFFFFFFu) == G_EX_SETRECTALIGN_V1) {
+        *ext_aligned = (w1 & 0xFFFu) != G_EX_ORIGIN_NONE;
+    }
+    if (op == 0xE4u || op == 0xE5u) {
+        return *ext_aligned ? AERO_WS_PIN_NONE
+                            : aero_ws_classify_rect_qp((int)((w1 >> 12) & 0xFFFu),
+                                                       (int)((w0 >> 12) & 0xFFFu),
+                                                       (int)(w1 & 0xFFFu));
+    }
+    if (op == 0xEDu || aero_ws_is_geometry_op(op)) {
+        return AERO_WS_PIN_NONE;
+    }
+    return -1;
+}
+
 static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
     if (!aero_ws_retag_enabled()) {
-        return;
-    }
-    if ((uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR) != AERO_SCENE_RACE) {
-        return;
-    }
-    // Steady-HUD phases only: the race scene's entry phases (1/2) drive full-screen
-    // wipe transitions with rects sweeping the whole 320 width -- fragments of a wipe
-    // must not pin to an edge mid-sweep.
-    uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
-    if (phase != AERO_PHASE_RACE_STEADY && phase != AERO_PHASE_ATTRACT) {
-        return;
+        return; /* caller (aero_ws_hud_frame_end) already applied the steady-race gate */
     }
     size_t n = (size_t)(end - start) / 8;
     if (n == 0 || n > AERO_RETAG_MAX_CMDS) {
@@ -245,18 +273,7 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
                 return; /* in-range branch: re-emitting would move its target */
             }
         }
-        if (op == RT64_EXTENDED_OPCODE && (w0 & 0xFFFFFFu) == G_EX_SETRECTALIGN_V1) {
-            ext_aligned = (w1 & 0xFFFu) != G_EX_ORIGIN_NONE;
-        }
-        int anchor = -1; /* -1 = no state change */
-        if (op == 0xE4u || op == 0xE5u) {
-            anchor = ext_aligned ? AERO_WS_PIN_NONE
-                                 : aero_ws_classify_rect_qp((int)((w1 >> 12) & 0xFFFu),
-                                                            (int)((w0 >> 12) & 0xFFFu),
-                                                            (int)(w1 & 0xFFFu));
-        } else if (op == 0xEDu || aero_ws_is_geometry_op(op)) {
-            anchor = AERO_WS_PIN_NONE;
-        }
+        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned);
         if (anchor >= 0 && anchor != open_anchor) {
             if (anchor != AERO_WS_PIN_NONE) {
                 opens++;
@@ -272,27 +289,14 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
         return;
     }
 
-    // Re-emit with brackets. Same state machine as the analysis pass, so the growth
-    // computed above is exact.
+    // Re-emit with brackets, driven by the same aero_ws_retag_step state machine.
     gpr cur = start;
     open_anchor = AERO_WS_PIN_NONE;
     ext_aligned = 0;
     for (size_t i = 0; i < n; i++) {
         uint32_t w0 = s_retag_w0[i];
         uint32_t w1 = s_retag_w1[i];
-        uint32_t op = w0 >> 24;
-        if (op == RT64_EXTENDED_OPCODE && (w0 & 0xFFFFFFu) == G_EX_SETRECTALIGN_V1) {
-            ext_aligned = (w1 & 0xFFFu) != G_EX_ORIGIN_NONE;
-        }
-        int anchor = -1;
-        if (op == 0xE4u || op == 0xE5u) {
-            anchor = ext_aligned ? AERO_WS_PIN_NONE
-                                 : aero_ws_classify_rect_qp((int)((w1 >> 12) & 0xFFFu),
-                                                            (int)((w0 >> 12) & 0xFFFu),
-                                                            (int)(w1 & 0xFFFu));
-        } else if (op == 0xEDu || aero_ws_is_geometry_op(op)) {
-            anchor = AERO_WS_PIN_NONE;
-        }
+        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned);
         if (anchor >= 0 && anchor != open_anchor) {
             if (open_anchor != AERO_WS_PIN_NONE) {
                 bracket_close_at(rdram, &cur);
@@ -332,6 +336,9 @@ void aero_ws_hud_frame_end(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     s_hud_scan_open = 0;
+    if (!aero_ws_in_steady_race(rdram)) {
+        return;
+    }
     gpr start = s_hud_scan_start;
     gpr end = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
     aero_ws_needle_shift(rdram, start, end);

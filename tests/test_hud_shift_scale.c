@@ -83,6 +83,12 @@ int main(void) {
     // whole minimap travels together with GLPS.
     assert(aero_ws_classify_rect_qp(QP(20), QP(100), QP(70)) == AERO_WS_PIN_LEFT);
     assert(aero_ws_classify_rect_qp(QP(80), QP(88), QP(100)) == AERO_WS_PIN_LEFT);
+    // the blip's coordinates are DYNAMIC (it tracks the craft): at the map's right edge
+    // its lrx exceeds the static LEFT bound, but the containment box must keep it LEFT
+    // (a threshold-only rule would snap it back to centre mid-race).
+    assert(aero_ws_classify_rect_qp(QP(96), QP(104), QP(120)) == AERO_WS_PIN_LEFT);
+    // ...while a rect of the same shape outside the minimap band stays centred.
+    assert(aero_ws_classify_rect_qp(QP(96), QP(104), QP(200)) == AERO_WS_PIN_NONE);
 #undef QP
 
     printf("all HUD shift-scale assertions passed\n");

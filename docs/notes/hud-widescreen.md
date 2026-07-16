@@ -130,15 +130,19 @@ texrects, each rect classified **by its own coordinates** in the original 320-wi
   live modelview matrix moved the sky backdrop, the craft and the whole 3D scene but
   never the white track outline — it is baked into the TEXTURE of the 20..100 x y70..172
   texrect (and sits exactly inside it), so the map + its craft-blip rect pin LEFT like
-  any other rect. The 100 bound stays below the DAMAGE bar's left edge (117) so its
-  left-anchored fill rect (117..117 when empty, growing rightward) never pins at any
-  damage level.
+  any other rect. The blip's coordinates are DYNAMIC (it tracks the craft), so besides
+  the threshold there is a containment box (16..108 x y66..176): any rect inside the
+  minimap band pins LEFT even when its lrx wanders past 100 at the map's right edge.
+  The 100 bound itself stays below the DAMAGE bar's left edge (117) so its left-anchored
+  fill rect (117..117 when empty, growing rightward) never pins at any damage level.
 - everything else stays: DAMAGE 117..229, the 71..247 bottom panel, countdown numerals.
 
 Safety posture (each verified against the pre capture): race scene + steady-phase gate
 (`0x8013FF80 == 5` and phase `0x8013FF88` in {3 = steady race, 7 = steady attract};
 menus compose 4:3 layouts and the race entry phases 1/2 sweep full-screen wipe rects —
-neither may pin), whole-frame skip if any in-range `G_DL` target, force-close on the
+neither may pin; the gate covers the needle shift too, so the needle never moves while
+the unpinned dial is still centred), whole-frame skip if any in-range `G_DL` target,
+force-close on the
 game's raw mid-HUD `G_SETSCISSOR` and on 3D commands, bounded growth (~10 commands per
 bracket, ~7 brackets/frame) against a measured >=4KB of free space after the frame DL
 end, `AERO_WS_RETAG=0` kill-switch for pre/post captures.
