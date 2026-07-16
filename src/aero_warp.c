@@ -36,6 +36,11 @@
 
 #include "recomp.h"
 
+// Recompiled race-BGM loader (see the preload comment at the launch stores): reads
+// RP_GROUP/RP_TRACK, resolves the music id (0x800974F0 table) and DMAs the track's
+// sequence blob to 0x801B5A30. Self-guarded (music id 0 = no-op).
+void func_80036C54(uint8_t* rdram, recomp_context* ctx);
+
 // Scene manager (all u32).
 #define SCENE_CUR   0x8013FF80u
 #define SCENE_REQ   0x8013FF84u
@@ -54,6 +59,12 @@
 
 // Race-parameter block (base 0x8013FF90; initializer func_80015EC0).
 #define RP_MODE    0x8013FF90u  // u8: 4 = mode-0 menu race, 7 = attract demo
+#define RP_GROUP   0x8013FF94u  // u8: course group; menu confirm (0x80052078, func_80051F2C)
+                                //     copies the menu group global 0x8008F248 here. The race
+                                //     BGM loader func_80036C54 indexes its music-id table
+                                //     0x800974F0 with group*6+track; group 0 = every entry 0
+                                //     = NO MUSIC. Real launches use 1 (tracks 0-3), 2 (4-5).
+#define MENU_GROUP 0x8008F248u  // s8: the menu-side source of RP_GROUP (kept in sync)
 #define RP_CRAFT1  0x8013FF95u  // u8: P1 craft 0-9 (craft-select writer 0x80045EF0)
 #define RP_DUPCOL  0x8013FF97u  // u8: duplicate-craft colour flag (0 in 1P)
 #define RP_TRACK   0x8013FF9Bu  // u8: track 0-5 (track-select cursor)
@@ -190,6 +201,29 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
     // craft/track select -> RACE confirm.
     MEM_W(0, (gpr)(int32_t)GAME_MODE)  = 0;
     MEM_B(0, (gpr)(int32_t)RP_MODE)    = 4;
+    // Course group (race BGM): the menu's confirm handler copies MENU_GROUP into
+    // RP_GROUP; the ROM's own launches carry 1 for tracks 0-3 and 2 for tracks 4-5
+    // (the music-id table 0x800974F0 has exactly those two rows populated). Group 0
+    // indexes the all-zero row = the race loads with NO music (issue #7).
+    {
+        int8_t group = (int8_t)((track < 4) ? 1 : 2);
+        MEM_B(0, (gpr)(int32_t)MENU_GROUP) = group;
+        MEM_B(0, (gpr)(int32_t)RP_GROUP)   = group;
+    }
+    // Race-BGM preload: on console the per-frame sound director (func_8001E8D8)
+    // runs the music-load chain only in the MENU scene (jump-table case 4 ->
+    // func_8001F0D8 -> ... -> func_80036C54). The warp skips the menu scene, so
+    // run the ROM's own loader once here. It is self-guarded: it reads
+    // RP_GROUP/RP_TRACK, looks up the music id (0 -> no-op) and DMAs the track's
+    // sequence blob to 0x801B5A30 exactly as a real menu launch would.
+    MEM_B(0, (gpr)(int32_t)RP_TRACK)   = (int8_t)track; /* set before the loader reads it */
+    func_80036C54(rdram, ctx);
+    // NOTE (issue #7, still open): loading is necessary but not sufficient — the
+    // START is issued by the music driver func_80032BB0, which the sound director
+    // func_8001E8D8 only reaches through the MENU-scene case (the console's race
+    // load screen is still scene 4). A warp launch never gives it those frames, so
+    // the loaded track stays silent until the warp routes through the menu scene
+    // (or the driver is invoked with the race service context).
     MEM_B(0, (gpr)(int32_t)RP_MENU9C)  = 6;
     if (craft != 0xFF) {
         MEM_B(0, (gpr)(int32_t)RP_CRAFT1)  = (int8_t)craft;
