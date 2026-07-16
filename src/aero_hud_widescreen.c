@@ -137,7 +137,7 @@ static float aero_ws_needle_shift_scale(void) {
 
 // Steady-HUD gate shared by the needle shift and the retag pass; the policy (and why the
 // countdown step participates) lives with aero_ws_hud_gate in aero_hud_widescreen.h.
-static int aero_ws_in_steady_race(uint8_t* rdram) {
+static int aero_ws_pinnable_hud(uint8_t* rdram) {
     return aero_ws_hud_gate((uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR),
                             (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE),
                             (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_RACE_CDOWN_STEP));
@@ -382,7 +382,7 @@ void aero_ws_hud_frame_end(uint8_t* rdram, recomp_context* ctx) {
     }
     s_hud_scan_open = 0;
     aero_ws_trace(rdram, s_hud_scan_start, MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER));
-    if (!aero_ws_in_steady_race(rdram)) {
+    if (!aero_ws_pinnable_hud(rdram)) {
         return;
     }
     gpr start = s_hud_scan_start;
