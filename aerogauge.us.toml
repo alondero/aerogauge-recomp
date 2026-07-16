@@ -43,3 +43,26 @@ ignored = [
 func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
+
+# Widescreen 1P-HUD pinning (issue #1, src/aero_hud_widescreen.c). AeroGauge's HUD has no
+# static per-element draw calls to bracket: the 2D dispatcher func_80022408 walks object
+# lists and calls per-object handlers indirectly, and those handlers mix LEFT and RIGHT
+# elements inside a single call (func_80018EA0 draws TEMP right + GLPS left), so no call
+# boundary separates them. The whole dispatcher is bracketed instead: the entry hook
+# latches the DL write cursor (holder 0x8016C508); the epilogue hook (before_vram
+# 0x80022680, after every child handler has appended, before the register restores)
+# post-processes the emitted range --
+#   1. re-emits it with RT64 rect-align + wide-scissor brackets around runs of texrects,
+#      each rect classified LEFT/RIGHT/centred by its own coordinates (race scene only);
+#   2. shifts the speedo needle's G_MTX translate.x (matrix-rotated geometry that a
+#      rect-align cannot carry), pinpointed by its G_DL -> static mesh 0x800995C0.
+# Scaled/tagged so the whole pass is a no-op at 4:3 / hr_option Original.
+[[patches.hook]]
+func = "func_80022408"
+before_vram = 0x80022408
+text = "extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_hud_scan_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80022408"
+before_vram = 0x80022680
+text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"

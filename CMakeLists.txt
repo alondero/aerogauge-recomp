@@ -149,6 +149,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                     # routed via `[patches] ignored` in aerogauge.us.toml
         src/aero_warp.c        # developer warp menu (#3): F1-F6 / AERO_WARP race warp;
                                # tick hooked at func_80015FD0 via [[patches.hook]]
+        src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning (#1): whole-frame texrect
+                                   # retag pass + needle matrix shift, hooked around the
+                                   # 2D dispatcher func_80022408 via [[patches.hook]]
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
@@ -173,6 +176,16 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         librecomp
         ultramodern
     )
+    # Host unit tests (pure math/classification, no ROM or runtime needed). Run with
+    # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
+    enable_testing()
+    add_executable(test_hud_shift_scale tests/test_hud_shift_scale.c)
+    target_include_directories(test_hud_shift_scale PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    if(NOT WIN32)
+        target_link_libraries(test_hud_shift_scale PRIVATE m)
+    endif()
+    add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+
     if(TARGET RecompiledFuncs)
         target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncs)
     endif()

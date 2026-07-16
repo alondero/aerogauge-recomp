@@ -42,6 +42,8 @@ dma_validation/
 *.stackdump
 # gdb batch backtrace/logging dumps from native port debugging
 gdb_bt*.txt
+# root-level display-list capture dumps (e.g. hud-pre.txt / hud-post.txt from AERO_RACE_DL_DUMP)
+/hud-*.txt
 # framebuffer / display-list render captures from the port
 *.bmp
 # Python bytecode cache (scripts/gen_syms_toml.py etc.)
@@ -50,6 +52,8 @@ __pycache__/
 # --- Local AI Artefacts ----------------------------------------------------
 .claude/settings.local.json
 .claude/worktrees/
+# local live-debug harnesses (HUD attribution etc.); not product source
+.claude/*.gdb
 CLAUDE.local.md
 nextsessionprompt.md
 .worktreeinclude
