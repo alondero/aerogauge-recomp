@@ -204,6 +204,27 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     if (pcm == nullptr || drop_oversize(sample_count)) {
         return;
     }
+    // AERO_AUDIO_RMS=1: print a per-second RMS of the submitted PCM. Headless smoke
+    // runs use this to tell "music/SFX playing" from "silence" without capturing a
+    // WAV (e.g. the music-engine regression gate: boot shows the ~3 s jingle burst,
+    // then sustained non-zero RMS once the sequenced title music starts).
+    static int rms_probe = -1;
+    if (rms_probe < 0) rms_probe = (std::getenv("AERO_AUDIO_RMS") != nullptr) ? 1 : 0;
+    if (rms_probe == 1) {
+        static uint64_t acc = 0, n = 0, block = 0;
+        for (size_t i = 0; i < sample_count; i++) {
+            int64_t s = pcm[i];
+            acc += (uint64_t)(s * s);
+            n++;
+        }
+        if (n >= 44100) {  // ~1 s of 22050 Hz stereo
+            double rms = n ? __builtin_sqrt((double)acc / (double)n) : 0.0;
+            std::fprintf(stderr, "[rms] t=%llus rms=%.0f\n", (unsigned long long)block, rms);
+            block++;
+            acc = 0;
+            n = 0;
+        }
+    }
     submit(pcm, sample_count);
 }
 
