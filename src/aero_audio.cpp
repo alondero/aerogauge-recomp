@@ -26,6 +26,7 @@
 #include "recomp.h" // recomp_context + MEM_W for the func_80079720 native override below
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -65,6 +66,8 @@ std::mutex g_state_mtx;
 // (measured: byte_count 0xFFFF5000 = -0xB000 as a signed AI length) which must be dropped
 // BEFORE any write touches the payload (tests/test_audio_oversize_guard.cpp).
 constexpr size_t kMaxAiSamples = (256u * 1024u) / sizeof(int16_t);
+
+void ai_fifo_queue_locked(size_t stereo_frames);  // virtual AI FIFO, defined below
 
 bool drop_oversize(size_t sample_count) {
     if (sample_count <= kMaxAiSamples) {
@@ -204,6 +207,14 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     if (pcm == nullptr || drop_oversize(sample_count)) {
         return;
     }
+    // Feed the virtual AI FIFO for every accepted buffer, BEFORE the device check in
+    // submit(): headless runs (no SDL device) must model console drain too, or the game's
+    // backpressure sees a permanently-empty AI and requests crash-inducing oversized frames
+    // (see get_frames_remaining).
+    {
+        std::lock_guard<std::mutex> lock(g_state_mtx);
+        ai_fifo_queue_locked(sample_count / 2);
+    }
     // AERO_AUDIO_RMS=1: print a per-second RMS of the submitted PCM. Headless smoke
     // runs use this to tell "music/SFX playing" from "silence" without capturing a
     // WAV (e.g. the music-engine regression gate: boot shows the ~3 s jingle burst,
@@ -228,41 +239,46 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     submit(pcm, sample_count);
 }
 
+// Virtual AI FIFO (issue #7 follow-up, aspMain unhandled-jump crash, 2026-07-17). The N64
+// AI drains queued PCM at exactly the game's AI rate, so osAiGetLength declines smoothly and
+// only reaches 0 when the game genuinely stops feeding audio. The previous implementation
+// reported the SDL device queue, which (a) is pulled in whole callback-sized bursts (~10 ms
+// sawtooth, momentary zeros at pull boundaries) and (b) is absent entirely in AERO_HEADLESS
+// runs, where the old ideal-drain model reported a PERMANENT zero backlog. A zero report
+// makes the game's mixer request a maximum-length frame (target - 0 + 0x60 samples => 3+
+// subframes per task), and oversized frames expose a latent bug in the game's own command
+// builder: a voice whose pull produces zero samples emits its envmixer with a stale SETBUFF
+// count (0x240 from the preceding interleave/save block), whose wet-buffer writes wrap past
+// DMEM 0x1000 and shred the ACMD dispatch table -> "Unhandled jump target" crash (RSP DMEM
+// wraps identically on real hardware; console timing just never produces the degenerate
+// frame). Modeling the console drain keeps frame requests console-sized in windowed AND
+// headless runs. Guarded by g_state_mtx.
+std::chrono::steady_clock::time_point g_ai_fifo_end{};
+
+void ai_fifo_queue_locked(size_t stereo_frames) {
+    if (g_desired_rate == 0) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (g_ai_fifo_end < now) {
+        g_ai_fifo_end = now;
+    }
+    g_ai_fifo_end += std::chrono::nanoseconds(
+        (uint64_t)stereo_frames * 1'000'000'000ull / g_desired_rate);
+}
+
 size_t get_frames_remaining() {
-    if (!g_device_opened.load() || g_dev == 0) {
-        return 0;
-    }
-    const Uint32 bytes = SDL_GetQueuedAudioSize(g_dev);
-    // Bytes -> frames. Guard against /0.
-    const uint32_t bytes_per_frame =
-        (uint32_t)g_obtained.channels * (uint32_t)(SDL_AUDIO_BITSIZE(g_obtained.format) / 8);
-    if (bytes_per_frame == 0) {
-        return 0;
-    }
-    uint64_t device_frames = bytes / bytes_per_frame;
-
-    // Cushion (W137, #53): the game keeps the AI buffer only marginally ahead (correct on real
-    // hardware, where the AI FIFO adds its own latency), but SDL pulls a whole device callback
-    // (g_obtained.samples frames, ~10 ms at 48 kHz/480) at once — so a queue that hovers near
-    // one callback's worth audibly underruns at pull boundaries (measured: 250+ queue-empty
-    // events in a 1400-VI run = Adam's "broken up" SFX). Under-report by 3 callbacks so the
-    // game's own backpressure maintains ~30 ms of real headroom. Same knob as ultramodern's
-    // buffer_offset_frames ("if there's ever any audio popping, check here first"), sized to
-    // the actual device pull granularity instead of a fixed VI fraction.
-    const uint64_t cushion = 3ull * (g_obtained.samples ? g_obtained.samples : 512);
-    device_frames = (device_frames > cushion) ? (device_frames - cushion) : 0;
-
-    // Rate-convert to GAME frames (W137, #53). The queue holds RESAMPLED audio at the device
-    // rate (e.g. 48000), but the caller — ultramodern::get_remaining_audio_bytes, and through
-    // it the game's mixer backpressure — reasons in the game's AI rate (e.g. 22050). Reporting
-    // device frames overstates the buffered audio by freq_device/freq_game (~2.18x), so the
-    // game synthesized only ~46% of real time: constant underruns, music stretched ~2.2x slow.
     std::lock_guard<std::mutex> lock(g_state_mtx);
-    if (g_desired_rate != 0 && g_obtained.freq > 0 &&
-        (uint32_t)g_obtained.freq != g_desired_rate) {
-        device_frames = device_frames * g_desired_rate / (uint32_t)g_obtained.freq;
+    if (g_desired_rate == 0) {
+        return 0;
     }
-    return (size_t)device_frames;
+    const auto now = std::chrono::steady_clock::now();
+    if (g_ai_fifo_end <= now) {
+        return 0;
+    }
+    const uint64_t ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        g_ai_fifo_end - now).count();
+    return (size_t)(ns * g_desired_rate / 1'000'000'000ull);
 }
 
 void set_frequency(uint32_t freq) {
@@ -291,11 +307,11 @@ void init(uint32_t desired_sample_rate) {
 
     // HEADLESS harness runs get NO audio device (W135, #53). Rationale: in a headless/WSL
     // environment the SDL queue never drains (Pulse has no real sink; SDL's dummy driver buffers
-    // forever), so SDL_GetQueuedAudioSize grows unbounded, get_frames_remaining reports a full
-    // queue, and the GAME'S OWN backpressure (frame count = target - remaining in the mixer body
-    // func_80067CF0) correctly stops synthesising -- silently masking whether the audio pipeline
-    // works. No device = get_frames_remaining()==0 = an ideal AI that always drains, so headless
-    // logs report real synthesis state (see the NON-SILENT tripwire in submit()).
+    // forever), so a queue-based get_frames_remaining would report a full queue and the game's
+    // backpressure would stop synthesising -- silently masking whether the audio pipeline works.
+    // Backpressure now comes from the virtual AI FIFO (see get_frames_remaining), which drains
+    // at the console rate with or without a device, so headless runs synthesise real PCM at the
+    // console cadence (NON-SILENT tripwire in submit() still reports it).
     {
         const char* headless = std::getenv("AERO_HEADLESS");
         if (headless && headless[0] && headless[0] != '0') {
