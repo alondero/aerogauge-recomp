@@ -154,6 +154,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning (#1): whole-frame texrect
                                    # retag pass + needle matrix shift, hooked around the
                                    # 2D dispatcher func_80022408 via [[patches.hook]]
+        src/aero_savestate.c   # developer save-state (#17): F7/F8 / AERO_STATE_LOAD RDRAM
+                               # snapshot; tick hooked one instruction into func_80015C8C
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
