@@ -59,6 +59,23 @@ Authoritative per-function evidence for libultra routing lives as comments in
 | +0x0C u8 | =6 menu-entry byte |
 | +0x1A u8 | block-inited flag |
 
+### Race status / clock / exit detection — derived 2026-07-17 (save-state #17)
+
+Race-global block base `0x8013FC88`:
+
+| Address | Field |
+|---|---|
+| `0x801402B4` | race STATUS word: 0 running, 1 finished (`func_8001E06C` finish-line path), 2 pause-menu quit (`func_8001745C`, pause state `0x8016C2A8` case 2), 3 finish variant, 4 time-over (`func_8001D660`) |
+| `0x801402B8` | P2 status twin |
+| `0x801402C4` | time-over DEADLINE for the race clock (finish sets clock+10,000,000) |
+| `0x8014000C` | race CLOCK, accumulated per frame by `func_8001D660` from the timekeeper delta |
+| `0x8016C4E0/E4` | u64 last frame's elapsed osGetTime delta (`func_8001D7F0`) |
+| `0x8016C4F0/F4` | u64 last frame's **osGetTime() sample** — a native-clock anchor stored in guest RAM; a restored snapshot must REBASE it to the loading process's clock epoch (see `src/aero_savestate.c` k_ostime_anchors) or the first post-restore delta is garbage → instant time-over |
+
+Exit detector `func_800169E0` (called per frame from the race chain): maps STATUS to the
+requested-phase word `0x8013FF8C` — 1 → phase 5, any other nonzero → phase 6 (the ~exit
+walk observed as phase 6 → scene 6 results).
+
 ## Music / audio — SOLVED 2026-07-16 (PR #11); all verified live in the port
 
 Two engines; confusing them wasted sessions:

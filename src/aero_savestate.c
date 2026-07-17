@@ -61,22 +61,41 @@
 // context and the scheduler would fault on it -- another reason to snapshot settled scenes.
 extern void ultramodern_relink_thread_contexts(uint8_t* rdram);
 
+// ultramodern's native osGetTime (lib/N64ModernRuntime/ultramodern/src/timer.cpp): the
+// 64-bit monotonic clock the recompiled game samples. Its epoch is per-process, which is
+// why RAM-resident osGetTime anchors need rebasing on load (see os_time in the header).
+extern uint64_t osGetTime(void);
+
 #define SCENE_CUR   0x8013FF80u       // u32 current scene (see src/aero_warp.c; race = 5)
 #define SCENE_REQ   0x8013FF84u       // u32 requested scene (cur != req => transition in flight)
 #define SCENE_PHASE 0x8013FF88u       // u32 scene-local phase; race walks 1->2 (loading) -> 3 (running)
 #define RDRAM_SNAP_SIZE 0x800000u     // low 8 MiB = guest-addressable N64 RAM
 
+// osGetTime anchors stored in guest RAM (64-bit, hi word first). The race timekeeper
+// func_8001D7F0 samples osGetTime() every frame, accumulates the race clock from the
+// per-frame delta `now - *anchor`, and rewrites the anchor with `now`; the clock feeds the
+// time-over deadline check (0x801402C4, func_8001D660). osGetTime's epoch is process-local,
+// so a restored snapshot's anchor makes the first post-restore delta garbage -- measured:
+// one giant clock jump, and every restored race requested exit phase 6 (time-over) within
+// 2 frames. do_load rebases each anchor by (load-process now - save-process now), so the
+// first post-restore delta is an ordinary frame time and the saved race clock carries on
+// exactly. Add any newly-discovered RAM-resident osGetTime anchor to this list.
+static const uint32_t k_ostime_anchors[] = {
+    0x8016C4F0u,                      // race timekeeper's last-frame sample (func_8001D7F0, pair 0x8016C4F0/F4)
+};
+
 // On-disk header (32 bytes). Written/read host-endian: a save-state is a local debug
 // artifact, not a portable format. Magic+version+size are validated before any RAM is
 // touched, so a truncated or foreign file is rejected rather than corrupting the game.
 #define STATE_MAGIC "AEROSTAT"
-#define STATE_VERSION 1u
+#define STATE_VERSION 2u
 typedef struct {
     char     magic[8];      // "AEROSTAT"
     uint32_t version;       // STATE_VERSION
     uint32_t rdram_size;    // RDRAM_SNAP_SIZE
     uint32_t scene;         // captured scene word (informational)
-    uint32_t reserved[3];
+    uint32_t reserved;
+    uint64_t os_time;       // save-process osGetTime() at snapshot; anchors rebase on load
 } state_header_t;
 
 // Default file for the F7/F8 slot; AERO_STATE_FILE overrides. AERO_STATE_LOAD names a
@@ -112,6 +131,7 @@ static void do_save(uint8_t* rdram, const char* path) {
     h.version    = STATE_VERSION;
     h.rdram_size = RDRAM_SNAP_SIZE;
     h.scene      = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
+    h.os_time    = osGetTime();
     int ok = (fwrite(&h, 1, sizeof(h), f) == sizeof(h)) &&
              (fwrite(rdram, 1, RDRAM_SNAP_SIZE, f) == RDRAM_SNAP_SIZE);
     // Flush before rename so the rename publishes a fully-written file.
@@ -179,6 +199,19 @@ static void do_load(uint8_t* rdram, const char* path) {
     // Repair the native OSThread.context pointers the memcpy just clobbered with the save
     // process's addresses; without this the scheduler dereferences garbage on the next tick.
     ultramodern_relink_thread_contexts(rdram);
+    // Rebase the RAM-resident osGetTime anchors from the save process's clock epoch to
+    // ours (see k_ostime_anchors); without this the race clock jumps to time-over.
+    {
+        uint64_t delta = osGetTime() - h.os_time;
+        for (size_t i = 0; i < sizeof(k_ostime_anchors) / sizeof(k_ostime_anchors[0]); i++) {
+            uint32_t hi_addr = k_ostime_anchors[i];
+            uint64_t t = ((uint64_t)(uint32_t)MEM_W(0, (gpr)(int32_t)hi_addr) << 32) |
+                          (uint64_t)(uint32_t)MEM_W(4, (gpr)(int32_t)hi_addr);
+            t += delta;
+            MEM_W(0, (gpr)(int32_t)hi_addr) = (int32_t)(uint32_t)(t >> 32);
+            MEM_W(4, (gpr)(int32_t)hi_addr) = (int32_t)(uint32_t)t;
+        }
+    }
     fprintf(stderr, "[savestate] loaded %u bytes from %s (scene=%u)\n",
             RDRAM_SNAP_SIZE, path, h.scene);
 }
@@ -204,7 +237,7 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
     // with AERO_WARP to capture/return to a race deterministically).
     static int env_checked;
     static const char* env_load;
-    static int load_min_scene;      // auto-load once scene >= this (AERO_STATE_LOAD_SCENE)
+    static int load_at_scene;       // auto-load once settled AT this scene (AERO_STATE_LOAD_SCENE)
     static int load_delay;          // ticks to wait once eligible (AERO_STATE_LOAD_DELAY)
     static int load_ticks;          // ticks counted while eligible so far
     static const char* env_save;
@@ -215,8 +248,13 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
         env_checked = 1;
         const char* l = getenv("AERO_STATE_LOAD");
         env_load = (l != NULL && l[0] != '\0') ? l : NULL;
+        // Exact match, NOT a ">= floor": boot-cascade scene ids are not ordered by
+        // progress (0 -> 9 -> 0 -> 2 attract -> 5 DEMO RACE -> 2 -> 3 title), so a floor
+        // fires at the attract demo race -- and a snapshot restored over the demo self-
+        // exits within 2 frames (measured: the pause/quit status 0x801402B4 path requests
+        // phase 6 -> scene 6). Default 3 = the title screen, the first calm settled scene.
         const char* lm = getenv("AERO_STATE_LOAD_SCENE");
-        load_min_scene = (lm != NULL) ? atoi(lm) : 2;   // 2 = past the boot logos by default
+        load_at_scene = (lm != NULL) ? atoi(lm) : 3;
         const char* ld = getenv("AERO_STATE_LOAD_DELAY");
         load_delay = (ld != NULL) ? atoi(ld) : 0;
         const char* s = getenv("AERO_STATE_SAVE");
@@ -248,7 +286,7 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
     int settled = ((uint32_t)scene == req_scene) && stable_ticks >= 30 &&
                   (scene != 5 || phase == 3);
 
-    if (env_load != NULL && scene >= load_min_scene && settled) {
+    if (env_load != NULL && scene == load_at_scene && settled) {
         if (load_ticks++ >= load_delay) {
             const char* p = env_load;
             env_load = NULL;      // fire once
