@@ -1,0 +1,34 @@
+diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
+index bdde8e2..8351204 100644
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -604,9 +604,27 @@ void ultramodern::submit_rsp_task(RDRAM_ARG PTR(OSTask) task_) {
+     if (task->t.type == M_GFXTASK) {
+         events_context.action_queue.enqueue(SpTaskAction{ *task });
+     }
+-    // Set all other tasks as the RSP task
++    // Run all other tasks (audio, jpeg) synchronously on the submitting thread.
++    // Local patch 0013: on console the RSP latches the task at osSpTaskStart; the game is
++    // then free to rewrite its single reused OSTask struct for the next frame. Queueing a
++    // POINTER to the task thread meant run_task read the struct at dequeue time, and torn
++    // reads were observed live (the ucode ran with data_size 0x1230 while the struct
++    // already said 0x120 -> wrong-length audio frames). Running the task on the submitting
++    // thread latches the task exactly at submission, console-style, and removes the
++    // submission-to-execution latency window entirely; the task thread remains for the
++    // shutdown sentinel only.
+     else {
+-        events_context.sp_task_queue.enqueue(task);
++        // Fail-soft (deliberate divergence from console, where a wedged RSP task hangs the
++        // machine): a failed task drops one frame of its output instead of killing the
++        // process. AeroGauge's audio library has a latent edge case (envmixer emitted with
++        // a stale SETBUFF count after a zero-sample voice pull) that on real hardware would
++        // wrap the envmixer's wet-buffer writes past DMEM 0x1000 into the ACMD dispatch
++        // table; if degenerate frame timing ever re-triggers it, log loudly and keep going.
++        if (!ultramodern::rsp::run_task(PASS_RDRAM task)) {
++            fprintf(stderr, "RSP task type %" PRIu32 " failed; dropping this task's output (see log above)\n",
++                    task->t.type);
++        }
++        sp_complete();
+     }
+ }
+ 

@@ -10,6 +10,7 @@
 #define HLSL_CPU
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -309,7 +310,26 @@ public:
         app->updateEnhancementConfig();
     }
 
+    // Frame-pacing probe (PERMANENT harness instrumentation, same class as pace_probe):
+    // AERO_FRAME_LOG=<path> logs gfx-thread anomalies -- gaps between update_screen calls
+    // (the present cadence) and slow send_dl/update_screen bodies -- with ms timestamps.
+    // This is what root-caused the 1 Hz console-write hitch (the gated heartbeat above):
+    // spikes tagged hb=1 land exactly on heartbeat frames. Writes only on anomaly (few
+    // lines/sec worst case, to a buffered FILE*, never the console), so the probe itself
+    // cannot produce a periodic stall. Default off = one null-pointer check per frame.
+    // See the companion vi_pace_probe() in src/main.cpp for the VI-thread probe; they
+    // share aero::config::open_frame_log() so the env var behaviour stays in lock-step.
+    FILE* frame_log() {
+        static FILE* f = aero::config::open_frame_log("");
+        return f;
+    }
+    double log_now_ms() {
+        static const auto t0 = std::chrono::steady_clock::now();
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    }
+
     void send_dl(const OSTask* task) override {
+        const auto fp_start = std::chrono::steady_clock::now();
         static int count = 0;
         if (++count == 1) {
             std::fprintf(stderr,
@@ -328,7 +348,12 @@ public:
         // comparable against headless logs. VI_ORIGIN/STATUS prove the present path is
         // scanning out the game's REAL framebuffer (via the promote_vi_context bridge),
         // not the pre-game dummy at 0x80700000 / a blanked STATUS of 0.
-        if (count % 30 == 0) {
+        //
+        // GATED (AERO_HARNESS_LOG=1, default off): this fires exactly once per second
+        // (30 send_dls at this title's 30 fps) ON THE GFX THREAD, and when stderr is a
+        // live console the synchronous console write measured 10-77 ms -- a visible
+        // hitch every second of play. Diagnostic runs opt back in via the env var.
+        if (aero::config::harness_log() && count % 30 == 0) {
             const ultramodern::renderer::ViRegs* vr = ultramodern::renderer::get_vi_regs();
             // Interpolation health (#1 display-rate rendering): viOriginalRate is the game's
             // detected update rate (30 for this title), targetRate the present pace RT64 aims
@@ -369,10 +394,42 @@ public:
                          vi_rate, target_rate, swap_hz, interp_count, interp_presented,
                          res_scale_x, res_scale_y);
         }
+        // Flag slow send_dl bodies; hb=1 marks heartbeat frames (count%30==0) so a
+        // correlation between hitches and the harness heartbeat is directly visible.
+        if (FILE* f = frame_log()) {
+            double dur = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - fp_start).count();
+            if (dur > 10.0) {
+                std::fprintf(f, "[gfx-pace] t=%.1f send_dl dur=%.2fms count=%d hb=%d\n",
+                             log_now_ms(), dur, count, (count % 30 == 0) ? 1 : 0);
+                std::fflush(f);
+            }
+        }
     }
 
     void update_screen() override {
+        // Present cadence: update_screen is called once per VI tick (60 Hz);
+        // a gap >25 ms means the display visibly stalled -- log gap and body duration.
+        FILE* f = frame_log();
+        if (f == nullptr) {
+            app->updateScreen();
+            return;
+        }
+        static std::chrono::steady_clock::time_point last{};
+        const auto start = std::chrono::steady_clock::now();
+        if (last.time_since_epoch().count() != 0) {
+            double gap = std::chrono::duration<double, std::milli>(start - last).count();
+            if (gap > 25.0) {
+                std::fprintf(f, "[gfx-pace] t=%.1f GAP between update_screen calls: %.2fms\n", log_now_ms(), gap);
+                std::fflush(f);
+            }
+        }
+        last = start;
         app->updateScreen();
+        double dur = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        if (dur > 10.0) {
+            std::fprintf(f, "[gfx-pace] t=%.1f update_screen dur=%.2fms\n", log_now_ms(), dur);
+            std::fflush(f);
+        }
     }
 
     void shutdown() override {
