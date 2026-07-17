@@ -46,6 +46,16 @@ func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
 
+# Developer save-state (issue #17, src/aero_savestate.c). Same per-frame scene driver as
+# the warp (it runs every frame in every scene), one instruction past the warp hook:
+# N64Recomp rejects two hooks on the exact same vram, and 0x80015C90 is still the
+# frame-boundary entry. Snapshots/restores rdram[0..8MiB) on an F7/F8 or AERO_STATE_LOAD
+# request; native in src/aero_savestate.c.
+[[patches.hook]]
+func = "func_80015C8C"
+before_vram = 0x80015C90
+text = "extern void aero_savestate_tick(uint8_t*, recomp_context*); aero_savestate_tick(rdram, ctx);"
+
 # Widescreen 1P-HUD pinning (issue #1, src/aero_hud_widescreen.c). AeroGauge's HUD has no
 # static per-element draw calls to bracket: the 2D dispatcher func_80022408 walks object
 # lists and calls per-object handlers indirectly, and those handlers mix LEFT and RIGHT

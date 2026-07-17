@@ -50,6 +50,11 @@ extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 // AERO_WARP_AT probe), game thread consumes in aero_warp_tick.
 extern "C" void aero_warp_request(int track0, int craft);
 
+// Developer save-state (#17, src/aero_savestate.c): F7 snapshots guest RAM, F8 restores it.
+// Main thread flips the request bit; the game thread does the copy at the next frame boundary.
+extern "C" void aero_savestate_request_save(void);
+extern "C" void aero_savestate_request_load(void);
+
 // Our sibling TUs.
 void register_overlays();
 namespace headless {
@@ -541,6 +546,15 @@ static void input_sample() {
             if (down && !warp_prev[i]) aero_warp_request(i, -1);
             warp_prev[i] = down;
         }
+
+        // Developer save-state (#17): F7 saves the current guest RAM to the state slot,
+        // F8 restores it (F1-F6 are the warp keys above). Edge-detected here (main thread);
+        // the copy runs on the game thread at the next frame boundary (src/aero_savestate.c).
+        static Uint8 f7_prev = 0, f8_prev = 0;
+        Uint8 f7 = ks[SDL_SCANCODE_F7], f8 = ks[SDL_SCANCODE_F8];
+        if (f7 && !f7_prev) aero_savestate_request_save();
+        if (f8 && !f8_prev) aero_savestate_request_load();
+        f7_prev = f7; f8_prev = f8;
     }
 
     uint32_t snap = (uint16_t)b
