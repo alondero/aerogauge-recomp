@@ -187,6 +187,13 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_hud_shift_scale PRIVATE m)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+    if(WIN32)
+        # Full-game audio regression for the aspMain "Unhandled jump target" crash
+        # (2026-07-17): 60 s headless warp race with music; pre-fix this crashed on the
+        # first run. Needs the ROM + built exe; the script self-skips when missing.
+        add_test(NAME audio_task_crash COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audio_task_crash.ps1)
+    endif()
 
     # E2E regression: a default play run must not emit periodic stderr lines from hot
     # threads (the 1 Hz gfx-thread heartbeat / VI-thread fb-swap line caused a visible
