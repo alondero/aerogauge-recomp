@@ -217,12 +217,20 @@ static void do_load(uint8_t* rdram, const char* path) {
 }
 
 // SDL-thread entry points (edge-detected in main.cpp). Only flip the request bit; the copy
-// runs on the game thread at the next frame boundary.
+// runs on the game thread at the next frame boundary. Acknowledge the keypress IMMEDIATELY
+// on stderr: the settled gate in the tick can legitimately hold a request for many seconds
+// (results screen / countdown / scene transition are never "settled"), and without this
+// line a held request is indistinguishable from a dead hotkey (the "F7 did nothing" report,
+// 2026-07-17 -- the tick side was verified working; only the feedback was missing).
 void aero_savestate_request_save(void) {
     atomic_fetch_or_explicit(&g_req, REQ_SAVE, memory_order_relaxed);
+    fprintf(stderr, "[savestate] F7: save requested (slot %s); fires at the next settled frame\n",
+            slot_path());
 }
 void aero_savestate_request_load(void) {
     atomic_fetch_or_explicit(&g_req, REQ_LOAD, memory_order_relaxed);
+    fprintf(stderr, "[savestate] F8: load requested (slot %s); fires at the next settled frame\n",
+            slot_path());
 }
 
 // Per-frame tick, injected at func_80015C8C entry +1 instruction (0x80015C90), so it
@@ -307,8 +315,22 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
     // Manual F7/F8. Hold the request PENDING (don't consume it) until we are past the boot
     // logos (scene >= 2, so the game's threads exist and a load's relink can repair them)
     // AND the scene is settled (see above). A keypress during boot or a scene transition
-    // simply fires on the first settled frame.
-    if (scene < 2 || !settled) return;
+    // simply fires on the first settled frame. While the gate is closed, say so ONCE per
+    // pending request -- the wait can last many seconds (or forever on a results screen),
+    // and silence here reads as a dead hotkey.
+    if (scene < 2 || !settled) {
+        static int held_logged;
+        uint32_t pending = atomic_load_explicit(&g_req, memory_order_relaxed);
+        if (pending != 0 && !held_logged) {
+            held_logged = 1;
+            fprintf(stderr, "[savestate] request held: scene not settled "
+                            "(scene=%d req=%u phase=%u stable_ticks=%d); fires when it settles\n",
+                    scene, req_scene, phase, stable_ticks);
+        } else if (pending == 0) {
+            held_logged = 0;
+        }
+        return;
+    }
     uint32_t req = atomic_exchange_explicit(&g_req, 0, memory_order_relaxed);
     if (req == 0) return;
     if (req & REQ_LOAD) do_load(rdram, slot_path());   // load wins if both somehow set
