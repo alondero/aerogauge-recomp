@@ -75,6 +75,21 @@ float draw_distance_scale();
 // graphics.json key "full_track" (default true), overridable by AERO_FULL_TRACK=1/0.
 bool full_track();
 
+// Periodic harness diagnostics on hot threads (the 1 Hz [rt64] send_dl heartbeat on
+// the gfx thread, the ~8.5 s [probe] fb-swap line on the VI thread): AERO_HARNESS_LOG=1
+// enables. Env-only, DEFAULT OFF: a Windows console write is a synchronous cross-process
+// call, and the 1 Hz heartbeat measured 10-77 ms per write on the gfx thread when stderr
+// was a live console -- a user-visible hitch every second of play. Event-driven logs
+// (scene transitions, warp, init) are not gated; they are silent during steady play.
+bool harness_log();
+
+// Open the frame-pacing probe log (AERO_FRAME_LOG=<path>) with an optional suffix on the
+// base name (e.g. ".vi" for the VI-thread probe). Returns nullptr when the env var is
+// unset; callers should treat the FILE* as fire-and-forget -- the buffered stream never
+// fails individual writes and fclose is intentionally skipped at shutdown (process exit
+// closes it). Single shared implementation so the gfx and VI probes stay in lock-step.
+std::FILE* open_frame_log(const char* suffix);
+
 } // namespace config
 } // namespace aero
 
