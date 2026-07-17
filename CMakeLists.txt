@@ -188,6 +188,19 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
 
+    # E2E regression: a default play run must not emit periodic stderr lines from hot
+    # threads (the 1 Hz gfx-thread heartbeat / VI-thread fb-swap line caused a visible
+    # hitch every second when stderr was a console -- see tests/test_play_logging_quiet.ps1).
+    # Runs the real binary ~15 s, so it needs the ROM (same precondition as the build).
+    if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (USA).z64")
+        add_test(NAME play_logging_quiet
+                 COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                         -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_play_logging_quiet.ps1"
+                         -Exe $<TARGET_FILE:aerogauge_modern>
+                         -RepoRoot "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(play_logging_quiet PROPERTIES TIMEOUT 180)
+    endif()
+
     if(TARGET RecompiledFuncs)
         target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncs)
     endif()

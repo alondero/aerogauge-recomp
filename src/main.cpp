@@ -189,7 +189,11 @@ static void pace_probe(int vi_n) {
     if (origin != s_last_origin) {
         s_last_origin = origin;
         int s = ++g_swaps;
-        if (s <= 8 || (s % 256) == 0)
+        // The periodic (s % 256, ~8.5 s) line is gated behind AERO_HARNESS_LOG: it runs
+        // on the VI thread -- the game's master pacer -- and a synchronous console write
+        // here stalls pacing itself (same hitch class as the gfx-thread heartbeat, see
+        // rt64_renderer.cpp). The first-8-swaps boot lines are one-time and stay.
+        if (s <= 8 || (aero::config::harness_log() && (s % 256) == 0))
             std::fprintf(stderr, "[probe] fb swap #%d -> VI_ORIGIN=0x%08x (vi=%d)\n",
                          s, origin, vi_n);
     }
@@ -216,7 +220,31 @@ static void warp_at_probe(int vi_n) {
     if (at > 0 && vi_n == at) aero_warp_request(track - 1, craft - 1);
 }
 
+// VI-thread pacing probe (PERMANENT harness instrumentation, companion to the gfx-thread
+// probe in rt64_renderer.cpp; enabled by the same AERO_FRAME_LOG=<path>, writing to
+// <path>.vi): vi_cb runs once per VI tick on ultramodern's VI thread, so a gap here means
+// the PACER stalled (Sleep granularity / timer / message-queue / console-lock contention),
+// as opposed to a gfx-thread stall. Lines are tagged [vi-pace] vs the gfx probe's [gfx-pace].
+static void vi_pace_probe() {
+    static FILE* f = aero::config::open_frame_log(".vi");
+    if (f == nullptr) return;
+    using clock = std::chrono::steady_clock;
+    static const auto t0 = clock::now();
+    static clock::time_point last{};
+    const auto now = clock::now();
+    if (last.time_since_epoch().count() != 0) {
+        double gap = std::chrono::duration<double, std::milli>(now - last).count();
+        if (gap > 25.0) {
+            std::fprintf(f, "[vi-pace] t=%.1f VI tick gap=%.2fms\n",
+                         std::chrono::duration<double, std::milli>(now - t0).count(), gap);
+            std::fflush(f);
+        }
+    }
+    last = now;
+}
+
 static void vi_cb() {
+    vi_pace_probe();
     state_probe();
     menu_probe();
     int n = ++g_vis;

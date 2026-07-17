@@ -318,6 +318,25 @@ bool full_track() {
     return g_full_track;
 }
 
+// AERO_HARNESS_LOG=1 enables the periodic hot-thread diagnostics (see aero_config.h).
+// Env-only and cached: this is read once per frame on the gfx and VI threads, so it
+// must stay a single static-bool load when disabled.
+bool harness_log() {
+    static const bool enabled = []() {
+        const char* v = std::getenv("AERO_HARNESS_LOG");
+        return v != nullptr && v[0] == '1';
+    }();
+    return enabled;
+}
+
+std::FILE* open_frame_log(const char* suffix) {
+    const char* p = std::getenv("AERO_FRAME_LOG");
+    if (p == nullptr || p[0] == '\0') return nullptr;
+    std::string path = p;
+    if (suffix != nullptr && suffix[0] != '\0') path += suffix;
+    return std::fopen(path.c_str(), "w");
+}
+
 // AERO_SKY_MATCH_1P=1/0 overrides the JSON key for headless capture/testing.
 bool widescreen_sky_match() {
     if (const char* v = std::getenv("AERO_SKY_MATCH_1P")) {

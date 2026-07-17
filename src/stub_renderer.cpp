@@ -17,6 +17,7 @@
 #include "ultramodern/renderer_context.hpp"
 
 #include "aero_rt64.h" // RT64 default presenter (#58); AERO_HEADLESS=1 keeps swrender
+#include "aero_config.h" // aero::config::harness_log() — same periodic-log gate as src/rt64_renderer.cpp
 
 // Set by create_render_context so the game-specific VI retrace hook (vi_cb in main.cpp)
 // can reach RDRAM. ultramodern's events thread owns the only rdram pointer otherwise.
@@ -1609,7 +1610,13 @@ public:
         }
         // Periodic heartbeat: a SUSTAINED gfx pipeline (not the #58 1-task stall). Before the
         // __osViCurr/__osViNext retrace-promotion fix (vi_cb in main.cpp), this stuck at 1 forever.
-        if (count % 30 == 0) {
+        // GATED behind AERO_HARNESS_LOG=1 (default off, same gate as the RT64 context in
+        // src/rt64_renderer.cpp) — at this title's 30 fps this fires once per second on
+        // the gfx thread, and a synchronous Windows console write measured 10-77 ms per
+        // line when stderr was a live console (the 1 Hz hitch root cause). A headless
+        // repro boot into the swrender fallback would reintroduce the exact hitch without
+        // this gate; opt back in via the env var for diagnostic runs.
+        if (aero::config::harness_log() && count % 30 == 0) {
             std::fprintf(stderr, "[gfx] send_dl count=%d (pipeline sustained)\n", count);
         }
     }
