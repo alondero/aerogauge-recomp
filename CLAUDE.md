@@ -41,6 +41,19 @@ is unclear.
   the actual primitive constants.
 - **Ship code, not notes.** Land the smallest real increment each session.
 
+## Skills, tools & derived knowledge (check these BEFORE re-deriving anything)
+
+- **`docs/notes/rom-map.md`** — every derived game address/table/protocol (scene manager,
+  race params, music, HUD dispatch, course zones, libultra globals). Add new derivations there.
+- **`tools/rom/`** — static ROM analysis one-liners: `disasm.py` (annotated function
+  disassembly), `callers.py` (jal-graph), `find_refs.py` (who reads/writes a global).
+- **`tools/trace_analyst.py`** — summarize any large port log; never page raw logs into context.
+- **`.claude/skills/`** — rom-analysis, native-patching (the 4 patch mechanisms + build-flow
+  gotcha), ares-debugger, port-debugging (AERO_* probe catalogue), build-and-verify,
+  session-management. Invoke the matching skill instead of working from first principles.
+- A PreToolUse hook blocks edits to generated files (`aerogauge.*.toml`, `RecompiledFuncs/`,
+  `src/aspMain.cpp`) — edit `scripts/gen_syms_toml.py` and regenerate instead.
+
 ## Debugging
 
 - **ares is reference.** Use an ares live-debug setup for any live-ROM work (read/write
