@@ -88,12 +88,15 @@ constexpr uint32_t BANK_SPAN    = (RES_END - RES_FAKES) / 2;
 
 constexpr int MAX_ZONES = 64;
 
-// Debug bisection knobs (env-only scaffolding for attributing bad geometry to a
-// zone; not part of the shipped feature surface):
+// Debug bisection knobs (scaffolding — see https://github.com/... issue TBD when
+// filed; remove once the per-zone regression check ships). Unset = feature default:
 //   AERO_FT_SECTIONS=0 / AERO_FT_OBJECTS=0  -> windowed path for that registrar only
 //   AERO_FT_ZONE_MASK=<hex u64>             -> full-track includes only zones whose
 //                                              bit is set (sections AND objects)
-bool env_flag_default_on(const char* name) {
+//   AERO_FT_TRACE=1                         -> one-shot stderr progress during
+//                                              course rebuild (event-driven, not
+//                                              periodic — gfx-thread safe)
+bool is_env_knob_enabled(const char* name) {
     const char* v = std::getenv(name);
     return v == nullptr || v[0] == '\0' || !(v[0] == '0' && v[1] == '\0');
 }
@@ -160,7 +163,6 @@ struct BuiltCourse {
 };
 
 BuiltCourse g_course;
-int g_bank = 0;   // which half of the fake/DL region the CURRENT course occupies
 
 // --- zone enumeration ---------------------------------------------------------------
 
@@ -271,9 +273,14 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
 
     if (trace) { std::fprintf(stderr, "[ft] collected %d DLs, %zu buckets\n", total, g_course.buckets.size()); std::fflush(stderr); }
     // Emit one synthetic DL + one fake 8-byte-compatible entry per bucket, into
-    // the bank the in-flight frame is NOT using.
-    g_bank ^= 1;
-    uint32_t bank_base = RES_FAKES + (uint32_t)g_bank * BANK_SPAN;
+    // the bank the in-flight frame is NOT using. First build_course (boot, with
+    // bank 0 sitting uninitialised in RDRAM) picks bank 1 so the boot frame's
+    // reads stay on an empty region; subsequent rebuilds toggle 1 <-> 0.
+    static bool s_first = true;
+    static int s_bank = 1;
+    int bank = s_first ? s_bank : (s_bank ^= 1, s_bank);
+    s_first = false;
+    uint32_t bank_base = RES_FAKES + (uint32_t)bank * BANK_SPAN;
     uint32_t bank_end  = bank_base + BANK_SPAN;
     uint32_t dlcur = bank_base + MAX_BUCKETS * 0x28;
     for (size_t i = 0; i < g_course.buckets.size(); i++) {
@@ -364,6 +371,33 @@ void ensure_side_init(uint8_t* rdram, recomp_context* ctx, int cslot, int list) 
     g_course.side_inited[cslot][list] = true;
 }
 
+// Register the section-DL entries from the 3-zone PVS window into the craft's
+// section lists, optionally restricted by hw4-mask. With mask=0 the loop emits
+// every entry exactly as the original ROM did; with mask=0x10 it emits only the
+// enclosed-shell pieces the full-track enhancement needs to keep on the faithful
+// window (see shell-pass call site in aeroRegisterTrackSections).
+void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
+                           uint32_t craft, const CourseKey& k,
+                           uint8_t zone, uint32_t c0, uint32_t c1,
+                           uint16_t hw4_mask) {
+    for (int i = 0; i < 3; i++) {
+        uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
+        uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
+        if (!vptr(g) || rw(rdram, g) == 0) continue;
+        for (uint32_t idx = 0; ; idx++) {
+            uint32_t e = g + idx * 8;
+            if (idx > 0 && rw(rdram, e) == 0) break;
+            uint16_t hw4 = rhu(rdram, e + 4);
+            if (hw4_mask && !(hw4 & hw4_mask)) continue;
+            uint16_t t = hw4 & 0xF;
+            if (t == 0 || t == 8)
+                call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
+            else if (t == 1)
+                call3(rdram, ctx, func_800077B4, c1, craft + 0x2BE4, e);
+        }
+    }
+}
+
 // Register one zone-object entry into list `li` of `craft`, spilling past the real
 // 47-slot arena into the side arena (chain-linked; the walker follows node+0xA4).
 void register_object(uint8_t* rdram, recomp_context* ctx, uint32_t craft, int cslot,
@@ -410,7 +444,7 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
     ww(rdram, c0, 0);
     ww(rdram, c1, 0);
 
-    static const bool dbg_sections = env_flag_default_on("AERO_FT_SECTIONS");
+    static const bool dbg_sections = is_env_knob_enabled("AERO_FT_SECTIONS");
     bool full = aero::config::full_track() && dbg_sections && ensure_course(rdram);
     if (full) {
         for (auto& b : g_course.buckets)
@@ -425,41 +459,13 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
         CourseKey k = read_key(rdram);
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
-        for (int i = 0; i < 3; i++) {
-            uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
-            uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
-            if (!vptr(g) || rw(rdram, g) == 0) continue;
-            for (uint32_t idx = 0; ; idx++) {
-                uint32_t e = g + idx * 8;
-                if (idx > 0 && rw(rdram, e) == 0) break;
-                uint16_t hw4 = rhu(rdram, e + 4);
-                if (!(hw4 & 0x10)) continue;
-                uint16_t t = hw4 & 0xF;
-                if (t == 0 || t == 8)
-                    call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
-                else if (t == 1)
-                    call3(rdram, ctx, func_800077B4, c1, craft + 0x2BE4, e);
-            }
-        }
+        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1, /*mask=*/0x10);
     } else {
         // Faithful transcription of the original 3-zone visibility window.
         CourseKey k = read_key(rdram);
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
-        for (int i = 0; i < 3; i++) {
-            uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
-            uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
-            if (rw(rdram, g) == 0) continue;
-            for (uint32_t idx = 0; ; idx++) {
-                uint32_t e = g + idx * 8;
-                if (idx > 0 && rw(rdram, e) == 0) break;
-                uint16_t t = rhu(rdram, e + 4) & 0xF;
-                if (t == 0 || t == 8)
-                    call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
-                else if (t == 1)
-                    call3(rdram, ctx, func_800077B4, c1, craft + 0x2BE4, e);
-            }
-        }
+        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1, /*mask=*/0);
     }
 
     uint32_t n0 = rw(rdram, c0), n1 = rw(rdram, c1);
@@ -485,7 +491,7 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     ww(rdram, cB, 1);   // -> +0x8224
     ww(rdram, cC, 1);   // -> +0xAD44
 
-    static const bool dbg_objects = env_flag_default_on("AERO_FT_OBJECTS");
+    static const bool dbg_objects = is_env_knob_enabled("AERO_FT_OBJECTS");
     bool full = aero::config::full_track() && dbg_objects && ensure_course(rdram);
     CourseKey k = read_key(rdram);
     uint32_t sect = rhu(rdram, craft + 4);
