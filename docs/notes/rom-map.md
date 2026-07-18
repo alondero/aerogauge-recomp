@@ -130,6 +130,22 @@ loader (not music); `func_80032BB0` = Controller Pak / ghost service (`func_8006
   `func_800077B4`/`func_8000791C`: node = list + counter*0xB8, fixed 48-slot arenas
   (slot 0 sentinel, active chain via node+0xA4); init loop `0x80006590`, handler tables
   `0x80095118/20/28`, node init `func_800204E0`.
+- **Section-entry hw4/hw6 semantics** (derived 2026-07-18, background-clipping fix):
+  registrar helper `func_800077B4` maps hw4's low nibble through jump table `0x800951B8`
+  to a per-type render-flag halfword (0x18D0/0x18E1..E4) stored at node+6; **hw4 bit
+  0x10 ORs 0x100 into that flag** and in practice marks enclosed-shell geometry the
+  artists rely on the PVS to hide (Bikini Island zone 21's sealed finish corridor +
+  its end-cap plane at z=8112 — drawn full-track it walls off the track right after
+  the start line). hw6 indexes the constant table `0x8008B494` (3 entries, identity
+  0/1/2 = environment channel); the byte lands at node+0xA and selects the per-channel
+  lighting/fog set that `func_80006888` recomputes each frame into objects at
+  `0x8019DDF0` (per-track 9-byte config rows at `0x8008B3C8`, consumed by
+  `func_80017EE0` at race init). Bikini zones 13/14 carry hw6 1/2 = tunnel env variants.
+- **Draw-list layer order** (built by `func_800187A8` into renderctx+0x1B8, from
+  `func_80016B7C`): bg (craft+0xC) → map opa (+0xC4) → obj opa (+0x5704) → obj dec
+  (+0x8224) → map xlu (+0x2BE4) → obj xlu (+0xAD44). The list sentinels' node+0 tag
+  pointers are the ASCII labels at `0x80095100+` ("bg", "map opa", "map xlu",
+  "obj opa", "obj dec", "obj xlu") — handy for locating craft arenas in RDRAM dumps.
 - The far plane: ONE global far=500 (near=5, fovy=55) passed to guPerspectiveF
   (ROM func at `0x8006BA60`) by all 11 projection sites; race cameras
   `0x8001F59C`/`0x80020748` read far from camera struct +0x10. No CPU distance culling.

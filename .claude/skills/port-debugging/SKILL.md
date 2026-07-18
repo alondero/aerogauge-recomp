@@ -28,6 +28,7 @@ description: Live-debug the native port (build/aerogauge_modern) — gdb recipes
 | `AERO_DL_DUMP_AT=<count>` | race DL dump at a send_dl count |
 | `AERO_WS_TRACE=1|2` | HUD widescreen gate/per-rect tracing; `AERO_WS_RETAG=0` kill-switch |
 | `AERO_DRAW_DISTANCE_SCALE`, `AERO_FULL_TRACK` | enhancement overrides (see graphics.json) |
+| `AERO_FT_SECTIONS=0` / `AERO_FT_OBJECTS=0` / `AERO_FT_ZONE_MASK=<hex>` / `AERO_FT_TRACE=1` | full-track bisection: force the windowed path per registrar, restrict full-track to a zone bitmask, trace course builds — the knobs that attributed the Bikini zone-21 occluder |
 
 Config file: `%LOCALAPPDATA%\AeroGaugeRecomp\graphics.json`. **Never add a
 periodic fprintf on the gfx or VI thread** — a Windows console write is 10–77ms
