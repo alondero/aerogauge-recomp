@@ -81,8 +81,30 @@ constexpr uint32_t RES_FAKES    = RES_SIDE + MAX_CRAFTS * 3 * SIDE_ARENA_BYTES;
 constexpr uint32_t MAX_BUCKETS  = 16;                  // fake entries, 0x28 bytes each
 constexpr uint32_t RES_DLS      = RES_FAKES + MAX_BUCKETS * 0x28;
 constexpr uint32_t RES_END      = 0x80800000;
+// The fake-entry + synthetic-DL region is double-banked: a course rebuild (track
+// change, save-state restore) writes the OTHER bank, so a frame already in flight
+// on the graphics thread never sees its DLs overwritten mid-walk.
+constexpr uint32_t BANK_SPAN    = (RES_END - RES_FAKES) / 2;
 
 constexpr int MAX_ZONES = 64;
+
+// Debug bisection knobs (env-only scaffolding for attributing bad geometry to a
+// zone; not part of the shipped feature surface):
+//   AERO_FT_SECTIONS=0 / AERO_FT_OBJECTS=0  -> windowed path for that registrar only
+//   AERO_FT_ZONE_MASK=<hex u64>             -> full-track includes only zones whose
+//                                              bit is set (sections AND objects)
+bool env_flag_default_on(const char* name) {
+    const char* v = std::getenv(name);
+    return v == nullptr || v[0] == '\0' || !(v[0] == '0' && v[1] == '\0');
+}
+uint64_t zone_mask() {
+    static uint64_t mask = [] {
+        const char* v = std::getenv("AERO_FT_ZONE_MASK");
+        return v && v[0] ? std::strtoull(v, nullptr, 16) : ~0ull;
+    }();
+    return mask;
+}
+bool zone_enabled(uint8_t z) { return z >= 64 || (zone_mask() >> z) & 1; }
 
 gpr A(uint32_t v) { return (gpr)(int32_t)v; }
 
@@ -138,6 +160,7 @@ struct BuiltCourse {
 };
 
 BuiltCourse g_course;
+int g_bank = 0;   // which half of the fake/DL region the CURRENT course occupies
 
 // --- zone enumeration ---------------------------------------------------------------
 
@@ -189,6 +212,8 @@ int bucket_list_for(uint16_t hw4) {
 
 // Build (or rebuild) the synthetic DLs + fake entries for the current course.
 bool build_course(uint8_t* rdram, const CourseKey& k) {
+    const bool trace = std::getenv("AERO_FT_TRACE") != nullptr;
+    if (trace) { std::fprintf(stderr, "[ft] build_course enter track=%d\n", k.track); std::fflush(stderr); }
     g_course = BuiltCourse{};
     g_course.key = k;
 
@@ -205,10 +230,12 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
         if (zones <= 0) return false;
     }
     g_course.zones = zones;
+    if (trace) { std::fprintf(stderr, "[ft] zones=%d\n", zones); std::fflush(stderr); }
 
     // Collect section pairs into (hw4, hw6) buckets.
     int total = 0;
     for (int zi = 0; zi < zones; zi++) {
+        if (!zone_enabled(zone_ids[zi])) continue;
         uint32_t g = rw(rdram, k.dlgroups + (uint32_t)zone_ids[zi] * 4);
         if (!vptr(g) || rw(rdram, g) == 0) continue;
         for (uint32_t idx = 0; idx < 512; idx++) {
@@ -218,6 +245,14 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
             uint16_t hw4 = rhu(rdram, e + 4), hw6 = rhu(rdram, e + 6);
             int list = bucket_list_for(hw4);
             if (list < 0 || !vptr(dl)) continue;
+            // hw4 bit 0x10 (registrar maps it to node render-flag 0x100) marks
+            // enclosed-shell geometry the artists rely on the PVS to hide -- e.g.
+            // Bikini Island zone 21's finish-corridor walls and its end cap, which
+            // otherwise renders as a wall sealing the track right after the start
+            // line. Those entries stay on the faithful per-frame PVS window
+            // (registered below in aeroRegisterTrackSections) instead of being
+            // merged into the always-drawn buckets.
+            if (hw4 & 0x10) continue;
             Bucket* b = nullptr;
             for (auto& bb : g_course.buckets)
                 if (bb.hw4 == hw4 && bb.hw6 == hw6) { b = &bb; break; }
@@ -234,15 +269,20 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
         }
     }
 
-    // Emit one synthetic DL + one fake 8-byte-compatible entry per bucket.
-    uint32_t dlcur = RES_DLS;
+    if (trace) { std::fprintf(stderr, "[ft] collected %d DLs, %zu buckets\n", total, g_course.buckets.size()); std::fflush(stderr); }
+    // Emit one synthetic DL + one fake 8-byte-compatible entry per bucket, into
+    // the bank the in-flight frame is NOT using.
+    g_bank ^= 1;
+    uint32_t bank_base = RES_FAKES + (uint32_t)g_bank * BANK_SPAN;
+    uint32_t bank_end  = bank_base + BANK_SPAN;
+    uint32_t dlcur = bank_base + MAX_BUCKETS * 0x28;
     for (size_t i = 0; i < g_course.buckets.size(); i++) {
         Bucket& b = g_course.buckets[i];
-        uint32_t fake = RES_FAKES + (uint32_t)i * 0x28;
+        uint32_t fake = bank_base + (uint32_t)i * 0x28;
         for (uint32_t off = 0; off < 0x28; off += 4) ww(rdram, fake + off, 0);
         b.fake_entry = fake;
         uint32_t need = ((uint32_t)b.dls.size() + 1) * 8;
-        if (dlcur + need > RES_END) {
+        if (dlcur + need > bank_end) {
             std::fprintf(stderr, "[fulltrack] DL arena overflow -- windowed fallback\n");
             return false;
         }
@@ -370,13 +410,37 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
     ww(rdram, c0, 0);
     ww(rdram, c1, 0);
 
-    bool full = aero::config::full_track() && ensure_course(rdram);
+    static const bool dbg_sections = env_flag_default_on("AERO_FT_SECTIONS");
+    bool full = aero::config::full_track() && dbg_sections && ensure_course(rdram);
     if (full) {
         for (auto& b : g_course.buckets)
             call3(rdram, ctx, func_800077B4,
                   b.list == 0 ? c0 : c1,
                   craft + (b.list == 0 ? 0xC4 : 0x2BE4),
                   b.fake_entry);
+        // PVS-hidden shell entries (hw4 & 0x10, skipped by build_course): register
+        // them exactly as the original does -- per entry, only from the craft's
+        // 3-zone visibility row -- so geometry the artists deliberately keep out
+        // of sight (sealed corridor caps etc.) never occludes the track.
+        CourseKey k = read_key(rdram);
+        uint32_t sect = rhu(rdram, craft + 4);
+        uint8_t zone = rbu(rdram, k.map + sect);
+        for (int i = 0; i < 3; i++) {
+            uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
+            uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
+            if (!vptr(g) || rw(rdram, g) == 0) continue;
+            for (uint32_t idx = 0; ; idx++) {
+                uint32_t e = g + idx * 8;
+                if (idx > 0 && rw(rdram, e) == 0) break;
+                uint16_t hw4 = rhu(rdram, e + 4);
+                if (!(hw4 & 0x10)) continue;
+                uint16_t t = hw4 & 0xF;
+                if (t == 0 || t == 8)
+                    call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
+                else if (t == 1)
+                    call3(rdram, ctx, func_800077B4, c1, craft + 0x2BE4, e);
+            }
+        }
     } else {
         // Faithful transcription of the original 3-zone visibility window.
         CourseKey k = read_key(rdram);
@@ -421,7 +485,8 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     ww(rdram, cB, 1);   // -> +0x8224
     ww(rdram, cC, 1);   // -> +0xAD44
 
-    bool full = aero::config::full_track() && ensure_course(rdram);
+    static const bool dbg_objects = env_flag_default_on("AERO_FT_OBJECTS");
+    bool full = aero::config::full_track() && dbg_objects && ensure_course(rdram);
     CourseKey k = read_key(rdram);
     uint32_t sect = rhu(rdram, craft + 4);
     uint8_t zone = rbu(rdram, k.map + sect);
@@ -439,6 +504,7 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     }
 
     for (int zi = 0; zi < nz; zi++) {
+        if (full && !zone_enabled(zone_ids[zi])) continue;
         uint32_t o = rw(rdram, table + (uint32_t)zone_ids[zi] * 4);
         if (o == 0 || rw(rdram, o) == 0) continue;
         for (uint32_t e = o; ; e += 0x28) {
