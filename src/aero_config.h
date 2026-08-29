@@ -30,18 +30,22 @@ ultramodern::renderer::GraphicsConfig default_graphics_config();
 // users always have a complete, editable file on disk. Returns the applied config.
 ultramodern::renderer::GraphicsConfig load_and_apply_graphics();
 
+// Main-thread snapshot/apply helpers for the native in-game menu. apply_graphics()
+// queues the live RT64 update and persists the same value.
+ultramodern::renderer::GraphicsConfig current_graphics();
+void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live = true);
+
 // Persist the given config (full overwrite of graphics.json).
 void save_graphics(const ultramodern::renderer::GraphicsConfig& cfg);
 
-// Persist a runtime window-mode change (F11) by re-reading the on-disk file and
-// updating only wm_option, so concurrent hand-edits to other keys survive. A file
-// that fails to parse is left untouched.
+// Persist a runtime window-mode change (F11/menu) in the main-thread snapshot.
 void update_saved_window_mode(ultramodern::renderer::WindowMode wm);
 
 // Requested window size for windowed mode (from graphics.json; defaults 1600x900,
 // chosen 16:9 so AspectRatio::Expand actually widens on first launch).
 struct WindowSize { int width; int height; };
 WindowSize window_size();
+void set_window_size(WindowSize size);
 
 // RT64 texture-replacement paths (issue #9). Both are extra graphics.json string keys
 // (empty = feature off), overridable by env var for headless capture/testing:
@@ -52,16 +56,20 @@ WindowSize window_size();
 //                                          without the F1 developer overlay.
 std::string texture_pack_path();
 std::string texture_dump_dir();
+void set_texture_pack_path(std::string path);
+void set_texture_dump_dir(std::string path);
 
 // Widen the dense 3P/4P split-screen fog to the 1P window/colour (issue #83).
 // graphics.json key "widescreen_fog_match" (default true), overridable by
 // AERO_FOG_MATCH_1P=1/0. The rewrite still self-gates on player count >= 3.
 bool widescreen_fog_match();
+void set_widescreen_fog_match(bool enabled);
 
 // Draw the sky panorama in 3P/4P split screen like 1P/2P (issue #84).
 // graphics.json key "widescreen_sky_match" (default true), overridable by
 // AERO_SKY_MATCH_1P=1/0. Only flips a branch that 1P/2P already take.
 bool widescreen_sky_match();
+void set_widescreen_sky_match(bool enabled);
 
 // Far-clip-plane multiplier for the native guPerspectiveF (draw-distance
 // enhancement; see src/aero_draw_distance.h). graphics.json key
@@ -69,11 +77,13 @@ bool widescreen_sky_match();
 // 1.0 = the original game's 500-unit far plane, clamped to {0} U [1, 10000]),
 // overridable by AERO_DRAW_DISTANCE_SCALE=<float> for A/B capture runs.
 float draw_distance_scale();
+void set_draw_distance_scale(float scale);
 
 // Register the whole course's geometry every frame instead of the game's 3-zone
 // visibility window (the residual large-scale pop-in; see src/aero_full_track.cpp).
 // graphics.json key "full_track" (default true), overridable by AERO_FULL_TRACK=1/0.
 bool full_track();
+void set_full_track(bool enabled);
 
 // Periodic harness diagnostics on hot threads (the 1 Hz [rt64] send_dl heartbeat on
 // the gfx thread, the ~8.5 s [probe] fb-swap line on the VI thread): AERO_HARNESS_LOG=1
