@@ -189,6 +189,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_hud_shift_scale PRIVATE m)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+    add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
+    target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME full_track_policy COMMAND test_full_track_policy)
     if(WIN32)
         # Full-game audio regression for the aspMain "Unhandled jump target" crash
         # (2026-07-17): 60 s headless warp race with music; pre-fix this crashed on the
