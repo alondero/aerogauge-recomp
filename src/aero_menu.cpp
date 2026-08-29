@@ -4,8 +4,10 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <SDL.h>
 
@@ -88,13 +90,24 @@ enum Command : UINT {
     CMD_TEXTURE_DUMP_CLEAR,
 };
 
+constexpr std::array<UINT, 4> kSupersamplingCommands{CMD_SS_1X, CMD_SS_2X, CMD_SS_3X, CMD_SS_4X};
+constexpr std::array<std::pair<float, UINT>, 5> kDrawDistanceCommands{{
+    {1.0f, CMD_DRAW_ORIGINAL}, {2.0f, CMD_DRAW_2X}, {10.0f, CMD_DRAW_10X},
+    {100.0f, CMD_DRAW_100X}, {0.0f, CMD_DRAW_UNLIMITED}}};
+
 void append_item(HMENU menu, UINT id, const char* label) {
-    AppendMenuA(menu, MF_STRING, id, label);
+    int n = MultiByteToWideChar(CP_UTF8, 0, label, -1, nullptr, 0);
+    std::vector<wchar_t> wide(static_cast<size_t>(std::max(n, 1)));
+    MultiByteToWideChar(CP_UTF8, 0, label, -1, wide.data(), n);
+    AppendMenuW(menu, MF_STRING, id, wide.data());
 }
 
 HMENU append_submenu(HMENU parent, const char* label) {
     HMENU child = CreatePopupMenu();
-    AppendMenuA(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(child), label);
+    int n = MultiByteToWideChar(CP_UTF8, 0, label, -1, nullptr, 0);
+    std::vector<wchar_t> wide(static_cast<size_t>(std::max(n, 1)));
+    MultiByteToWideChar(CP_UTF8, 0, label, -1, wide.data(), n);
+    AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(child), wide.data());
     return child;
 }
 
@@ -110,32 +123,54 @@ bool close(float a, float b) {
     return std::abs(a - b) < 0.0001f;
 }
 
-std::optional<std::string> select_directory(const char* title) {
-    BROWSEINFOA dialog{};
-    dialog.hwndOwner = g_hwnd;
-    dialog.lpszTitle = title;
-    dialog.ulFlags = BIF_RETURNONLYFSDIRS;
-    PIDLIST_ABSOLUTE item = SHBrowseForFolderA(&dialog);
-    if (item == nullptr) return std::nullopt;
+UINT draw_distance_command(float value) {
+    for (const auto& [scale, command] : kDrawDistanceCommands) {
+        if (close(value, scale)) return command;
+    }
+    return 0;
+}
 
-    std::array<char, MAX_PATH> path{};
-    const bool selected = SHGetPathFromIDListA(item, path.data()) == TRUE;
+std::optional<std::string> select_directory(const char* title) {
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    BROWSEINFOW dialog{};
+    dialog.hwndOwner = g_hwnd;
+    int title_len = MultiByteToWideChar(CP_UTF8, 0, title, -1, nullptr, 0);
+    std::vector<wchar_t> title_w(static_cast<size_t>(std::max(title_len, 1)));
+    MultiByteToWideChar(CP_UTF8, 0, title, -1, title_w.data(), title_len);
+    dialog.lpszTitle = title_w.data();
+    dialog.ulFlags = BIF_RETURNONLYFSDIRS;
+    PIDLIST_ABSOLUTE item = SHBrowseForFolderW(&dialog);
+    if (item == nullptr) { if (SUCCEEDED(com)) CoUninitialize(); return std::nullopt; }
+
+    std::array<wchar_t, MAX_PATH> path{};
+    const bool selected = SHGetPathFromIDListW(item, path.data()) == TRUE;
     CoTaskMemFree(item);
+    if (SUCCEEDED(com)) CoUninitialize();
     if (!selected) return std::nullopt;
-    return std::string{path.data()};
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, nullptr, 0, nullptr, nullptr);
+    std::string utf8(static_cast<size_t>(std::max(bytes, 1)), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, utf8.data(), bytes, nullptr, nullptr);
+    utf8.resize(std::strlen(utf8.c_str()));
+    return utf8;
 }
 
 std::optional<std::string> select_texture_archive() {
-    std::array<char, 32768> path{};
-    OPENFILENAMEA dialog{};
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::array<wchar_t, 32768> path{};
+    OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = g_hwnd;
-    dialog.lpstrFilter = "RT64 texture archives (*.rtz)\0*.rtz\0All files (*.*)\0*.*\0";
+    dialog.lpstrFilter = L"RT64 texture archives (*.rtz)\0*.rtz\0All files (*.*)\0*.*\0";
     dialog.lpstrFile = path.data();
     dialog.nMaxFile = static_cast<DWORD>(path.size());
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
-    if (GetOpenFileNameA(&dialog) == FALSE) return std::nullopt;
-    return std::string{path.data()};
+    if (GetOpenFileNameW(&dialog) == FALSE) { if (SUCCEEDED(com)) CoUninitialize(); return std::nullopt; }
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, nullptr, 0, nullptr, nullptr);
+    std::string utf8(static_cast<size_t>(std::max(bytes, 1)), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, utf8.data(), bytes, nullptr, nullptr);
+    if (SUCCEEDED(com)) CoUninitialize();
+    utf8.resize(std::strlen(utf8.c_str()));
+    return utf8;
 }
 
 void refresh() {
@@ -148,7 +183,7 @@ void refresh() {
           cfg.res_option == Resolution::Auto ? CMD_RES_AUTO :
           cfg.res_option == Resolution::Original2x ? CMD_RES_ORIGINAL_2X : CMD_RES_ORIGINAL);
     radio(g_supersampling_menu, CMD_SS_1X, CMD_SS_4X,
-          cfg.ds_option >= 1 && cfg.ds_option <= 4 ? CMD_SS_1X + cfg.ds_option - 1 : 0);
+          cfg.ds_option >= 1 && cfg.ds_option <= 4 ? kSupersamplingCommands[static_cast<size_t>(cfg.ds_option - 1)] : 0);
     radio(g_aspect_menu, CMD_ASPECT_ORIGINAL, CMD_ASPECT_EXPAND,
           cfg.ar_option == AspectRatio::Expand ? CMD_ASPECT_EXPAND :
           cfg.ar_option == AspectRatio::Original ? CMD_ASPECT_ORIGINAL : 0);
@@ -184,21 +219,24 @@ void refresh() {
 
     const float draw_distance = aero::config::draw_distance_scale();
     radio(g_draw_distance_menu, CMD_DRAW_ORIGINAL, CMD_DRAW_UNLIMITED,
-          draw_distance == 0.0f ? CMD_DRAW_UNLIMITED : close(draw_distance, 100.0f) ? CMD_DRAW_100X :
-          close(draw_distance, 10.0f) ? CMD_DRAW_10X : close(draw_distance, 2.0f) ? CMD_DRAW_2X :
-          close(draw_distance, 1.0f) ? CMD_DRAW_ORIGINAL : 0);
+          draw_distance_command(draw_distance));
     if (g_hwnd != nullptr) DrawMenuBar(g_hwnd);
 }
 
 void apply_graphics_command(UINT command) {
     using namespace ultramodern::renderer;
     GraphicsConfig cfg = aero::config::current_graphics();
+    bool apply_live = true;
     switch (command) {
         case CMD_RES_AUTO: cfg.res_option = Resolution::Auto; break;
         case CMD_RES_ORIGINAL: cfg.res_option = Resolution::Original; break;
         case CMD_RES_ORIGINAL_2X: cfg.res_option = Resolution::Original2x; break;
-        case CMD_SS_1X: case CMD_SS_2X: case CMD_SS_3X: case CMD_SS_4X:
-            cfg.ds_option = int(command - CMD_SS_1X) + 1; break;
+        case CMD_SS_1X: case CMD_SS_2X: case CMD_SS_3X: case CMD_SS_4X: {
+            const auto it = std::find(kSupersamplingCommands.begin(), kSupersamplingCommands.end(), command);
+            if (it == kSupersamplingCommands.end()) return;
+            cfg.ds_option = static_cast<int>(std::distance(kSupersamplingCommands.begin(), it)) + 1;
+            break;
+        }
         case CMD_ASPECT_ORIGINAL: cfg.ar_option = AspectRatio::Original; break;
         case CMD_ASPECT_EXPAND: cfg.ar_option = AspectRatio::Expand; break;
         case CMD_HUD_ORIGINAL: cfg.hr_option = HUDRatioMode::Original; break;
@@ -209,7 +247,9 @@ void apply_graphics_command(UINT command) {
         case CMD_RATE_30: case CMD_RATE_60: case CMD_RATE_90: case CMD_RATE_120:
         case CMD_RATE_144: case CMD_RATE_165: case CMD_RATE_240: {
             cfg.rr_option = RefreshRate::Manual;
-            cfg.rr_manual_value = kManualRefreshRates[command - CMD_RATE_30];
+            const size_t index = static_cast<size_t>(command - CMD_RATE_30);
+            if (index >= kManualRefreshRates.size()) return;
+            cfg.rr_manual_value = kManualRefreshRates[index];
             break;
         }
         case CMD_AA_NONE: cfg.msaa_option = Antialiasing::None; break;
@@ -221,12 +261,12 @@ void apply_graphics_command(UINT command) {
         case CMD_HPFB_OFF: cfg.hpfb_option = HighPrecisionFramebuffer::Off; break;
         // RT64 selects its backend while constructing the renderer. Save the
         // selection now; it takes effect on the next launch.
-        case CMD_API_AUTO: cfg.api_option = GraphicsApi::Auto; break;
-        case CMD_API_D3D12: cfg.api_option = GraphicsApi::D3D12; break;
-        case CMD_API_VULKAN: cfg.api_option = GraphicsApi::Vulkan; break;
+        case CMD_API_AUTO: cfg.api_option = GraphicsApi::Auto; apply_live = false; break;
+        case CMD_API_D3D12: cfg.api_option = GraphicsApi::D3D12; apply_live = false; break;
+        case CMD_API_VULKAN: cfg.api_option = GraphicsApi::Vulkan; apply_live = false; break;
         default: return;
     }
-    aero::config::apply_graphics(cfg);
+    aero::config::apply_graphics(cfg, apply_live);
 }
 
 void dispatch(UINT command) {
@@ -348,6 +388,8 @@ void attach(SDL_Window* window) {
 
     if ((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0) {
         SetMenu(g_hwnd, g_menu_bar);
+        SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     }
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
     refresh();
@@ -369,6 +411,8 @@ void toggle_fullscreen() {
         return;
     }
     SetMenu(g_hwnd, fullscreen ? nullptr : g_menu_bar);
+    SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     aero::config::update_saved_window_mode(
         fullscreen ? ultramodern::renderer::WindowMode::Fullscreen
                    : ultramodern::renderer::WindowMode::Windowed);

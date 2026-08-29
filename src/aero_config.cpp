@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <utility>
+#include <mutex>
 
 #include "json/json.hpp"
 
@@ -30,6 +31,7 @@ aero::config::WindowSize g_window_size{kDefaultWindowWidth, kDefaultWindowHeight
 // keys alongside the GraphicsConfig fields (like the window size). Empty = feature off.
 std::string g_texture_pack;
 std::string g_texture_dump;
+std::mutex g_texture_mutex;
 
 // Widen the dense 3P/4P split-screen fog to the open 1P window/colour (issue #83).
 // Enhancement default-on, consistent with the widescreen wave; 1P/2P are unaffected
@@ -121,6 +123,7 @@ nlohmann::json graphics_config_json(const ultramodern::renderer::GraphicsConfig&
 }
 
 nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
+    std::lock_guard<std::mutex> lock(g_texture_mutex);
     nlohmann::json result = graphics_config_json(c);
     result.update({
         {"window_width", g_window_size.width},
@@ -136,6 +139,7 @@ nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
 }
 
 void from_json(const nlohmann::json& j, ultramodern::renderer::GraphicsConfig& c) {
+    std::lock_guard<std::mutex> lock(g_texture_mutex);
     from_or_default(j, "res_option", c.res_option);
     from_or_default(j, "wm_option", c.wm_option);
     from_or_default(j, "hr_option", c.hr_option);
@@ -316,15 +320,22 @@ ultramodern::renderer::GraphicsConfig current_graphics() {
     return g_current_graphics;
 }
 
-void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg) {
-    const nlohmann::json before = graphics_config_json(g_current_graphics);
+void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live) {
+    const auto before = g_current_graphics;
     g_current_graphics = cfg;
-    ultramodern::renderer::set_graphics_config(cfg);
-    const nlohmann::json after = graphics_config_json(cfg);
     nlohmann::json updates = nlohmann::json::object();
-    for (auto it = after.begin(); it != after.end(); ++it) {
-        if (before.at(it.key()) != it.value()) updates[it.key()] = it.value();
-    }
+    if (before.res_option != cfg.res_option) updates["res_option"] = cfg.res_option;
+    if (before.wm_option != cfg.wm_option) updates["wm_option"] = cfg.wm_option;
+    if (before.hr_option != cfg.hr_option) updates["hr_option"] = cfg.hr_option;
+    if (before.api_option != cfg.api_option) updates["api_option"] = cfg.api_option;
+    if (before.ar_option != cfg.ar_option) updates["ar_option"] = cfg.ar_option;
+    if (before.msaa_option != cfg.msaa_option) updates["msaa_option"] = cfg.msaa_option;
+    if (before.rr_option != cfg.rr_option) updates["rr_option"] = cfg.rr_option;
+    if (before.hpfb_option != cfg.hpfb_option) updates["hpfb_option"] = cfg.hpfb_option;
+    if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
+    if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
+    if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
+    if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
     save_graphics_updates(updates);
 }
 
@@ -360,21 +371,29 @@ static std::string path_from_env_or(const char* env, const std::string& fallback
 }
 
 std::string texture_pack_path() {
+    std::lock_guard<std::mutex> lock(g_texture_mutex);
     return path_from_env_or("AERO_TEXTURE_PACK", g_texture_pack);
 }
 
 std::string texture_dump_dir() {
+    std::lock_guard<std::mutex> lock(g_texture_mutex);
     return path_from_env_or("AERO_TEXTURE_DUMP", g_texture_dump);
 }
 
 void set_texture_pack_path(std::string path) {
-    g_texture_pack = std::move(path);
-    save_graphics_updates({{"texture_pack", g_texture_pack}});
+    {
+        std::lock_guard<std::mutex> lock(g_texture_mutex);
+        g_texture_pack = std::move(path);
+    }
+    save_graphics_updates({{"texture_pack", texture_pack_path()}});
 }
 
 void set_texture_dump_dir(std::string path) {
-    g_texture_dump = std::move(path);
-    save_graphics_updates({{"texture_dump", g_texture_dump}});
+    {
+        std::lock_guard<std::mutex> lock(g_texture_mutex);
+        g_texture_dump = std::move(path);
+    }
+    save_graphics_updates({{"texture_dump", texture_dump_dir()}});
 }
 
 // AERO_FOG_MATCH_1P=1/0 overrides the JSON key for headless capture/testing.

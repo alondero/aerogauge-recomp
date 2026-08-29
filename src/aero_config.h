@@ -33,7 +33,7 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics();
 // Main-thread snapshot/apply helpers for the native in-game menu. apply_graphics()
 // queues the live RT64 update and persists the same value.
 ultramodern::renderer::GraphicsConfig current_graphics();
-void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg);
+void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live = true);
 
 // Persist the given config (full overwrite of graphics.json).
 void save_graphics(const ultramodern::renderer::GraphicsConfig& cfg);
