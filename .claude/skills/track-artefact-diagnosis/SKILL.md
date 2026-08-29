@@ -45,7 +45,8 @@ full-track mode from geometry that the original PVS already submits.
   always-visible `(hw4, hw6)` bucket, keep it out of `build_course` and register
   it only through the faithful PVS path. Put the rule in a small constexpr
   policy header, keyed by stable ROM facts (track/zone plus the verified
-  display-list address; retain the table index as corroboration). Keep the
+  display-list address). Record the table index in the evidence note, but do not
+  make a table-order detail part of the policy key. Keep the
   general `hw4 & 0x10` shell rule unchanged.
 - If the winning display list is already in the faithful PVS, inspect its F3DEX
   render-state commands and layer ordering before touching visibility. Only

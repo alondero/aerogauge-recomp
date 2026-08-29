@@ -89,6 +89,11 @@ constexpr uint32_t BANK_SPAN    = (RES_END - RES_FAKES) / 2;
 
 constexpr int MAX_ZONES = 64;
 
+enum class SectionFilter : uint8_t {
+    All,
+    PvsGatedOnly,
+};
+
 // Debug bisection knobs (scaffolding — see https://github.com/... issue TBD when
 // filed; remove once the per-zone regression check ships). Unset = feature default:
 //   AERO_FT_SECTIONS=0 / AERO_FT_OBJECTS=0  -> windowed path for that registrar only
@@ -254,7 +259,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
             // records one byte-verified Bikini authoring exception (including its
             // display-list address so a table reorder cannot retarget the rule).
             if (aero::full_track::pvs_gated_section(
-                    k.track, zone_ids[zi], idx, dl, hw4)) continue;
+                    static_cast<uint8_t>(k.track), zone_ids[zi], dl, hw4)) continue;
             Bucket* b = nullptr;
             for (auto& bb : g_course.buckets)
                 if (bb.hw4 == hw4 && bb.hw6 == hw6) { b = &bb; break; }
@@ -372,13 +377,13 @@ void ensure_side_init(uint8_t* rdram, recomp_context* ctx, int cslot, int list) 
 }
 
 // Register the section-DL entries from the 3-zone PVS window into the craft's
-// section lists. With gated_only=false the loop emits every entry exactly as the
-// original ROM did; with gated_only=true it emits only the enclosed-shell pieces
-// the full-track enhancement keeps on the faithful window.
+// section lists. With SectionFilter::All the loop emits every entry exactly as
+// the original ROM did; with SectionFilter::PvsGatedOnly it emits only the
+// enclosed-shell pieces the full-track enhancement keeps on the faithful window.
 void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
                            uint32_t craft, const CourseKey& k,
                            uint8_t zone, uint32_t c0, uint32_t c1,
-                           bool gated_only) {
+                           SectionFilter filter) {
     for (int i = 0; i < 3; i++) {
         uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
         uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
@@ -388,8 +393,9 @@ void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
             if (idx > 0 && rw(rdram, e) == 0) break;
             uint32_t dl = rw(rdram, e);
             uint16_t hw4 = rhu(rdram, e + 4);
-            if (gated_only && !aero::full_track::pvs_gated_section(
-                    k.track, z, idx, dl, hw4)) continue;
+            if (filter == SectionFilter::PvsGatedOnly &&
+                !aero::full_track::pvs_gated_section(
+                    static_cast<uint8_t>(k.track), z, dl, hw4)) continue;
             uint16_t t = hw4 & 0xF;
             if (t == 0 || t == 8)
                 call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
@@ -461,14 +467,14 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
         register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1,
-                              /*gated_only=*/true);
+                              SectionFilter::PvsGatedOnly);
     } else {
         // Faithful transcription of the original 3-zone visibility window.
         CourseKey k = read_key(rdram);
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
         register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1,
-                              /*gated_only=*/false);
+                              SectionFilter::All);
     }
 
     uint32_t n0 = rw(rdram, c0), n1 = rw(rdram, c1);
