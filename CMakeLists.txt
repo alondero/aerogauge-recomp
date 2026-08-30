@@ -252,6 +252,24 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_link_libraries(aerogauge_modern PRIVATE rt64 ${SDL2_LIBRARIES})
 
     if(WIN32)
+        # Per-Monitor V2 DPI awareness: embed src/app.manifest so the process
+        # gets true physical pixel dimensions at >100% display scaling --
+        # without it DWM bitmap-stretches the window by the scale factor and a
+        # 1600x900 window overflows 1080p screens at 175% scaling. MinGW ld has
+        # no /MANIFEST switch, so compile the .rc (which references the manifest)
+        # with windres and link the object.
+        find_program(AERO_WINDRES_EXECUTABLE NAMES windres REQUIRED)
+        set(AERO_MANIFEST_OBJ ${CMAKE_CURRENT_BINARY_DIR}/aero_manifest.rc.o)
+        add_custom_command(OUTPUT ${AERO_MANIFEST_OBJ}
+            COMMAND ${AERO_WINDRES_EXECUTABLE}
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/src
+                -O coff -o ${AERO_MANIFEST_OBJ}
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_manifest.rc
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_manifest.rc
+                    ${CMAKE_CURRENT_SOURCE_DIR}/src/app.manifest
+            COMMENT "Embedding DPI-awareness manifest (windres)")
+        target_sources(aerogauge_modern PRIVATE ${AERO_MANIFEST_OBJ})
+
         # Native menu pickers use the shell folder and common file dialogs for
         # texture-pack/dump paths.
         target_link_libraries(aerogauge_modern PRIVATE shell32 ole32 comdlg32)
