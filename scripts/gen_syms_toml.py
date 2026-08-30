@@ -359,6 +359,20 @@ text = "extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_h
 func = "func_80022408"
 before_vram = 0x80022680
 text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"
+
+# One-button Turbo + Boost Start (QoL, src/aero_turbo_boost.c). Hooked at the entry
+# of the RACE scene runner func_80015FD0 (case 5 of the scene table 0x800969C0 --
+# every frame during a race, silent in every other scene). Runs BEFORE the runner
+# reads the pads, so the hook can OR the synthesized combo (B|A during the countdown
+# incl. the GO frame, Z|A once racing) into both P1 pad sources: the runner's latch
+# 0x8013FF70 (read by the countdown GO check func_80016890) and the controller-1
+# osCont read-back buttons 0x8011CAB2 (read by the temperature/turbo handler
+# func_8000877C). Disabled entirely by graphics.json easy_turbo_boost=false /
+# AERO_EASY_TURBO=0 (see aero_config.cpp).
+[[patches.hook]]
+func = "func_80015FD0"
+before_vram = 0x80015FD0
+text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
 """
 
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):

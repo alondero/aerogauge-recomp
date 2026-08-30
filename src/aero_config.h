@@ -85,6 +85,21 @@ void set_draw_distance_scale(float scale);
 bool full_track();
 void set_full_track(bool enabled);
 
+// One-button Turbo + Boost Start (see src/aero_turbo_boost.c). graphics.json key
+// "easy_turbo_boost" (default true), overridable by AERO_EASY_TURBO=1/0.
+bool easy_turbo_boost();
+void set_easy_turbo_boost(bool enabled);
+
+// C-linkage bridge so the plain-C hook (src/aero_turbo_boost.c) can read the
+// toggle without dragging the C++ config machinery into its TU.
+#ifdef __cplusplus
+extern "C" {
+#endif
+int aero_easy_turbo_enabled(void);
+#ifdef __cplusplus
+}
+#endif
+
 // Periodic harness diagnostics on hot threads (the 1 Hz [rt64] send_dl heartbeat on
 // the gfx thread, the ~8.5 s [probe] fb-swap line on the VI thread): AERO_HARNESS_LOG=1
 // enables. Env-only, DEFAULT OFF: a Windows console write is a synchronous cross-process

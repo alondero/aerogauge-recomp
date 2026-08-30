@@ -76,6 +76,45 @@ Exit detector `func_800169E0` (called per frame from the race chain): maps STATU
 requested-phase word `0x8013FF8C` — 1 → phase 5, any other nonzero → phase 6 (the ~exit
 walk observed as phase 6 → scene 6 results).
 
+### Turbo / Boost Start — derived 2026-08-30 (one-button QoL, src/aero_turbo_boost.c)
+
+Two pad SOURCES feed the two mechanics (do not confuse them):
+
+| Address | Source |
+|---|---|
+| `0x8013FF70` (u16) | P1 pad latch written every race frame by `func_80015FD0` at 0x80015FEC from `func_80009460(0)`; read by the countdown GO check (`func_80016890`, 0x80016968) |
+| `0x8013FF72` (u16) | P2 twin (written at 0x80016000) |
+| `0x8011CAB2` (u16) | controller-1 osCont read-back buttons (`func_80009438(1)` reads `0x8011CAB0+2`); read by the temperature/turbo handler `func_8000877C` (NOT the P1 latch!) |
+| `0x8011CAB0/0x8011CAB8` | per-controller prev/edge/cur pad state (`func_80009494` writes +2 prev, +4 pressed-xor, +6 cur) |
+
+Temperature/gauge block (global floats, `lui $at,0x8008`):
+`0x80081FB0` speed gauge, `0x80081FB4`, `0x80081FB8`, `0x80081FBC`, `0x80081FC0`,
+`0x80081FC4` drift heat (Z+A held raises, Z+B held lowers; written by `func_8000877C`),
+`0x80081FC8` one-shot drift flag (written by `func_80008AF0` init).
+
+Boost dispatch (the actual turbo firing):
+- `func_80012EFC` (0x80012EFC) — per-frame per-car boost dispatcher; loops 5 boost
+  slots stride 0x14 from the car base; per slot calls `func_80012FDC` (arm) →
+  `func_80013020` (fire) while slot+0x2B8 > 0, else `func_80013428`.
+- `func_80012FDC` (0x80012FDC) — ARMS the turbo: `slot+0x2B8 = 7` (turbo timer),
+  `slot+0x2BA = 10` (turbo sub-timer), copies `car+0x278..0x280` (track launch
+  vector) into `slot+0x2C0..0x2C8`.
+- `func_80013020` (0x80013020) — FIRES the boost: applies `slot+0x2C0..0x2C8` to the
+  car+0x1018 sub-object's velocity `+0x38/0x3C/0x40`, writes flame-color bytes
+  `+0x34..0x37`, decrements `slot+0x2BA`, then `func_80012EFC` decrements `slot+0x2B8`.
+
+Countdown / boost start:
+- `func_80016890` (0x80016890) — countdown stepper: step word `RACE+0x2B0` (0/1/2/3=GO),
+  elapsed `RACE+0x2C0` (u16, 0..0xC3=195=GO). At the 0xC3 boundary the GO check reads
+  `0x8013FF70` and tests B (0x4000) + START (0x1000); on success ORs `0x4000` into the
+  race-block flag `RACE+0x4` and the same `func_80012FDC` path arms the start boost.
+- Car array: `0x8013FFB0` stride 0x20A0 (`func_80018C84`); car+0x2B8/0x2BA/0x2C0..0x2C8
+  are the per-car boost timers/vector; car+0x278..0x280 = track launch-speed floats
+  (loaded from course table `0x8009_4D68 + track*0x14`).
+- The one-button QoL hook (`aero_turbo_boost_tick`, func_80015FD0 entry) ORs B|A into
+  `0x8013FF70` + `0x8011CAB2` while `RACE_ELAPSED <= 0xC3` (countdown incl. GO frame),
+  and Z|A once racing — synthesizing the exact combos the ROM's own checks expect.
+
 ## Music / audio — SOLVED 2026-07-16 (PR #11); all verified live in the port
 
 Two engines; confusing them wasted sessions:

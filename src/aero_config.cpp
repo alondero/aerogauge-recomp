@@ -59,6 +59,10 @@ std::atomic<float> g_draw_distance_scale{100.0f};
 // see src/aero_full_track.cpp). Enhancement default-on like the far plane.
 std::atomic_bool g_full_track{true};
 
+// One-button Turbo + Boost Start (src/aero_turbo_boost.c). Enhancement
+// default-on: the pad-synthesis hook is a strict no-op when disabled.
+std::atomic_bool g_easy_turbo_boost{true};
+
 // The native menu runs on the main SDL thread. Retaining a local snapshot means
 // it never has to read ultramodern's reference-returning getter while RT64 is
 // applying a setting on another thread.
@@ -134,6 +138,7 @@ nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
         {"widescreen_sky_match", g_widescreen_sky_match.load()},
         {"draw_distance_scale", g_draw_distance_scale.load()},
         {"full_track", g_full_track.load()},
+        {"easy_turbo_boost", g_easy_turbo_boost.load()},
     });
     return result;
 }
@@ -159,14 +164,17 @@ void from_json(const nlohmann::json& j, ultramodern::renderer::GraphicsConfig& c
     bool widescreen_sky_match = g_widescreen_sky_match.load();
     float draw_distance_scale = g_draw_distance_scale.load();
     bool full_track = g_full_track.load();
+    bool easy_turbo_boost = g_easy_turbo_boost.load();
     from_or_default(j, "widescreen_fog_match", widescreen_fog_match);
     from_or_default(j, "widescreen_sky_match", widescreen_sky_match);
     from_or_default(j, "draw_distance_scale", draw_distance_scale);
     from_or_default(j, "full_track", full_track);
+    from_or_default(j, "easy_turbo_boost", easy_turbo_boost);
     g_widescreen_fog_match.store(widescreen_fog_match);
     g_widescreen_sky_match.store(widescreen_sky_match);
     g_draw_distance_scale.store(clamp_draw_distance(draw_distance_scale));
     g_full_track.store(full_track);
+    g_easy_turbo_boost.store(easy_turbo_boost);
     g_window_size = clamp_window_size(g_window_size);
 }
 
@@ -437,6 +445,25 @@ bool full_track() {
 void set_full_track(bool enabled) {
     g_full_track.store(enabled);
     save_graphics_updates({{"full_track", enabled}});
+}
+
+// AERO_EASY_TURBO=1/0 overrides the JSON key for A/B capture runs (0 = original
+// button combos only). Read every frame by the race-runner hook.
+bool easy_turbo_boost() {
+    if (const char* v = std::getenv("AERO_EASY_TURBO")) {
+        return v[0] == '1';
+    }
+    return g_easy_turbo_boost.load();
+}
+
+void set_easy_turbo_boost(bool enabled) {
+    g_easy_turbo_boost.store(enabled);
+    save_graphics_updates({{"easy_turbo_boost", enabled}});
+}
+
+// C-linkage bridge for src/aero_turbo_boost.c (plain C TU).
+extern "C" int aero_easy_turbo_enabled(void) {
+    return easy_turbo_boost() ? 1 : 0;
 }
 
 // AERO_HARNESS_LOG=1 enables the periodic hot-thread diagnostics (see aero_config.h).
