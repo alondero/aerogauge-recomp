@@ -338,6 +338,72 @@ public:
                          (uint32_t)task->t.data_ptr);
         }
         app->state->rsp->reset();
+        // AERO_DL_SKIP_DL=<hex,hex,...>: track-artefact-diagnosis Phase 3. At send_dl
+        // time, walk the frame DL and rewrite any G_DL command whose target is in the
+        // skip set to G_SPNOOP (0x00000000). A clean re-render with the DL skipped is
+        // the definitive "is this the cause?" evidence; env unset = no-op, parse
+        // amortised. KSEG0 target form (0x80xxxxxx), the address attribute tool
+        // (tools/rom/full_track_attr.py) returns.
+        //
+        // Safety: the RSP has already finished walking this DL by the time send_dl
+        // runs, and the game builds a fresh DL in RDRAM each frame from its course
+        // table -- mutating the in-memory command stream here cannot affect game
+        // logic or future frames. (TODO: this walker duplicates dlinspect::geom_walk
+        // from stub_renderer.cpp; lift the F3DEX command walk into a shared header
+        // when a third caller appears.)
+        if (task && app->core.RDRAM) {
+            static const char* s_skip_env = std::getenv("AERO_DL_SKIP_DL");
+            if (s_skip_env) {
+                static uint32_t s_skip[16] = {};
+                static int s_skip_n = 0;
+                static bool s_skip_init = false;
+                if (!s_skip_init) {
+                    const char* p = s_skip_env;
+                    while (*p && s_skip_n < 16) {
+                        while (*p == ',' || *p == ' ') ++p;
+                        if (!*p) break;
+                        char* end = nullptr;
+                        unsigned long v = std::strtoul(p, &end, 16);
+                        if (end == p) break;
+                        s_skip[s_skip_n++] = (uint32_t)v;
+                        p = end;
+                    }
+                    s_skip_init = true;
+                    std::fprintf(stderr, "[dl-skip] %d DL(s) marked for skip: ", s_skip_n);
+                    for (int i = 0; i < s_skip_n; ++i)
+                        std::fprintf(stderr, "0x%08X%s", s_skip[i], i + 1 == s_skip_n ? "\n" : ",");
+                }
+                uint8_t* rdram = app->core.RDRAM;
+                uint32_t phys = (uint32_t)task->t.data_ptr & 0x3FFFFFFu;
+                uint32_t seg[16] = {};
+                seg[0] = 0;
+                int hits = 0;
+                for (uint32_t cmd = 0; cmd < 200000; ++cmd) {
+                    if (phys + 8 > 0x00800000u) break;
+                    uint32_t w0 = *(const uint32_t*)(rdram + phys);
+                    uint32_t w1 = *(const uint32_t*)(rdram + phys + 4);
+                    uint8_t  op = (w0 >> 24) & 0xFFu;
+                    if (op == 0xB8u) break;                       // G_ENDDL
+                    if (op == 0x06u) {                              // G_DL
+                        for (int i = 0; i < s_skip_n; ++i) {
+                            if (w1 == s_skip[i]) {
+                                *(uint32_t*)(rdram + phys) = 0u; // G_SPNOOP, preserves target
+                                ++hits;
+                                std::fprintf(stderr, "[dl-skip] hit 0x%08X send_dl #%d\n",
+                                             s_skip[i], count);
+                                break;
+                            }
+                        }
+                    } else if (op == 0xBCu && (w0 & 0xFFu) == 0x06u) {
+                        // gsSPSegment(seg, base) -> seg[(w0>>8)&0xF] = w1
+                        uint32_t segnum = ((w0 >> 8) & 0xFFFFu) >> 2;
+                        if (segnum < 16) seg[segnum] = w1;
+                    }
+                    phys += 8;
+                }
+                if (hits) std::fflush(stderr);
+            }
+        }
         // Match the swrender's KSEG0 call-site convention (stub_renderer.cpp send_dl)
         // so resolve()'s hi>=0x80 branch handles both call sites; the seg[0]={0} default
         // would silently mis-resolve in RT64 if the root DL ever set segment 0.

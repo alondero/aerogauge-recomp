@@ -26,6 +26,7 @@ description: Live-debug the native port (build/aerogauge_modern) — gdb recipes
 | `AERO_AUDIO_RMS=1` | per-second output RMS — the headless "is music sounding" gate (jingle t=1–3s, title from t≈6s, race RMS 5–7k) |
 | `AERO_DL_GEOMSET=<stride>` | per-frame G_DL target sets (diff runs to prove geometry-identical) |
 | `AERO_DL_DUMP_AT=<count>` | race DL dump at a send_dl count |
+| `AERO_DL_SKIP_DL=<hex,hex,...>` | at send_dl time, rewrite `G_DL` commands whose target is in the list to `G_SPNOOP`; the decisive "is this DL the cause?" tool for track-artefact diagnosis (skill: track-artefact-diagnosis, Phase 3). KSEG0 target form, one or more comma-separated hex addresses |
 | `AERO_WS_TRACE=1|2` | HUD widescreen gate/per-rect tracing; `AERO_WS_RETAG=0` kill-switch |
 | `AERO_DRAW_DISTANCE_SCALE`, `AERO_FULL_TRACK` | enhancement overrides (see graphics.json) |
 | `AERO_FT_SECTIONS=0` / `AERO_FT_OBJECTS=0` / `AERO_FT_ZONE_MASK=<hex>` / `AERO_FT_TRACE=1` | full-track bisection: force the windowed path per registrar, restrict full-track to a zone bitmask, trace course builds — the knobs that attributed the Bikini zone-21 occluder |
