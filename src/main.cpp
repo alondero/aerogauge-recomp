@@ -38,6 +38,7 @@
 #include "aero_rt64.h"
 #include "aero_audio.h"
 #include "aero_config.h"
+#include "aero_menu.h"
 #include "aero_crash.h"   // issue #13 / A14
 // ultramodern's native VI API (events.cpp), used by the promote_vi_context RT64 bridge.
 extern "C" void osViSwapBuffer(uint8_t* rdram, int32_t frameBufPtr);
@@ -286,31 +287,8 @@ static void input_open_controller(int joystick_index);
 static void input_close_controller(SDL_JoystickID which);
 static void rumble_apply();  // rumble-pak sink (#69); defined in the input section below
 
-// The SDL window, kept for main-thread window ops (fullscreen toggle). SDL window
-// state is owned by THIS thread; the renderer only ever sees the raw handle.
-static SDL_Window* g_sdl_window = nullptr;
-
-// F11 / Alt+Enter fullscreen toggle (main thread, called from the SDL event loop).
-// SDL owns the window state; the new mode is persisted to graphics.json so the next
-// launch starts in the same mode. Two deliberate omissions:
-//  - rt64_renderer.cpp's update_config setFullScreen path is not used (one owner);
-//  - ultramodern::renderer::set_graphics_config is NOT called here: it would be the
-//    only mid-game config writer, racing the gfx thread's UNLOCKED config copy
-//    (get_graphics_config returns a reference whose guard is released on return --
-//    an upstream ultramodern flaw). Nothing renderer-side consumes wm_option, so the
-//    live config staying at its startup value is harmless.
 static void toggle_fullscreen() {
-    if (g_sdl_window == nullptr) return;
-    bool to_fullscreen = (SDL_GetWindowFlags(g_sdl_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
-    if (SDL_SetWindowFullscreen(g_sdl_window,
-                                to_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
-        std::fprintf(stderr, "[config] fullscreen toggle FAILED: %s\n", SDL_GetError());
-        return; // window unchanged -> persist nothing, config and reality stay agreed
-    }
-    aero::config::update_saved_window_mode(
-        to_fullscreen ? ultramodern::renderer::WindowMode::Fullscreen
-                      : ultramodern::renderer::WindowMode::Windowed);
-    std::fprintf(stderr, "[config] fullscreen %s (F11 / Alt+Enter)\n", to_fullscreen ? "ON" : "OFF");
+    aero::menu::toggle_fullscreen();
 }
 
 static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/) {
@@ -355,7 +333,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
                          SDL_GetError());
             return ultramodern::renderer::WindowHandle{};
         }
-        g_sdl_window = window;
+        aero::menu::attach(window);
 #if defined(__linux__)
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",
                      win_size.width, win_size.height);
@@ -396,6 +374,9 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)) {
                 std::fprintf(stderr, "[probe] window closed; quitting\n");
                 boot_summary_and_exit();
+            }
+            else if (aero::menu::handle_event(event)) {
+                continue;
             }
             else if (event.type == SDL_KEYDOWN && !event.key.repeat &&
                      (event.key.keysym.sym == SDLK_F11 ||

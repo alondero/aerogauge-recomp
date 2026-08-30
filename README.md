@@ -11,9 +11,9 @@ port — same submodule pins, same runtime patches, same runtime glue — and th
 approach as [Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp) and friends.
 
 **Status: renders and plays.** The whole-ROM recompile, libultra routing, RT64
-rendering (widescreen + display-rate interpolation), and input are live; races render
-and run. Audio ucode and menus/HUD polish are in progress. See the issue tracker for
-the porting roadmap.
+rendering (widescreen + display-rate interpolation), input, and native configuration
+menu are live; races render and run. Audio ucode and HUD polish are in progress. See
+the issue tracker for the porting roadmap.
 
 ## What you need
 
@@ -38,6 +38,15 @@ Then run from the repo root:
 ```
 ./build/aerogauge_modern
 ```
+
+## In-game configuration (Windows)
+
+In windowed mode, the native menu bar exposes **Graphics** and **Enhancements** settings.
+Changes to rendering, widescreen presentation, draw distance, and window size apply
+in-game and are saved to `graphics.json`. The graphics API and texture pack/dump paths
+are saved for the next launch; texture paths are chosen from native file/folder dialogs.
+Press **F11** (or
+Alt+Enter) to switch fullscreen; return to windowed mode to access the menu bar again.
 
 ## Developer warp menu
 
