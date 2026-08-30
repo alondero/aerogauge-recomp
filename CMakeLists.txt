@@ -140,6 +140,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
         src/aero_config.cpp    # persistent graphics.json -> ultramodern GraphicsConfig
+        src/aero_menu.cpp      # native Win32 menu bar; live configuration actions + persistence
         src/aero_crash.cpp     # native crash backtrace: Win32 EXCEPTION_POINTERS +
                                # POSIX sigaction handler printing KSEG0/RDRAM offset + a 32-entry
                                # function-lookup trace ring. No deps beyond libc + DbgHelp (Win) /
@@ -189,6 +190,23 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_hud_shift_scale PRIVATE m)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+    add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
+    target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME full_track_policy COMMAND test_full_track_policy)
+
+    # The native menu delegates all setting changes to these port-owned live
+    # configuration helpers. Test the snapshot, atomic enhancement knobs, and
+    # graphics.json persistence without needing an SDL window or RT64 device.
+    add_executable(test_live_config
+        tests/test_live_config.cpp
+        src/aero_config.cpp
+    )
+    target_include_directories(test_live_config PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${N64MR}/ultramodern/include
+        ${N64MR}/thirdparty
+    )
+    add_test(NAME live_config_updates COMMAND test_live_config)
     if(WIN32)
         # Full-game audio regression for the aspMain "Unhandled jump target" crash
         # (2026-07-17): 60 s headless warp race with music; pre-fix this crashed on the
@@ -234,6 +252,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_link_libraries(aerogauge_modern PRIVATE rt64 ${SDL2_LIBRARIES})
 
     if(WIN32)
+        # Native menu pickers use the shell folder and common file dialogs for
+        # texture-pack/dump paths.
+        target_link_libraries(aerogauge_modern PRIVATE shell32 ole32 comdlg32)
         # Native crash backtrace: CaptureStackBackTrace lives in dbghelp.dll.
         # MinGW64 ships the import lib (libdbghelp.a) so an explicit
         # target_link_libraries entry is enough; we don't ship the DLL — the

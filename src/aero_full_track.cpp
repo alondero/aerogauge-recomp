@@ -40,6 +40,7 @@
 #include "recomp.h"
 
 #include "aero_config.h"
+#include "aero_full_track_policy.h"
 
 // Recompiled game helpers (RecompiledFuncs/, ROM-derived) this module calls back into.
 extern "C" {
@@ -87,6 +88,11 @@ constexpr uint32_t RES_END      = 0x80800000;
 constexpr uint32_t BANK_SPAN    = (RES_END - RES_FAKES) / 2;
 
 constexpr int MAX_ZONES = 64;
+
+enum class SectionFilter : uint8_t {
+    All,
+    PvsGatedOnly,
+};
 
 // Debug bisection knobs (scaffolding — see https://github.com/... issue TBD when
 // filed; remove once the per-zone regression check ships). Unset = feature default:
@@ -247,14 +253,13 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
             uint16_t hw4 = rhu(rdram, e + 4), hw6 = rhu(rdram, e + 6);
             int list = bucket_list_for(hw4);
             if (list < 0 || !vptr(dl)) continue;
-            // hw4 bit 0x10 (registrar maps it to node render-flag 0x100) marks
-            // enclosed-shell geometry the artists rely on the PVS to hide -- e.g.
-            // Bikini Island zone 21's finish-corridor walls and its end cap, which
-            // otherwise renders as a wall sealing the track right after the start
-            // line. Those entries stay on the faithful per-frame PVS window
-            // (registered below in aeroRegisterTrackSections) instead of being
-            // merged into the always-drawn buckets.
-            if (hw4 & 0x10) continue;
+            // Enclosed-shell geometry the artists rely on the PVS to hide stays
+            // on the faithful per-frame window instead of being merged into an
+            // always-drawn bucket. This is normally hw4 bit 0x10; the policy also
+            // records one byte-verified Bikini authoring exception (including its
+            // display-list address so a table reorder cannot retarget the rule).
+            if (aero::full_track::pvs_gated_section(
+                    static_cast<uint8_t>(k.track), zone_ids[zi], dl, hw4)) continue;
             Bucket* b = nullptr;
             for (auto& bb : g_course.buckets)
                 if (bb.hw4 == hw4 && bb.hw6 == hw6) { b = &bb; break; }
@@ -372,14 +377,13 @@ void ensure_side_init(uint8_t* rdram, recomp_context* ctx, int cslot, int list) 
 }
 
 // Register the section-DL entries from the 3-zone PVS window into the craft's
-// section lists, optionally restricted by hw4-mask. With mask=0 the loop emits
-// every entry exactly as the original ROM did; with mask=0x10 it emits only the
-// enclosed-shell pieces the full-track enhancement needs to keep on the faithful
-// window (see shell-pass call site in aeroRegisterTrackSections).
+// section lists. With SectionFilter::All the loop emits every entry exactly as
+// the original ROM did; with SectionFilter::PvsGatedOnly it emits only the
+// enclosed-shell pieces the full-track enhancement keeps on the faithful window.
 void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
                            uint32_t craft, const CourseKey& k,
                            uint8_t zone, uint32_t c0, uint32_t c1,
-                           uint16_t hw4_mask) {
+                           SectionFilter filter) {
     for (int i = 0; i < 3; i++) {
         uint8_t z = rbu(rdram, k.vis + (uint32_t)zone * 3 + (uint32_t)i);
         uint32_t g = rw(rdram, k.dlgroups + (uint32_t)z * 4);
@@ -387,8 +391,11 @@ void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
         for (uint32_t idx = 0; ; idx++) {
             uint32_t e = g + idx * 8;
             if (idx > 0 && rw(rdram, e) == 0) break;
+            uint32_t dl = rw(rdram, e);
             uint16_t hw4 = rhu(rdram, e + 4);
-            if (hw4_mask && !(hw4 & hw4_mask)) continue;
+            if (filter == SectionFilter::PvsGatedOnly &&
+                !aero::full_track::pvs_gated_section(
+                    static_cast<uint8_t>(k.track), z, dl, hw4)) continue;
             uint16_t t = hw4 & 0xF;
             if (t == 0 || t == 8)
                 call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
@@ -452,20 +459,22 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
                   b.list == 0 ? c0 : c1,
                   craft + (b.list == 0 ? 0xC4 : 0x2BE4),
                   b.fake_entry);
-        // PVS-hidden shell entries (hw4 & 0x10, skipped by build_course): register
-        // them exactly as the original does -- per entry, only from the craft's
-        // 3-zone visibility row -- so geometry the artists deliberately keep out
-        // of sight (sealed corridor caps etc.) never occludes the track.
+        // PVS-hidden shell entries (skipped by build_course) are registered exactly
+        // as the original does: per entry, only from the craft's 3-zone visibility
+        // row, so sealed corridor caps and equivalent authoring exceptions cannot
+        // occlude the track.
         CourseKey k = read_key(rdram);
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
-        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1, /*mask=*/0x10);
+        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1,
+                              SectionFilter::PvsGatedOnly);
     } else {
         // Faithful transcription of the original 3-zone visibility window.
         CourseKey k = read_key(rdram);
         uint32_t sect = rhu(rdram, craft + 4);
         uint8_t zone = rbu(rdram, k.map + sect);
-        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1, /*mask=*/0);
+        register_pvs_sections(rdram, ctx, craft, k, zone, c0, c1,
+                              SectionFilter::All);
     }
 
     uint32_t n0 = rw(rdram, c0), n1 = rw(rdram, c1);
