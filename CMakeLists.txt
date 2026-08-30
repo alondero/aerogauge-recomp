@@ -190,6 +190,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_hud_shift_scale PRIVATE m)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+    add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
+    target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME full_track_policy COMMAND test_full_track_policy)
 
     # The native menu delegates all setting changes to these port-owned live
     # configuration helpers. Test the snapshot, atomic enhancement knobs, and

@@ -141,6 +141,12 @@ loader (not music); `func_80032BB0` = Controller Pak / ghost service (`func_8006
   lighting/fog set that `func_80006888` recomputes each frame into objects at
   `0x8019DDF0` (per-track 9-byte config rows at `0x8008B3C8`, consumed by
   `func_80017EE0` at race init). Bikini zones 13/14 carry hw6 1/2 = tunnel env variants.
+- **Bikini PVS-gated authoring exception** (saved-state frame-DL runtime bisection,
+  2026-08-29): internal track 1, zone 13, section entry 11 (`DL 0x803903B8` in the
+  captured load) is an unflagged three-triangle rock wedge spanning roughly
+  x=-6486..-5250, z=7151..7954. The zone-15 PVS excludes zone 13; merging this entry
+  into the always-visible `(hw4=0, hw6=2)` bucket makes it cross the tunnel road.
+  Treat it like `hw4 & 0x10` and register it only when its zone is in the faithful PVS.
 - **Draw-list layer order** (built by `func_800187A8` into renderctx+0x1B8, from
   `func_80016B7C`): bg (craft+0xC) → map opa (+0xC4) → obj opa (+0x5704) → obj dec
   (+0x8224) → map xlu (+0x2BE4) → obj xlu (+0xAD44). The list sentinels' node+0 tag
