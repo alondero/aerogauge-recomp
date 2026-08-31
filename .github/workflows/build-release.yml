@@ -1,0 +1,250 @@
+name: Build & Release
+
+# Manual, on-demand build of Windows + Linux binaries, published to GitHub Releases.
+#
+# The recompilation step (BUILDING.md step 3) needs the actual game ROM to translate
+# into C, and the port also reads the ROM at runtime for assets. The ROM is
+# copyrighted and is never committed to this repo (see .gitignore) — GitHub Actions
+# secrets are capped at 48 KB, far too small for an 8 MiB ROM, so it can't be stored
+# as a secret directly. Instead it lives in a separate *private* companion repo
+# (ROM_ASSETS_REPO) and is checked out during the build using a fine-grained PAT
+# (ROM_ASSETS_PAT) scoped to read-only access on that one repo. It is never uploaded
+# as part of any artifact or release asset: downstream users must supply their own
+# legally dumped copy of "AeroGauge (USA).z64" to run the released binary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v0.1.0)"
+        required: true
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: true
+      draft:
+        description: "Create the release as a draft (review before publishing)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  ROM_FILENAME: "AeroGauge (USA).z64"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build python3 pkg-config \
+            libsdl2-dev libvulkan-dev libfreetype-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libdbus-1-dev
+
+      - name: Check ROM asset config
+        env:
+          ROM_ASSETS_REPO: ${{ vars.ROM_ASSETS_REPO }}
+          ROM_ASSETS_PAT: ${{ secrets.ROM_ASSETS_PAT }}
+        run: |
+          if [ -z "$ROM_ASSETS_REPO" ] || [ -z "$ROM_ASSETS_PAT" ]; then
+            echo "::error::vars.ROM_ASSETS_REPO and/or secrets.ROM_ASSETS_PAT are not set — cannot recompile without a ROM."
+            exit 1
+          fi
+
+      - name: Fetch ROM from private assets repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.ROM_ASSETS_REPO }}
+          token: ${{ secrets.ROM_ASSETS_PAT }}
+          path: rom-assets
+
+      - name: Place ROM
+        run: |
+          cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          rm -rf rom-assets
+
+      - name: Reset submodules before patching
+        # Defensive: a previous run that patched partially would otherwise
+        # leave the next apply failing with "patch failed: ...". The Linux
+        # build script then re-applies the pinned set (0001, 0007, 0012,
+        # 0006, 0008, 0009, 0010, 0011) idempotently.
+        run: |
+          git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/rt64 checkout -- .
+          git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
+
+      - name: Build via shared script
+        # Delegate to build.sh — the single source of truth for the build
+        # sequence (submodule reset, patch apply, configure x2, build tools,
+        # recompile, link). CI doesn't reimplement any of this inline; if
+        # the local script drifts, this job breaks on the next push, so the
+        # hookify rule (patch→build drift) catches it.
+        env:
+          ROM_FILENAME: ${{ env.ROM_FILENAME }}
+        run: bash build.sh
+
+      - name: Remove ROM before packaging
+        if: always()
+        run: rm -f "$ROM_FILENAME"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build/aerogauge_modern dist/
+          # Symbol table: probed next to the exe at runtime so field crash
+          # dumps show function names, not raw N64 PCs.
+          cp aerogauge.syms.toml dist/
+          cd dist && zip -r ../aerogauge-recomp-linux-x64.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aerogauge-recomp-linux-x64
+          path: aerogauge-recomp-linux-x64.zip
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Enable long paths
+        # RT64's contrib tree contains paths > 260 chars; Windows runners
+        # reject these without this flag set.
+        run: git config --global core.longpaths true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install MinGW-w64 GCC, CMake, Ninja
+        shell: pwsh
+        run: |
+          choco install mingw -y --no-progress
+          choco install ninja -y --no-progress
+          python -m pip install --upgrade pip
+          python -m pip install cmake
+          # Put a MinGW-w64 GCC ahead of any MSYS2 toolchain that might also be on PATH.
+          echo "C:\ProgramData\mingw64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          gcc --version
+          cmake --version
+          ninja --version
+
+      - name: Check ROM asset config
+        shell: pwsh
+        env:
+          ROM_ASSETS_REPO: ${{ vars.ROM_ASSETS_REPO }}
+          ROM_ASSETS_PAT: ${{ secrets.ROM_ASSETS_PAT }}
+        run: |
+          if (-not $env:ROM_ASSETS_REPO -or -not $env:ROM_ASSETS_PAT) {
+            Write-Error "vars.ROM_ASSETS_REPO and/or secrets.ROM_ASSETS_PAT are not set -- cannot recompile without a ROM."
+            exit 1
+          }
+
+      - name: Fetch ROM from private assets repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.ROM_ASSETS_REPO }}
+          token: ${{ secrets.ROM_ASSETS_PAT }}
+          path: rom-assets
+
+      - name: Place ROM
+        shell: pwsh
+        run: |
+          Copy-Item "rom-assets\$env:ROM_FILENAME" ".\$env:ROM_FILENAME"
+          Remove-Item -Recurse -Force rom-assets
+
+      - name: Reset submodules before patching
+        shell: pwsh
+        # Defensive: a previous run that patched partially would otherwise
+        # leave the next apply failing with "patch failed: ...". The Windows
+        # build script then re-applies the pinned set (0001, 0007, 0012,
+        # 0013, 0006, 0008, 0009, 0005, 0010, 0011, 0004) idempotently.
+        # autocrlf=false also neutralises CRLF the Windows runner's git
+        # might inject.
+        run: |
+          git config --global core.autocrlf false
+          git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/rt64 checkout -- .
+          git -C lib/rt64/src/contrib/plume checkout -- .
+
+      - name: Build via shared script
+        shell: pwsh
+        # Delegate to build.ps1 — the single source of truth for the build
+        # sequence. -RomPath forwards the workflow's $env:ROM_FILENAME so a
+        # future ROM rename stays single-sourced in the workflow's env block.
+        env:
+          ROM_FILENAME: ${{ env.ROM_FILENAME }}
+        run: ./build.ps1 -RomPath "$env:ROM_FILENAME"
+
+      - name: Remove ROM before packaging
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Force -ErrorAction SilentlyContinue "$env:ROM_FILENAME"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          # RT64 dlopen()s dxcompiler/dxil at D3D12 init and SDL2 is a dynamic dep,
+          # so a missing DLL crashes on the user's machine at startup, not here.
+          # Fail the build loudly if any required file is absent instead of
+          # shipping a broken zip. aerogauge.syms.toml is shipped so field crash
+          # reports resolve guest PCs to function names.
+          # NOTE: AeroGauge's local build/ does not produce freetype.dll or an
+          # assets/ directory (unlike Lambo) — only ship what the build produces.
+          $payload = @(
+            'build\aerogauge_modern.exe',
+            'build\SDL2.dll',
+            'build\dxcompiler.dll',
+            'build\dxil.dll',
+            'aerogauge.syms.toml'
+          )
+          $missing = $payload | Where-Object { -not (Test-Path $_) }
+          if ($missing) { throw "Packaging aborted -- required files missing: $($missing -join ', ')" }
+          Copy-Item -Recurse $payload dist\
+          Compress-Archive -Path dist\* -DestinationPath aerogauge-recomp-windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aerogauge-recomp-windows-x64
+          path: aerogauge-recomp-windows-x64.zip
+          retention-days: 14
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            artifacts/aerogauge-recomp-linux-x64/aerogauge-recomp-linux-x64.zip \
+            artifacts/aerogauge-recomp-windows-x64/aerogauge-recomp-windows-x64.zip \
+            --repo "${{ github.repository }}" \
+            --title "${{ inputs.tag }}" \
+            $( [ "${{ inputs.prerelease }}" = "true" ] && echo --prerelease ) \
+            $( [ "${{ inputs.draft }}" = "true" ] && echo --draft ) \
+            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped copy of \`AeroGauge (USA).z64\` next to the executable — this project ships no game data.** See BUILDING.md."
