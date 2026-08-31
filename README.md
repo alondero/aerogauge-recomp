@@ -5,11 +5,6 @@ A native PC port of **AeroGauge** (Nintendo 64, USA) built with
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) (`ultramodern` +
 `librecomp`) with the [RT64](https://github.com/rt64/rt64) renderer.
 
-The stack is cloned from the
-[Automobili Lamborghini: Recompiled](https://github.com/alondero/automobililamborghini-recomp)
-port — same submodule pins, same runtime patches, same runtime glue — and the same
-approach as [Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp) and friends.
-
 **Status: renders and plays.** The whole-ROM recompile, libultra routing, RT64
 rendering (widescreen + display-rate interpolation), input, and native configuration
 menu are live; races render and run. Audio ucode and HUD polish are in progress. See
