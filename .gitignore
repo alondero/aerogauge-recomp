@@ -73,3 +73,6 @@ nextsessionprompt.md
 verify_*/
 # Host-compiled unit-test binaries
 tests/*.exe
+
+# Release-notes drafts (one-shot artifacts shipped via update-notes.sh, regenerated each release)
+drafts/
