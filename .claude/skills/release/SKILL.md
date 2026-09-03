@@ -19,39 +19,17 @@ placeholder.
 
 ## Prerequisites
 
-This skill **assumes** a `Build & Release` workflow exists at
-`.github/workflows/build-release.yml` in the repository with these inputs:
-
-- `tag` (string, required) — release tag, e.g. `v0.1.0`
-- `prerelease` (boolean, default `true`)
-- `draft` (boolean, default `true`)
-
-and two parallel jobs (`build-linux` on `ubuntu-latest`, `build-windows` on
-`windows-latest`) followed by a `release` job that downloads both artifacts
-and runs `gh release create "$tag" <assets> --notes "Automated build from
-commit $GITHUB_SHA ..."`. The Automobili Lamborghini port carries the
-canonical version of this workflow (`.github/workflows/build-release.yml` in
-`alondero/automobililamborghini-recomp`); port it with these substitutions:
-
-| Lambo | AeroGauge |
-|-------|-----------|
-| `Automobili Lamborghini (USA).z64` | `AeroGauge (USA).z64` |
-| `lamborghini-recomp-{linux,windows}-x64.zip` | `aerogauge-recomp-{linux,windows}-x64.zip` |
-| `build/lamborghini_modern(.exe)` | `build/aerogauge_modern(.exe)` |
-| `lamborghini.syms.toml` | `aerogauge.syms.toml` |
-
-The workflow ships ROM from a private companion repo (`ROM_ASSETS_REPO` var +
-`ROM_ASSETS_PAT` secret). AeroGauge will need its own companion repo + PAT.
-
-**Until that workflow lands, this skill cannot dispatch a build.** Verify
-with:
+This skill assumes `.github/workflows/build-release.yml` exists in the
+repository. Verify with:
 
 ```bash
 gh workflow list --repo alondero/aerogauge-recomp
 ```
 
-If the output is empty, port the workflow first; the skill will fail at
-`tag-and-dispatch.sh` otherwise.
+If the output is empty, the workflow needs to be ported first (see the
+canonical version at `alondero/automobililamborghini-recomp/.github/workflows/build-release.yml`,
+with the AeroGauge substitutions documented in `references/release-notes-template.md`).
+The skill's `tag-and-dispatch.sh` will fail if the workflow is missing.
 
 ## When to invoke
 
@@ -155,8 +133,9 @@ template in `references/release-notes-template.md`.
 
 - **Release-notes body** — drafted from `references/release-notes-template.md`,
   filled in with the PR/issue summary from step 1 and prose from each PR body.
-  Output goes in `<drafts>/<version>-release-notes.md` for the user to review,
-  then handed to step 5.
+  Output goes in `.claude/skills/release/drafts/<version>-release-notes.md`
+  for the user to review, then handed to step 5. The `drafts/` directory has
+  a self-cleaning `.gitignore` so drafts never accidentally get committed.
 - **Headline of the "What's working" section** — pick the single most
   user-visible change since the base tag. For v0.1.0 (the inaugural release)
   this is the headline capability ("the whole-ROM recompile runs races at

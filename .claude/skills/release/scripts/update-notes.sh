@@ -25,10 +25,28 @@ if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   exit 1
 fi
 
-# Refuse to push notes that look like the workflow placeholder
-if head -n 2 "${NOTES_FILE}" | grep -q "Automated build from commit"; then
+# Refuse to push an empty file — easy mistake and gh release edit accepts it.
+if [[ ! -s "${NOTES_FILE}" ]]; then
+  echo "error: notes file '${NOTES_FILE}' is empty." >&2
+  exit 1
+fi
+
+# Refuse to push notes that look like the workflow placeholder. Check the
+# whole file (not just the first 2 lines) — headers or blank lines shouldn't
+# let a placeholder body sneak past.
+if grep -q "Automated build from commit" "${NOTES_FILE}"; then
   echo "error: notes file appears to be the workflow placeholder." >&2
   echo "       Use a body drafted from references/release-notes-template.md." >&2
+  exit 1
+fi
+
+# Refuse unrendered template placeholders. Easy to ship a draft that still
+# has literal <PLACEHOLDER>, <PREV_VERSION>, <NEW_VERSION>, <RUN_ID>,
+# <SHORT_SHA>, <YYYY-MM-DD> tokens.
+if grep -E -q "<(PLACEHOLDER|PREV_VERSION|NEW_VERSION|RUN_ID|SHORT_SHA|YYYY-MM-DD)>" "${NOTES_FILE}"; then
+  echo "error: notes file still has unrendered template placeholders:" >&2
+  echo "       <PLACEHOLDER>, <PREV_VERSION>, <NEW_VERSION>, <RUN_ID>," >&2
+  echo "       <SHORT_SHA>, <YYYY-MM-DD> must all be replaced with real values." >&2
   exit 1
 fi
 
