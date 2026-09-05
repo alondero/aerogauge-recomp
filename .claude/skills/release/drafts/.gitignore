@@ -1,0 +1,8 @@
+# Self-cleaning .gitignore for the release-skill drafts directory.
+# Anything dropped here is a release-notes draft that ships via
+# update-notes.sh and should never be committed to the repo. The
+# pattern below ignores every file in this directory except this
+# .gitignore itself, so the directory can exist locally without
+# leaking drafts into commits.
+*
+!.gitignore

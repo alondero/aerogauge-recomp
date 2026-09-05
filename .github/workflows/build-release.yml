@@ -40,6 +40,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # Pin checkout to the immutable tag — defense in depth alongside
+          # the dispatcher's `--ref "${VERSION}"` argument. Guarantees the
+          # compiled binary matches the tagged source even if someone lands
+          # a commit on main between tag creation and dispatch.
+          ref: ${{ inputs.tag }}
           submodules: recursive
 
       - name: Install build dependencies
@@ -125,6 +130,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # Pin checkout to the immutable tag — defense in depth alongside
+          # the dispatcher's `--ref "${VERSION}"` argument. Guarantees the
+          # compiled binary matches the tagged source even if someone lands
+          # a commit on main between tag creation and dispatch.
+          ref: ${{ inputs.tag }}
           submodules: recursive
 
       - name: Install MinGW-w64 GCC, CMake, Ninja
