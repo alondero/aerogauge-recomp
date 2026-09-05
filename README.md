@@ -1,5 +1,7 @@
 # AeroGauge: Recompiled
 
+![AeroGauge: Recompiled running on PC](docs/aerogaugerecomp.jfif)
+
 A native PC port of **AeroGauge** (Nintendo 64, USA) built with
 [N64Recomp](https://github.com/N64Recomp/N64Recomp) static recompilation, running on the
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) (`ultramodern` +
