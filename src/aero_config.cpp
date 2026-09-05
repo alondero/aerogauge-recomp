@@ -19,6 +19,7 @@ namespace {
 
 constexpr const char* kAppFolderName = "AeroGaugeRecomp";
 constexpr const char* kGraphicsFile = "graphics.json";
+constexpr const char* kEnhancementsFile = "enhancements.json";
 
 // Window-size keys live in the same graphics.json (extra keys alongside the
 // GraphicsConfig fields); 16:9 default so AspectRatio::Expand widens on first run.
@@ -58,6 +59,10 @@ std::atomic<float> g_draw_distance_scale{100.0f};
 // visibility window (the large-scale pop-in that the extended far plane exposed;
 // see src/aero_full_track.cpp). Enhancement default-on like the far plane.
 std::atomic_bool g_full_track{true};
+
+// Accelerator-only Boost Start and player-directed Turbo assist. This changes
+// handling, so it is explicitly opt-in and defaults to the original game.
+std::atomic_bool g_easy_turbo_boost{false};
 
 // The native menu runs on the main SDL thread. Retaining a local snapshot means
 // it never has to read ultramodern's reference-returning getter while RT64 is
@@ -198,6 +203,36 @@ std::filesystem::path graphics_json_path() {
     return aero::config::app_config_dir() / kGraphicsFile;
 }
 
+std::filesystem::path enhancements_json_path() {
+    if (const char* p = std::getenv("AERO_ENHANCEMENTS_CONFIG")) {
+        return std::filesystem::path{p};
+    }
+    return aero::config::app_config_dir() / kEnhancementsFile;
+}
+
+ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_turbo) {
+    std::ifstream in{path};
+    if (!in.good()) return ReadResult::Missing;
+    try {
+        nlohmann::json j;
+        in >> j;
+        if (!j.is_object()) return ReadResult::Unparseable;
+        from_or_default(j, "easy_turbo_boost", easy_turbo);
+        return ReadResult::Ok;
+    } catch (const nlohmann::json::exception& e) {
+        std::fprintf(stderr, "[config] %s unparseable (%s); using defaults IN MEMORY\n",
+                     path.string().c_str(), e.what());
+        return ReadResult::Unparseable;
+    }
+}
+
+bool write_graphics_json(const std::filesystem::path& path, const nlohmann::json& j);
+
+void save_enhancements(bool easy_turbo) {
+    const std::filesystem::path path = enhancements_json_path();
+    write_graphics_json(path, nlohmann::json{{"easy_turbo_boost", easy_turbo}});
+}
+
 bool write_graphics_json(const std::filesystem::path& path, const nlohmann::json& j) {
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
@@ -313,6 +348,13 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
         save_graphics(cfg);
     }
     std::fprintf(stderr, "[config] graphics config: %s\n", path.string().c_str());
+
+    bool easy_turbo = false;
+    const std::filesystem::path enhancements_path = enhancements_json_path();
+    const ReadResult enhancements_result = read_enhancements_file(enhancements_path, easy_turbo);
+    g_easy_turbo_boost.store(easy_turbo);
+    if (enhancements_result != ReadResult::Unparseable) save_enhancements(easy_turbo);
+    std::fprintf(stderr, "[config] enhancements config: %s\n", enhancements_path.string().c_str());
     return cfg;
 }
 
@@ -437,6 +479,28 @@ bool full_track() {
 void set_full_track(bool enabled) {
     g_full_track.store(enabled);
     save_graphics_updates({{"full_track", enabled}});
+}
+
+// AERO_EASY_TURBO=1/0 overrides the JSON key for A/B capture runs (0 = original
+// button sequences only). Read from the P1 semantic-control hook.
+bool easy_turbo_boost() {
+    static const int env_override = []() {
+        const char* v = std::getenv("AERO_EASY_TURBO");
+        if (v == nullptr || v[0] == '\0') return -1;
+        return v[0] == '1' ? 1 : 0;
+    }();
+    if (env_override >= 0) return env_override != 0;
+    return g_easy_turbo_boost.load();
+}
+
+void set_easy_turbo_boost(bool enabled) {
+    g_easy_turbo_boost.store(enabled);
+    save_enhancements(enabled);
+}
+
+// C-linkage bridge for src/aero_turbo_boost.c (plain C TU).
+extern "C" int aero_easy_turbo_enabled(void) {
+    return easy_turbo_boost() ? 1 : 0;
 }
 
 // AERO_HARNESS_LOG=1 enables the periodic hot-thread diagnostics (see aero_config.h).

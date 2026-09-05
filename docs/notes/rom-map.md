@@ -76,6 +76,48 @@ Exit detector `func_800169E0` (called per frame from the race chain): maps STATU
 requested-phase word `0x8013FF8C` — 1 → phase 5, any other nonzero → phase 6 (the ~exit
 walk observed as phase 6 → scene 6 results).
 
+### Turbo / Boost Start — corrected 2026-09-03 (src/aero_turbo_boost.c)
+
+The earlier investigation misidentified two unrelated paths as the player mechanics:
+`func_80016890`'s START check skips the race introduction/countdown, and the uncalled
+`func_8000877C` reads controller 2 for a camera/debug helper. A live breakpoint also
+showed zero calls to `func_80012EFC` during a normal warped race. Do not use those paths
+for player turbo or Boost Start.
+
+The real P1 input chain is:
+
+| Function/address | Role |
+|---|---|
+| `func_8005C750` | P1 car-input callback; reads controller index 0 and calls `func_8005C9E4` |
+| `func_8005C9E4` | maps the user's configured physical buttons to semantic controls |
+| `func_8005C750 + 0x58` (`0x8005C7A8`) | safe post-map hook seam; `$s0`/`ctx->r16` is the P1 car |
+| car `+0x40`, high byte | semantic accelerator `0x80`, brake `0x40`, drift `0x20` |
+| car `+0x40`, bits 6..11 | horizontal control encoded as `turn + 20` (`-20..20`) |
+| car `+0x57/+0x58/+0x59/+0x5A` | current accelerator, accelerator counter, drift counter, current brake |
+| car `+0x34 & 0x2000` | turbo-ready drift state observed immediately before the successful release/re-press |
+| car `+0x34 & 0x20000000` just after GO | ROM-owned state bit that signals Boost Start in the launch window; it is reused by later driving states |
+| car `+0x55` | ROM-owned turbo timer; becomes `10` when the maneuver succeeds |
+
+The opt-in assist does not invent drift input: the player must hold semantic
+accelerator+drift during a hard turn. When car flag `0x2000` is present, it releases
+all three action bits for two input ticks, then presses accelerator. On the next
+callback the unmodified game has set car `+0x55`
+to `10`, increases thrust from roughly `1.17` to `4.68`, and raises its heat value.
+
+The countdown step is the word at `0x8013FF38` (`0/1/2/3`) and the race phase is
+`0x8013FF88` (`1` setup, `2` countdown, `3` racing). A live assisted-vs-original
+comparison showed that releasing brake at step 2 was too early and produced byte-for-byte
+identical car state to accelerator alone. The successful timing holds semantic brake
+alongside the player's accelerator through step 2 (SET), then releases it at step 3.
+Within six P1 input callbacks the ROM sets car flag `0x20000000` and the craft pulls
+decisively ahead of the unassisted control run; accelerator alone did not set it during
+the first 24 callbacks. The bit is reused during later hard steering, so the automated
+harness only classifies it as Boost Start during the first 12 callbacks after GO. The
+same post-map seam performs the race maneuver. Because it operates on semantic controls,
+custom bindings work and the ROM remains responsible for awarding both boosts. The
+setting is disabled by default and persisted in `enhancements.json` (or overridden at
+process start with `AERO_EASY_TURBO=1`); it is deliberately not part of `graphics.json`.
+
 ## Music / audio — SOLVED 2026-07-16 (PR #11); all verified live in the port
 
 Two engines; confusing them wasted sessions:

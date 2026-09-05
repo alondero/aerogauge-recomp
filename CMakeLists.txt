@@ -157,6 +157,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                    # 2D dispatcher func_80022408 via [[patches.hook]]
         src/aero_savestate.c   # developer save-state (#17): F7/F8 / AERO_STATE_LOAD RDRAM
                                # snapshot; tick hooked one instruction into func_80015C8C
+        src/aero_turbo_boost.c # accelerator-only Boost Start + assisted race Turbo;
+                               # hooked after P1's configured controls are mapped
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
@@ -193,6 +195,19 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)
+
+    # Semantic-control state machine (src/aero_turbo_boost.c). Plain C with a
+    # stubbed aero_easy_turbo_enabled(); no ROM needed.
+    add_executable(test_turbo_boost tests/test_turbo_boost.cpp src/aero_turbo_boost.c)
+    target_include_directories(test_turbo_boost PRIVATE ${N64MR}/N64Recomp/include)
+    add_test(NAME turbo_boost_gate COMMAND test_turbo_boost)
+    if(WIN32)
+        add_test(NAME turbo_boost_e2e
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_turbo_boost_e2e.ps1)
+        set_tests_properties(turbo_boost_e2e PROPERTIES
+            TIMEOUT 180 LABELS "e2e" SKIP_RETURN_CODE 77)
+    endif()
 
     # The native menu delegates all setting changes to these port-owned live
     # configuration helpers. Test the snapshot, atomic enhancement knobs, and
