@@ -433,6 +433,12 @@ static constexpr int   PAD_CSTICK_THRESH = 12000;  // right-stick -> C-buttons
 
 static uint16_t g_held_buttons = 0;                 // AERO_MODERN_INPUT env override, OR'd in
 static int8_t   g_held_sx = 0, g_held_sy = 0;       // AERO_MODERN_INPUT stick override (harness)
+// AERO_MODERN_INPUT_AFTER=STARTVI:BTNHEX:SX:SY replaces the held harness input at a
+// deterministic VI. This supplies the second leg of end-to-end race tests (for example,
+// launch straight and begin a hard turn after GO) without timing input from a human.
+// Packed so the polling thread observes one coherent replacement rather than
+// racing three independent fields. Layout: start VI (32), buttons (16), sx (8), sy (8).
+static std::atomic<uint64_t> g_after_input_packed{UINT64_MAX};
 // AERO_INPUT_PULSE=BTNHEX:PERIOD:DUTY[:STARTVI] -- periodic button pulse for headless menu
 // navigation (a held AERO_MODERN_INPUT mask is one EDGE forever, so it can advance at most one
 // menu; a pulse presses/releases every PERIOD VIs for DUTY VIs, walking a whole menu chain).
@@ -595,17 +601,23 @@ static void input_poll_stub() {}
 static bool input_get_input(int controller_num, uint16_t* buttons, float* x, float* y) {
     if (controller_num != 0) return false;
     uint32_t snap = g_input_snapshot.load(std::memory_order_relaxed);
-    uint16_t b  = (uint16_t)(snap & 0xFFFF) | g_held_buttons;   // env mask always OR'd (harness knob)
+    const int vi = g_vis.load(std::memory_order_relaxed);
+    const uint64_t after = g_after_input_packed.load(std::memory_order_relaxed);
+    const int after_vi = (int32_t)(after & 0xFFFFFFFFu);
+    const bool use_after = after_vi >= 0 && vi >= after_vi;
+    const uint16_t held_buttons = use_after ? (uint16_t)(after >> 32) : g_held_buttons;
+    const int8_t held_sx = use_after ? (int8_t)(after >> 48) : g_held_sx;
+    const int8_t held_sy = use_after ? (int8_t)(after >> 56) : g_held_sy;
+    uint16_t b  = (uint16_t)(snap & 0xFFFF) | held_buttons;     // env mask always OR'd (harness knob)
     if (g_pulse_period > 0) {                                   // scripted pulse (harness knob)
-        int vi = g_vis.load(std::memory_order_relaxed);
         if (vi >= g_pulse_start && ((vi - g_pulse_start) % g_pulse_period) < g_pulse_duty
             && (g_pulse_count == 0 || (vi - g_pulse_start) / g_pulse_period < g_pulse_count))
             b |= g_pulse_buttons;
     }
     int8_t   sx = (int8_t)((snap >> 16) & 0xFF);
     int8_t   sy = (int8_t)((snap >> 24) & 0xFF);
-    if (sx == 0) sx = g_held_sx;                                // env stick fills in when live stick idle
-    if (sy == 0) sy = g_held_sy;
+    if (sx == 0) sx = held_sx;                                  // env stick fills in when live stick idle
+    if (sy == 0) sy = held_sy;
     if (buttons) *buttons = b;
     // ultramodern does stick_x = (int8_t)(127 * x), so divide by 127 (NOT N64_STICK_MAX) to
     // preserve our authentic +-80 range through that re-scale instead of re-expanding to +-127.
@@ -733,6 +745,26 @@ int main(int argc, char** argv) {
             if (end != nullptr && *end == ':') {
                 g_held_sy = (int8_t)std::strtol(end + 1, nullptr, 10);
             }
+        }
+    }
+    if (const char* in = std::getenv("AERO_MODERN_INPUT_AFTER")) {
+        // Format: STARTVI:BTNHEX:SX:SY. At STARTVI, atomically replace all three
+        // AERO_MODERN_INPUT fields. Intended for deterministic headless test scenarios.
+        int start_vi = -1, sx = 0, sy = 0;
+        unsigned buttons = 0;
+        char trailing = '\0';
+        if (std::sscanf(in, "%d:%x:%d:%d%c", &start_vi, &buttons, &sx, &sy,
+                        &trailing) == 4 && start_vi >= 0 && buttons <= 0xFFFFu &&
+            sx >= -127 && sx <= 127 && sy >= -127 && sy <= 127) {
+            const uint64_t packed = (uint32_t)start_vi |
+                                    ((uint64_t)(uint16_t)buttons << 32) |
+                                    ((uint64_t)(uint8_t)sx << 48) |
+                                    ((uint64_t)(uint8_t)sy << 56);
+            g_after_input_packed.store(packed, std::memory_order_release);
+            std::fprintf(stderr, "[probe] input after: vi=%d buttons=%04x stick=%d,%d\n",
+                         start_vi, buttons, sx, sy);
+        } else {
+            std::fprintf(stderr, "[probe] ignoring malformed AERO_MODERN_INPUT_AFTER=%s\n", in);
         }
     }
     if (const char* pu = std::getenv("AERO_INPUT_PULSE")) {

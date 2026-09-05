@@ -88,6 +88,7 @@ enum Command : UINT {
     CMD_TEXTURE_PACK_CLEAR,
     CMD_TEXTURE_DUMP_DIRECTORY,
     CMD_TEXTURE_DUMP_CLEAR,
+    CMD_EASY_TURBO,
 };
 
 constexpr std::array<UINT, 4> kSupersamplingCommands{CMD_SS_1X, CMD_SS_2X, CMD_SS_3X, CMD_SS_4X};
@@ -220,6 +221,7 @@ void refresh() {
     const float draw_distance = aero::config::draw_distance_scale();
     radio(g_draw_distance_menu, CMD_DRAW_ORIGINAL, CMD_DRAW_UNLIMITED,
           draw_distance_command(draw_distance));
+    check(g_enhancements_menu, CMD_EASY_TURBO, aero::config::easy_turbo_boost());
     if (g_hwnd != nullptr) DrawMenuBar(g_hwnd);
 }
 
@@ -312,6 +314,7 @@ void dispatch(UINT command) {
             break;
         }
         case CMD_TEXTURE_DUMP_CLEAR: aero::config::set_texture_dump_dir({}); break;
+        case CMD_EASY_TURBO: aero::config::set_easy_turbo_boost(!aero::config::easy_turbo_boost()); break;
         default: apply_graphics_command(command); break;
     }
     refresh();
@@ -378,6 +381,7 @@ void attach(SDL_Window* window) {
     append_item(draw_distance, CMD_DRAW_10X, "10x");
     append_item(draw_distance, CMD_DRAW_100X, "100x");
     append_item(draw_distance, CMD_DRAW_UNLIMITED, "Unlimited");
+    append_item(enhancements, CMD_EASY_TURBO, "Easy Turbo + Boost Start");
     HMENU texture_pack = append_submenu(enhancements, "Texture pack (restart required)");
     append_item(texture_pack, CMD_TEXTURE_PACK_DIRECTORY, "Choose directory...");
     append_item(texture_pack, CMD_TEXTURE_PACK_ARCHIVE, "Choose .rtz archive...");

@@ -47,14 +47,18 @@ int main() {
     const auto directory = std::filesystem::temp_directory_path() /
                            ("aero-live-config-test-" + std::to_string(unique));
     const auto config_path = directory / "graphics.json";
+    const auto enhancements_path = directory / "enhancements.json";
     set_environment("AERO_GRAPHICS_CONFIG", config_path.string().c_str());
+    set_environment("AERO_ENHANCEMENTS_CONFIG", enhancements_path.string().c_str());
     set_environment("AERO_FOG_MATCH_1P", nullptr);
     set_environment("AERO_SKY_MATCH_1P", nullptr);
     set_environment("AERO_DRAW_DISTANCE_SCALE", nullptr);
     set_environment("AERO_FULL_TRACK", nullptr);
+    set_environment("AERO_EASY_TURBO", nullptr);
 
     auto cfg = aero::config::load_and_apply_graphics();
     expect(std::filesystem::exists(config_path), "first load creates graphics.json");
+    expect(std::filesystem::exists(enhancements_path), "first load creates enhancements.json");
     expect(cfg.ar_option == ultramodern::renderer::AspectRatio::Expand,
            "enhancement-oriented aspect default is preserved");
 
@@ -82,6 +86,7 @@ int main() {
     aero::config::set_widescreen_sky_match(false);
     aero::config::set_draw_distance_scale(10.0f);
     aero::config::set_full_track(false);
+    aero::config::set_easy_turbo_boost(true);
     aero::config::set_window_size({1920, 1080});
     aero::config::set_texture_pack_path("menu-texture-pack");
     aero::config::set_texture_dump_dir("menu-texture-dump");
@@ -90,6 +95,7 @@ int main() {
     expect(aero::config::draw_distance_scale() == 10.0f,
            "draw-distance menu selection updates live");
     expect(!aero::config::full_track(), "full-track menu toggle updates live");
+    expect(aero::config::easy_turbo_boost(), "turbo assist menu toggle updates live");
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
            "window-size menu selection updates live");
     expect(aero::config::texture_pack_path() == "menu-texture-pack" &&
@@ -98,6 +104,7 @@ int main() {
 
     aero::config::update_saved_window_mode(ultramodern::renderer::WindowMode::Fullscreen);
     const nlohmann::json persisted = read_json(config_path);
+    const nlohmann::json persisted_enhancements = read_json(enhancements_path);
     expect(persisted.at("wm_option") == "Fullscreen", "fullscreen selection persists");
     expect(persisted.at("msaa_option") == "MSAA4X", "graphics selection persists");
     expect(persisted.at("developer_mode") == true, "developer-mode menu selection persists");
@@ -110,6 +117,10 @@ int main() {
     expect(persisted.at("draw_distance_scale") == 10.0f,
            "draw-distance menu selection persists");
     expect(persisted.at("full_track") == false, "full-track menu toggle persists");
+    expect(!persisted.contains("easy_turbo_boost"),
+           "turbo assist is not serialized into graphics.json");
+    expect(persisted_enhancements.at("easy_turbo_boost") == true,
+           "turbo assist selection persists in enhancements.json");
     expect(persisted.at("window_width") == 1920 && persisted.at("window_height") == 1080,
            "window-size menu selection persists");
     expect(persisted.at("texture_dump") == "menu-texture-dump",
@@ -125,10 +136,14 @@ int main() {
            "widescreen toggles survive a reload through graphics.json");
     expect(aero::config::draw_distance_scale() == 10.0f && !aero::config::full_track(),
            "draw-distance and full-track selections survive a reload");
+    expect(aero::config::easy_turbo_boost(),
+           "turbo assist selection survives a reload through enhancements.json");
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
            "window size survives a reload through graphics.json");
 
     std::error_code error;
     std::filesystem::remove_all(directory, error);
+    set_environment("AERO_GRAPHICS_CONFIG", nullptr);
+    set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
     return failures == 0 ? 0 : 1;
 }

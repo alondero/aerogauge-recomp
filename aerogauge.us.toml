@@ -78,3 +78,13 @@ text = "extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_h
 func = "func_80022408"
 before_vram = 0x80022680
 text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"
+
+# Player-directed Boost Start + race Turbo assist (src/aero_turbo_boost.c).
+# Hooked in the real P1 vehicle-input callback immediately after func_8005C9E4
+# maps the configured physical buttons/stick into semantic car controls at +0x40.
+# This preserves custom bindings and lets the ROM award both mechanics normally.
+# Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=0.
+[[patches.hook]]
+func = "func_8005C750"
+before_vram = 0x8005C7A8
+text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
