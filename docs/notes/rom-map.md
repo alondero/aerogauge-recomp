@@ -200,6 +200,29 @@ loader (not music); `func_80032BB0` = Controller Pak / ghost service (`func_8006
 - RT64's F3DEX `G_CULLDL` (0xBE) is a TODO no-op, so RSP chunk culls never fire in the port.
 - RDRAM `0x80700000+` is safe scratch (game never allocates above ~`0x803C87xx`).
 
+## Race announcement draw ownership (2026-09-08)
+
+Derived by disassembling the USA ROM with `tools/rom/disasm.py` and decoding its
+font descriptors and strings. The widescreen pass records these original DL ranges
+and keeps their texrects centred as a group:
+
+- `func_8001AB94` draws the central sprite at HUD object +0xFC (countdown/announcements).
+  Entry cursor is `*a0`; at `0x8001AC54` the final cursor remains in `sp+0x3C`.
+- `func_8001AC64` draws `WRONG WAY` (string `0x80096C98`, font `0x8008C540`)
+  plus the direction sprite. Entry `*a0`; exit `0x8001ADB0`, cursor `sp+0x3C`.
+- `func_80019508` selects `TIME OVER`, `GAME OVER`, `RETIRE`, or `TIME UP`
+  (`0x80096BA8..6BC8`). Entry `*a0`; exit `0x8001961C`, cursor `sp+0x24`.
+- Mixed timer handler `func_8001A020`: only its announcement tails are centred.
+  Normal lap announcements begin at the shared `0x8001A390` (the zero-lap path
+  branches directly here from `0x8001A258`, skipping `A38C`); time-trial lap/time
+  announcements begin at `0x8001A5A0`. Both end at `0x8001A724`, cursor `sp+0x94`.
+  Steady timer digits/labels are outside these ranges and retain their right pin.
+- `func_8001024C` passes notification origin `(116,131)` to `func_80010C88`,
+  stored at HUD object +0x130/+0x132. `FINAL LAP` is string `0x80096C28`, drawn
+  by `func_8001F790` with font `0x8008C31C` (14x10 glyphs). Individual letters
+  cross the x=168 right-pin threshold, explaining the split. `N LAPS LEFT` uses
+  three separate string calls, so grouping each string alone is insufficient.
+
 ## Key libultra globals (routing map lives in gen_syms_toml.py comments)
 
 | Global | Address |

@@ -197,6 +197,37 @@ frame shows the HUD pinned flush to the widescreen edges, GO identical to before
 `AERO_WS_TRACE` (kept, env-gated): 1 = per-frame race-scene line (phase, countdown step,
 fade bytes, gate, rect classification counts); 2 = adds per-rect dumps every 25th frame.
 
+## Central race messages (2026-09-08)
+
+The per-rectangle thresholds split `FINAL LAP`: its original x=116 text starts
+centred, while later 14-pixel glyphs cross x=168 and move right. Similar failures
+affect other glyph strings and tiled central sprites. Message ownership is now
+recorded at ROM draw boundaries and consulted by both retag passes. Every part
+of each central message stays in its original centred layout; neighbouring
+edge HUD elements still pin normally. No new GBI commands are needed for the
+ownership metadata, and the existing scene/phase gate and kill-switch still apply.
+
+Covered ranges: central countdown/announcement sprites; `WRONG WAY` including its
+arrow; `TIME OVER`/`GAME OVER`/`RETIRE`/`TIME UP`; and the mixed timer handler's
+`FINAL LAP`, multi-call `N LAPS LEFT`, and time-trial lap ordinal/time announcements.
+ROM addresses, stack cursor slots, and branch convergence are recorded in
+`rom-map.md`. The pre-race ticker remains excluded by the countdown gate; the
+short `REPLAY` label at x=32 remains wholly left of the threshold.
+
+`tests/test_hud_messages.c` exercises the actual native re-emitter with ROM-derived
+Final Lap geometry plus multi-range/multi-part message fixtures. It checks effective
+origins, texture payload preservation, neighbouring HUD anchors, frame reset, and
+safe handling of incomplete/overflowed ownership metadata.
+
+Validation: both HUD host tests pass with Release assertions enabled and
+`-Wall -Wextra -Werror`. Regenerated/recompiled the game and linked a fresh archive;
+a live RT64 widescreen capture confirms the complete `FINAL LAP` string stays
+together while surrounding gauges and timer remain edge-pinned. The debugger
+triggered the announcement by setting the ROM lap byte and its blink timer at
+the dispatcher entry; no diagnostic game-state writes are in the shipped code.
+Other message families were checked through ROM draw-path review and regression
+fixtures, rather than individual live captures.
+
 ## Remaining follow-ups
 
 - **Rival craft markers on the minimap** (multi-craft GP races): five white 2-triangle

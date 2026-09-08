@@ -192,6 +192,11 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_hud_shift_scale PRIVATE m)
     endif()
     add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
+    add_executable(test_hud_messages tests/test_hud_messages.c)
+    target_include_directories(test_hud_messages PRIVATE
+        ${N64MR}/N64Recomp/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    add_test(NAME hud_messages COMMAND test_hud_messages)
     add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)
