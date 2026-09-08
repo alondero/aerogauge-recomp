@@ -98,11 +98,20 @@ The real P1 input chain is:
 | car `+0x34 & 0x20000000` just after GO | ROM-owned state bit that signals Boost Start in the launch window; it is reused by later driving states |
 | car `+0x55` | ROM-owned turbo timer; becomes `10` when the maneuver succeeds |
 
-The opt-in assist does not invent drift input: the player must hold semantic
-accelerator+drift during a hard turn. When car flag `0x2000` is present, it releases
-all three action bits for two input ticks, then presses accelerator. On the next
-callback the unmodified game has set car `+0x55`
-to `10`, increases thrust from roughly `1.17` to `4.68`, and raises its heat value.
+The opt-in race assist now repurposes the configured drift button as Turbo.
+A rising edge awards the boost without steering, drift readiness, or accelerator
+release/re-press; the hook consumes semantic drift and preserves other controls.
+Held buttons do not repeat; presses during active turbo are consumed, not queued.
+Countdown/disabled input also updates the edge latch to avoid a press at GO or
+when toggling the option.
+
+ROM-byte disassembly of `0x800584B8..0x800584D4` identifies the award:
+clear pending flag `0x1000`, set car `+0x56 = 5`, and copy the byte at
+`*(car+0x20)+0x28` (craft settings) to car `+0x55`. The assist mirrors these
+writes, rather than hardcoding a duration of 10. At `0x8005AE00..0x8005AE68`,
+the original update decrements that timer, multiplies thrust by four, adds
+craft setting `+0x20` to heat at car `+0x22C`, and cancels turbo and sets heat
+to 500 when heat exceeds 80. This update remains unmodified.
 
 The countdown step is the word at `0x8013FF38` (`0/1/2/3`) and the race phase is
 `0x8013FF88` (`1` setup, `2` countdown, `3` racing). A live assisted-vs-original
@@ -113,8 +122,8 @@ Within six P1 input callbacks the ROM sets car flag `0x20000000` and the craft p
 decisively ahead of the unassisted control run; accelerator alone did not set it during
 the first 24 callbacks. The bit is reused during later hard steering, so the automated
 harness only classifies it as Boost Start during the first 12 callbacks after GO. The
-same post-map seam performs the race maneuver. Because it operates on semantic controls,
-custom bindings work and the ROM remains responsible for awarding both boosts. The
+same post-map seam awards button Turbo. Semantic controls preserve custom bindings;
+the ROM still awards Boost Start and updates both boosts. The
 setting is disabled by default and persisted in `enhancements.json` (or overridden at
 process start with `AERO_EASY_TURBO=1`); it is deliberately not part of `graphics.json`.
 

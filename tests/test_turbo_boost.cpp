@@ -86,55 +86,105 @@ int main(void) {
     tick();
     assert(actions() == 0);
 
-    // In the race, ordinary steering remains untouched. A hard turn alone does
-    // not steal drift control; the player must explicitly hold drift.
-    reset_guest(3, 3, ACCEL, 0);
+    // A press in a straight line, with no accelerator or ready flag, awards
+    // the craft-specific turbo and consumes the drift action.
+    reset_guest(3, 3, 0, 0);
+    w32(CAR + 0x20u, 0x80100000u);
+    w8(0x80100028u, 13);
     tick();
-    assert(actions() == ACCEL);
-
-    reset_guest(3, 3, ACCEL, 20);
+    w8(CAR + 0x40u, DRIFT);
     tick();
-    assert(actions() == ACCEL);
-
-    reset_guest(3, 3, ACCEL | DRIFT, 20);
-    tick();
-    assert(actions() == (ACCEL | DRIFT));
-
-    // Bit 0x2000 in car+0x34 is the ROM-observed turbo-ready drift state. The
-    // assist performs the real two-tick release followed by an accelerator
-    // re-press; AeroGauge itself remains responsible for awarding the turbo.
-    w32(CAR + 0x34u, 0x00002000u);
-    w8(CAR + 0x40u, ACCEL | DRIFT);
-    tick();
+    assert(r8(CAR + 0x55u) == 13);
+    assert(r8(CAR + 0x56u) == 5);
     assert(actions() == 0);
 
-    w8(CAR + 0x40u, ACCEL | DRIFT);
-    tick();
-    assert(actions() == 0);
-
-    w8(CAR + 0x40u, ACCEL | DRIFT);
-    tick();
-    assert(actions() == ACCEL);
-
-    // One assist cycle is enough for this corner. Keeping the stick and drift
-    // held does not immediately chain another boost or force another release.
-    w8(CAR + 0x40u, ACCEL | DRIFT);
-    tick();
-    assert(actions() == (ACCEL | DRIFT));
-
-    // Releasing drift re-arms the next deliberate corner attempt.
+    // Holding the button never extends or repeats a turbo, even after expiry.
+    for (int timer = 12; timer >= 0; --timer) {
+        w8(CAR + 0x55u, (uint8_t)timer);
+        w8(CAR + 0x40u, ACCEL | DRIFT);
+        tick();
+        assert(r8(CAR + 0x55u) == timer);
+        assert(actions() == ACCEL);
+    }
+    // Releasing and pressing again re-arms it, even when steering hard.
     w8(CAR + 0x40u, ACCEL);
     tick();
-    w32(CAR + 0x34u, 0);
+    set_turn(-20);
+    w8(CAR + 0x40u, ACCEL | BRAKE | DRIFT);
+    const uint16_t other_controls = r16(CAR + 0x40u) & ~0x2000u;
+    tick();
+    assert(r8(CAR + 0x55u) == 13);
+    assert(r16(CAR + 0x40u) == other_controls);
+
+    // A press during an active turbo is consumed, not queued until expiry.
+    w8(CAR + 0x40u, ACCEL);
+    tick();
     w8(CAR + 0x40u, ACCEL | DRIFT);
     tick();
-    assert(actions() == (ACCEL | DRIFT));
+    w8(CAR + 0x55u, 0);
+    w8(CAR + 0x40u, ACCEL | DRIFT);
+    tick();
+    assert(r8(CAR + 0x55u) == 0);
+
+    // Steering and the old ready flag alone cannot trigger an assisted boost.
+    w32(CAR + 0x34u, 0x2000u);
+    w8(CAR + 0x40u, ACCEL);
+    set_turn(20);
+    tick();
+    assert(r8(CAR + 0x55u) == 0);
+    assert(actions() == ACCEL);
+
+    // A button held across GO must be released before it can award race turbo.
+    reset_guest(2, 3, ACCEL | DRIFT, 0);
+    w32(CAR + 0x20u, 0x80100000u);
+    w8(0x80100028u, 10);
+    tick();
+    w32(RACE_PHASE, 3);
+    w8(CAR + 0x40u, ACCEL | DRIFT);
+    tick();
+    assert(r8(CAR + 0x55u) == 0);
+    w8(CAR + 0x40u, ACCEL);
+    tick();
+    w8(CAR + 0x40u, ACCEL | DRIFT);
+    tick();
+    assert(r8(CAR + 0x55u) == 10);
 
     // The original behaviour is a strict no-op when the enhancement is off.
     reset_guest(1, 0, ACCEL, 0);
     g_enabled = 0;
     tick();
     assert(actions() == ACCEL);
+
+    // Disabling restores all race controls and does not award Turbo. Enabling
+    // while that button remains held must not synthesize a new press.
+    reset_guest(3, 3, ACCEL | DRIFT, 20);
+    w32(CAR + 0x20u, 0x80100000u);
+    w8(0x80100028u, 10);
+    tick();
+    assert(actions() == (ACCEL | DRIFT));
+    assert(r8(CAR + 0x55u) == 0);
+    g_enabled = 1;
+    tick();
+    assert(r8(CAR + 0x55u) == 0);
+    assert(actions() == ACCEL);
+
+    // Only the native award fields change: heat is left to the ROM and
+    // unrelated flags survive clearing its pending-award bit.
+    w8(CAR + 0x40u, ACCEL);
+    tick();
+    w32(CAR + 0x34u, 0xA0001000u);
+    w32(CAR + 0x22Cu, 0x42480000u); // heat = 50
+    w8(CAR + 0x40u, DRIFT);
+    tick();
+    assert(r8(CAR + 0x55u) == 10);
+    assert(*(uint32_t*)(rdram + off(CAR + 0x34u)) == 0xA0000000u);
+    assert(*(uint32_t*)(rdram + off(CAR + 0x22Cu)) == 0x42480000u);
+
+    // Outside racing, the button retains its original meaning.
+    reset_guest(4, 3, DRIFT, 0);
+    tick();
+    assert(actions() == DRIFT);
+    assert(r8(CAR + 0x55u) == 0);
 
     free(rdram);
     puts("turbo_boost: all assertions passed");

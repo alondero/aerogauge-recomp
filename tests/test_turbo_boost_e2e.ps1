@@ -35,7 +35,7 @@ try {
     $env:AERO_HEADLESS = "1"
     $env:AERO_WARP = "1:1"
     $env:AERO_MODERN_INPUT = "8000:0:0" # physical A, straight launch
-    $env:AERO_MODERN_INPUT_AFTER = "1700:a000:80:0" # A+Z and hard right in race
+    $env:AERO_MODERN_INPUT_AFTER = "1700:a000:0:0" # A+Z, straight: no drift setup or steering
     $env:AERO_MODERN_MAX_VIS = "2600"
     $positive = Invoke-TurboScenario "1" "enabled"
     $negative = Invoke-TurboScenario "0" "disabled"
@@ -45,7 +45,7 @@ try {
         -ErrorAction SilentlyContinue
 }
 
-if (-not $positive.Contains("[turbo-harness] PASS start_boost=1 race_turbo=1")) {
+if (-not $positive.Contains("[turbo-harness] PASS start_boost=1 race_turbo=1 heat=1")) {
     Write-Host "FAIL: enabled real-ROM run did not observe both boosts"
     exit 1
 }
