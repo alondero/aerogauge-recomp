@@ -79,6 +79,58 @@ func = "func_80022408"
 before_vram = 0x80022680
 text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"
 
+# Central race announcements. Capture their original DL ranges, without inserting
+# commands while the ROM still owns stack-local cursors. End hooks run after the
+# final cursor store and before register restores (ROM-disassembled).
+[[patches.hook]]
+func = "func_8001AB94"
+before_vram = 0x8001AB94
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));"
+
+[[patches.hook]]
+func = "func_8001AB94"
+before_vram = 0x8001AC54
+text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x3C, ctx->r29));"
+
+# WRONG WAY text and arrow sprite.
+[[patches.hook]]
+func = "func_8001AC64"
+before_vram = 0x8001AC64
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));"
+
+[[patches.hook]]
+func = "func_8001AC64"
+before_vram = 0x8001ADB0
+text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x3C, ctx->r29));"
+
+# TIME OVER / GAME OVER / RETIRE / TIME UP.
+[[patches.hook]]
+func = "func_80019508"
+before_vram = 0x80019508
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));"
+
+[[patches.hook]]
+func = "func_80019508"
+before_vram = 0x8001961C
+text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x24, ctx->r29));"
+
+# Only the announcement tails of the mixed timer handler: FINAL LAP / N LAPS
+# LEFT, and time-trial lap ordinal + time. All early exits converge at A724.
+[[patches.hook]]
+func = "func_8001A020"
+before_vram = 0x8001A390
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0x94, ctx->r29));"
+
+[[patches.hook]]
+func = "func_8001A020"
+before_vram = 0x8001A5A0
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0x94, ctx->r29));"
+
+[[patches.hook]]
+func = "func_8001A020"
+before_vram = 0x8001A724
+text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x94, ctx->r29));"
+
 # Accelerator-only Boost Start + button-operated race Turbo (src/aero_turbo_boost.c).
 # Hooked in the real P1 vehicle-input callback immediately after func_8005C9E4
 # maps the configured physical buttons/stick into semantic car controls at +0x40.
