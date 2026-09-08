@@ -9,8 +9,9 @@
 // boundary separates them. Instead the whole dispatcher is bracketed (entry latches the
 // DL write cursor, the epilogue hook post-processes what the frame actually emitted):
 //   1. texrects are re-emitted with RT64 rect-align + wide-scissor brackets inserted
-//      around runs of same-anchor rects, each rect classified by its own coordinates
-//      (aero_hud_widescreen.h; measured thresholds from the mode-4 race capture); and
+//      around runs of same-anchor rects. Central message draw ranges retain their
+//      original alignment; other rects classify by coordinates (aero_hud_widescreen.h,
+//      measured thresholds from the mode-4 race capture); and
 //   2. the speedometer needle -- matrix-rotated 3D geometry a rect-align cannot carry --
 //      gets its modelview translate.x shifted to track the pinned dial ring.
 // At 4:3 / non-Expand RT64 leaves tagged rects put and the needle scale is 0, so the
@@ -205,6 +206,45 @@ static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end) {
 static uint32_t s_retag_w0[AERO_RETAG_MAX_CMDS];
 static uint32_t s_retag_w1[AERO_RETAG_MAX_CMDS];
 
+// Preserve draw ownership for central announcements: glyphs and sprite tiles can
+// cross the edge-HUD thresholds individually. These non-nested ROM draw ranges
+// include the whole announcement (including multi-call "N LAPS LEFT"), not its
+// neighbouring timer or gauges. Capture original addresses before the re-emit.
+#define AERO_WS_MAX_MESSAGES 16
+static struct { gpr start, end; } s_messages[AERO_WS_MAX_MESSAGES];
+static unsigned s_message_count;
+static gpr s_message_start;
+static int s_message_open, s_message_overflow;
+static gpr s_hud_scan_start;
+static int s_hud_scan_open;
+
+void aero_ws_message_begin(uint8_t* rdram, gpr cursor) {
+    (void)rdram;
+    if (!s_hud_scan_open) return;
+    s_message_start = cursor;
+    s_message_open = 1;
+}
+
+void aero_ws_message_end(uint8_t* rdram, gpr cursor) {
+    (void)rdram;
+    if (!s_hud_scan_open || !s_message_open) return;
+    s_message_open = 0;
+    if (cursor <= s_message_start) return;
+    if (s_message_count == AERO_WS_MAX_MESSAGES) {
+        s_message_overflow = 1; // retain the original frame rather than split text
+        return;
+    }
+    s_messages[s_message_count].start = s_message_start;
+    s_messages[s_message_count++].end = cursor;
+}
+
+static int aero_ws_is_message(gpr address) {
+    for (unsigned i = 0; i < s_message_count; i++) {
+        if (address >= s_messages[i].start && address < s_messages[i].end) return 1;
+    }
+    return 0;
+}
+
 static int aero_ws_retag_enabled(void) {
     static int s_cached = -1;
     if (s_cached < 0) {
@@ -224,13 +264,13 @@ static int aero_ws_is_geometry_op(uint32_t op) {
 // Returns the desired anchor after this command: AERO_WS_PIN_* on a transition point
 // (rects carry their classification; raw scissors and 3D commands force NONE so a wipe
 // or geometry never inherits a bracket), or -1 for "no state change".
-static int aero_ws_retag_step(uint32_t w0, uint32_t w1, int* ext_aligned) {
+static int aero_ws_retag_step(uint32_t w0, uint32_t w1, int* ext_aligned, gpr address) {
     uint32_t op = w0 >> 24;
     if (op == RT64_EXTENDED_OPCODE && (w0 & 0xFFFFFFu) == G_EX_SETRECTALIGN_V1) {
         *ext_aligned = (w1 & 0xFFFu) != G_EX_ORIGIN_NONE;
     }
     if (op == 0xE4u || op == 0xE5u) {
-        return *ext_aligned ? AERO_WS_PIN_NONE
+        return (*ext_aligned || aero_ws_is_message(address)) ? AERO_WS_PIN_NONE
                             : aero_ws_classify_rect_qp((int)((w1 >> 12) & 0xFFFu),
                                                        (int)((w0 >> 12) & 0xFFFu),
                                                        (int)(w1 & 0xFFFu));
@@ -242,7 +282,7 @@ static int aero_ws_retag_step(uint32_t w0, uint32_t w1, int* ext_aligned) {
 }
 
 static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
-    if (!aero_ws_retag_enabled()) {
+    if (!aero_ws_retag_enabled() || s_message_overflow || s_message_open) {
         return; /* caller (aero_ws_hud_frame_end) already applied the steady-race gate */
     }
     size_t n = (size_t)(end - start) / 8;
@@ -268,7 +308,7 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
                 return; /* in-range branch: re-emitting would move its target */
             }
         }
-        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned);
+        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned, p);
         if (anchor >= 0 && anchor != open_anchor) {
             if (anchor != AERO_WS_PIN_NONE) {
                 opens++;
@@ -291,7 +331,7 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
     for (size_t i = 0; i < n; i++) {
         uint32_t w0 = s_retag_w0[i];
         uint32_t w1 = s_retag_w1[i];
-        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned);
+        int anchor = aero_ws_retag_step(w0, w1, &ext_aligned, start + (gpr)(i * 8));
         if (anchor >= 0 && anchor != open_anchor) {
             if (open_anchor != AERO_WS_PIN_NONE) {
                 bracket_close_at(rdram, &cur);
@@ -311,13 +351,13 @@ static void aero_ws_retag_rects(uint8_t* rdram, gpr start, gpr end) {
 
 // --- dispatcher bracket (the [[patches.hook]] entry points) ------------------------------
 
-static gpr s_hud_scan_start;
-static int s_hud_scan_open;
-
 // before_vram = 0x80022408 (func_80022408 entry). Latch the DL write cursor so the exit
 // hook knows where the 2D dispatcher started appending.
 void aero_ws_hud_scan_begin(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
+    s_message_count = 0;
+    s_message_open = 0;
+    s_message_overflow = 0;
     s_hud_scan_start = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
     s_hud_scan_open = 1;
 }
@@ -353,7 +393,7 @@ static void aero_ws_trace(uint8_t* rdram, gpr start, gpr end) {
         if (op == 0xE4u || op == 0xE5u) {
             int ulx = (int)((w1 >> 12) & 0xFFFu), lrx = (int)((w0 >> 12) & 0xFFFu);
             int uly = (int)(w1 & 0xFFFu), lry = (int)(w0 & 0xFFFu);
-            int cls = aero_ws_retag_step(w0, w1, &ext_aligned);
+            int cls = aero_ws_retag_step(w0, w1, &ext_aligned, p);
             rects++;
             if (cls == AERO_WS_PIN_LEFT) left++;
             if (cls == AERO_WS_PIN_RIGHT) right++;
@@ -382,7 +422,7 @@ void aero_ws_hud_frame_end(uint8_t* rdram, recomp_context* ctx) {
     }
     s_hud_scan_open = 0;
     aero_ws_trace(rdram, s_hud_scan_start, MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER));
-    if (!aero_ws_pinnable_hud(rdram)) {
+    if (!aero_ws_pinnable_hud(rdram) || s_message_overflow || s_message_open) {
         return;
     }
     gpr start = s_hud_scan_start;
