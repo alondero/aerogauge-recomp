@@ -45,6 +45,19 @@ are saved for the next launch; texture paths are chosen from native file/folder 
 Press **F11** (or
 Alt+Enter) to switch fullscreen; return to windowed mode to access the menu bar again.
 
+Enable **Enhancements > Easy Turbo + Boost Start** for simplified boosts:
+
+- At the start, hold accelerator for the existing automatic Boost Start.
+- During a race, press the configured **drift button** for Turbo (default:
+  **Z** on keyboard / **left trigger** on gamepad). With this option on, that
+  button activates Turbo instead of drift. No steering or accelerator timing is needed.
+- Release and press again for another boost. Holding the button does not repeat
+  boosts, and pressing during an active boost does not extend or queue one.
+  The normal craft-specific boost duration, heat buildup and overheating still apply.
+
+This option is off by default, saved in `enhancements.json`; disabling it restores
+original drift controls and boost mechanics.
+
 ## Developer warp menu
 
 Jump straight into a 1-player race on any track without driving the menus

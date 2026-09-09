@@ -1,17 +1,10 @@
-// Accelerator-only Boost Start + assisted race Turbo.
-//
-// This hook runs at 0x8005C7A8, immediately after func_8005C750 has mapped P1's
-// configured buttons and stick into the car's semantic control word. Working at
-// this seam is important: it honours remapped controls and feeds the same state
-// machine as a real player instead of editing a controller slot or a camera path.
-//
-// With the enhancement enabled, the player holds accelerator for launch and
-// explicitly holds drift while steering hard for a race Turbo:
-//   * through SET, brake is held too; immediately afterward it is released;
-//   * in a hard turn, drift is held until AeroGauge exposes its turbo-ready flag,
-//     then the assist performs the game's two-tick release and accelerator press.
-// The ROM still decides whether either boost is awarded and applies all thrust,
-// heat and effects. The hook never writes velocity or turbo timers directly.
+// Accelerator-only Boost Start + button-operated race Turbo (opt-in).
+// Runs after func_8005C9E4 maps P1's configured controls at 0x8005C7A8.
+// In races the configured drift button becomes Turbo; its action is consumed
+// so pressing it cannot start a drift. Steering and accelerator are untouched.
+// The award mirrors ROM 0x800584B8..0x800584D4: craft-specific duration,
+// effect timer 5, clear the pending award flag. The unmodified ROM update at
+// 0x8005AE00 owns turbo thrust, heat accumulation and overheating cancellation.
 #include <stdint.h>
 
 #include "recomp.h"
@@ -29,70 +22,44 @@
 #define CONTROL_ACCEL 0x80u
 #define CONTROL_BRAKE 0x40u
 #define CONTROL_DRIFT 0x20u
-#define CONTROL_ACTIONS (CONTROL_ACCEL | CONTROL_BRAKE | CONTROL_DRIFT)
-
+#define CAR_SETTINGS    0x20u
 #define CAR_FLAGS       0x34u
 #define CAR_CONTROLS    0x40u
 #define CAR_BOOST_TIMER 0x55u
-
-// Observed in the live ROM: the low flag rises after a sufficiently developed
-// drift. Releasing for two input ticks and re-pressing accelerator while it is
-// active causes the game to award car+0x55 = 10. The high flag is set by the
-// ROM several ticks after a successful Boost Start.
-#define TURBO_READY_FLAG 0x00002000u
-// Port-owned activation policy: 16/20 is the outer 20% of the game's semantic
-// steering range, keeping the assist out of ordinary course corrections.
-#define TURBO_ASSIST_TURN_THRESHOLD 16
+#define CAR_EFFECT_TIMER 0x56u
+#define SETTINGS_TURBO_DURATION 0x28u
+#define TURBO_PENDING_FLAG 0x00001000u
 
 extern int aero_easy_turbo_enabled(void);
 
-enum turbo_assist_state {
-    TURBO_CHARGING = 0,
-    TURBO_RELEASE_SECOND,
-    TURBO_REPRESS,
-};
-
-static enum turbo_assist_state g_turbo_state = TURBO_CHARGING;
-static uint32_t g_last_phase;
-static int g_turbo_used;
-
-static void reset_race_assist(void) {
-    g_turbo_state = TURBO_CHARGING;
-    g_turbo_used = 0;
-}
-
-static int semantic_turn(uint16_t controls) {
-    // func_8005C9E4 stores horizontal stick as (turn + 20) in bits 6..11.
-    return (int)((controls >> 6) & 0x3Fu) - 20;
-}
+// Require a release after losing the car/context. Track the button even when
+// disabled and during countdown so enabling the option or GO isn't a press.
+static int g_button_down = 1;
 
 void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
-    if (ctx == NULL || !aero_easy_turbo_enabled()) {
-        reset_race_assist();
-        g_last_phase = 0;
+    if (rdram == NULL || ctx == NULL) {
+        g_button_down = 1;
         return;
     }
-
-    const gpr car = ctx->r16;
+    // Recompiled guest pointers are 32-bit addresses carried in a 64-bit gpr.
+    // Sign-extend before feeding them to MEM_* so callers that supplied only
+    // the low 32 bits still address the canonical RDRAM window.
+    const gpr car = (gpr)(int32_t)ctx->r16;
     const uint32_t car_address = (uint32_t)car;
-    if (car_address < 0x80000000u || car_address > 0x807FFFFFu) {
-        reset_race_assist();
+    if (car_address < 0x80000000u || car_address > 0x807FFFA8u) {
+        g_button_down = 1;
         return;
     }
+    uint8_t actions = (uint8_t)MEM_BU(CAR_CONTROLS, car);
+    const int button_down = (actions & CONTROL_DRIFT) != 0;
+    const int pressed = button_down && !g_button_down;
+    g_button_down = button_down;
+    if (!aero_easy_turbo_enabled()) return;
+
     const uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_PHASE);
     const uint32_t step = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_STEP);
-    uint8_t actions = (uint8_t)MEM_BU(CAR_CONTROLS, car);
-    const int user_accelerating = (actions & CONTROL_ACCEL) != 0;
-
-    if (phase == PHASE_SETUP && g_last_phase != PHASE_SETUP) {
-        reset_race_assist();
-    }
-    g_last_phase = phase;
-
     if (phase == PHASE_SETUP || phase == PHASE_COUNTDOWN) {
-        reset_race_assist();
-        if (!user_accelerating) return;
-
+        if ((actions & CONTROL_ACCEL) == 0) return;
         if (phase == PHASE_SETUP || step < STEP_AFTER_SET) {
             actions |= CONTROL_BRAKE;
         } else {
@@ -101,55 +68,18 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
         MEM_B(CAR_CONTROLS, car) = actions;
         return;
     }
+    if (phase != PHASE_RACING) return;
 
-    if (phase != PHASE_RACING) {
-        reset_race_assist();
-        return;
+    if (button_down) {
+        MEM_B(CAR_CONTROLS, car) = actions & (uint8_t)~CONTROL_DRIFT;
     }
+    // Do not extend an active turbo or queue a press for when it expires.
+    if (!pressed || MEM_BU(CAR_BOOST_TIMER, car) != 0) return;
 
-    const uint32_t flags = (uint32_t)MEM_W(CAR_FLAGS, car);
-    const uint8_t boost_timer = (uint8_t)MEM_BU(CAR_BOOST_TIMER, car);
-    if (boost_timer != 0) {
-        // Let the player's freshly mapped controls through while the ROM-owned
-        // turbo runs. A new assisted drift can begin after the timer expires.
-        g_turbo_state = TURBO_CHARGING;
-        return;
-    }
-
-    const int user_drifting = (actions & CONTROL_DRIFT) != 0;
-    if (!user_accelerating || !user_drifting) {
-        reset_race_assist();
-        return;
-    }
-
-    const uint16_t packed_controls = (uint16_t)MEM_HU(CAR_CONTROLS, car);
-    int turn = semantic_turn(packed_controls);
-    if (turn < 0) turn = -turn;
-    if (turn < TURBO_ASSIST_TURN_THRESHOLD) {
-        reset_race_assist();
-        return;
-    }
-    switch (g_turbo_state) {
-        case TURBO_CHARGING: {
-            if (g_turbo_used) break;
-            if ((flags & TURBO_READY_FLAG) != 0) {
-                actions &= (uint8_t)~CONTROL_ACTIONS;
-                g_turbo_state = TURBO_RELEASE_SECOND;
-                g_turbo_used = 1;
-            }
-            break;
-        }
-        case TURBO_RELEASE_SECOND:
-            actions &= (uint8_t)~CONTROL_ACTIONS;
-            g_turbo_state = TURBO_REPRESS;
-            break;
-        case TURBO_REPRESS:
-            actions = (uint8_t)((actions & ~CONTROL_ACTIONS) | CONTROL_ACCEL);
-            // The ROM award is visible on the next P1 callback. If terrain
-            // invalidates the attempt, charging resumes immediately.
-            g_turbo_state = TURBO_CHARGING;
-            break;
-    }
-
-    MEM_B(CAR_CONTROLS, car) = actions;
+    const gpr settings = (gpr)(int32_t)MEM_W(CAR_SETTINGS, car);
+    const uint32_t settings_address = (uint32_t)settings;
+    if (settings_address < 0x80000000u || settings_address > 0x807FFFD7u) return;
+    MEM_W(CAR_FLAGS, car) = (int32_t)((uint32_t)MEM_W(CAR_FLAGS, car) & ~TURBO_PENDING_FLAG);
+    MEM_B(CAR_EFFECT_TIMER, car) = 5; // ROM 0x800584C0 / 0x800584D0
+    MEM_B(CAR_BOOST_TIMER, car) = MEM_BU(SETTINGS_TURBO_DURATION, settings);
 }

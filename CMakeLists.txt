@@ -157,7 +157,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                    # 2D dispatcher func_80022408 via [[patches.hook]]
         src/aero_savestate.c   # developer save-state (#17): F7/F8 / AERO_STATE_LOAD RDRAM
                                # snapshot; tick hooked one instruction into func_80015C8C
-        src/aero_turbo_boost.c # accelerator-only Boost Start + assisted race Turbo;
+        src/aero_turbo_boost.c # accelerator-only Boost Start + button-operated race Turbo;
                                # hooked after P1's configured controls are mapped
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)

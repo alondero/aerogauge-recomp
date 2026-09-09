@@ -4,6 +4,8 @@ set breakpoint pending on
 set $race_ticks = 0
 set $start_seen = 0
 set $race_seen = 0
+set $previous_heat = 0.0
+set $heat_seen = 0
 
 # Install the helper breakpoint after the executable has loaded.  This avoids
 # relying on a fixed ASLR address or on GDB's incomplete PE symbol index.
@@ -17,6 +19,7 @@ commands
   set $phase = *(unsigned int*)($rdram + (0xFFFFFFFF8013FF88 - 0xFFFFFFFF80000000))
   set $flags = *(unsigned int*)($rdram + (($car + 0x34) - 0xFFFFFFFF80000000))
   set $timer = *(unsigned char*)($rdram + ((($car + 0x55) ^ 3) - 0xFFFFFFFF80000000))
+  set $heat = *(float*)($rdram + (($car + 0x22C) - 0xFFFFFFFF80000000))
   if ($phase == 3)
     set $race_ticks = $race_ticks + 1
     if ($race_ticks <= 12 && ($flags & 0x20000000) != 0 && $start_seen == 0)
@@ -27,11 +30,15 @@ commands
       set $race_seen = 1
       printf "[turbo-harness] race turbo awarded timer=%u\n", $timer
     end
-    if ($start_seen != 0 && $race_seen != 0)
-      printf "[turbo-harness] PASS start_boost=1 race_turbo=1\n"
+    if ($timer != 0 && $heat > $previous_heat)
+      set $heat_seen = 1
+    end
+    if ($start_seen != 0 && $race_seen == 1 && $heat_seen != 0)
+      printf "[turbo-harness] PASS start_boost=1 race_turbo=1 heat=1\n"
       set $race_seen = 2
     end
   end
+  set $previous_heat = $heat
   continue
 end
 continue
