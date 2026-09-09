@@ -245,8 +245,8 @@ Derived with `tools/rom/disasm.py` against the USA ROM; hooks live in
 - `func_8000D708` owns the pre-race ticker. At `0x8000D860`, a2 holds
   `max(230 - 3*frame, -500)`, the shared text origin. Its cursor holder is
   `sp+0x2C`. All exits reach `0x8000D968`, which stores t6 through t8:
-  a closing hook must refresh t6 as well as the local holder.
-- `func_8000D97C` emits the banner (16,180)-(303,203). At `0x8000DBB0`,
+  a closing hook must refresh the register value after mutating the local holder.
+- `func_8000D97C` emits the banner (1,180)-(303,203). At `0x8000DBB0`,
   `sp+0x64` holds its final cursor, after E4/B4/B3 and pipe sync.
 - `func_8001F998` emits individual glyphs. At `0x80020174`, v0=0 means
   missing glyph/no draw. Otherwise `sp+0xE0` holds the caller's cursor-holder
@@ -255,7 +255,10 @@ Derived with `tools/rom/disasm.py` against the USA ROM; hooks live in
 
 Intro hooks bracket only these draws with a full-output signed scissor and
 `G_EX_ASPECT_ADJUST`; rectangle triplets are replaced in place with extended
-signed-coordinate triplets. Added commands are bounded at 56 bytes per bracket
+signed-coordinate triplets. The fade intentionally changes the original y range
+(8..231) to 0..240 so the overlay covers every output row; the eight top and nine
+bottom rows that were uncovered in the ROM are therefore covered on widescreen.
+Added commands are bounded at 56 bytes per bracket
 (ticker plus at most two fades = 168 bytes), including the extended-GBI enable
 command required before the steady HUD has run. Text keeps its original glyph size
 and spacing; its origin enters at the right output edge and travels proportionally

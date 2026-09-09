@@ -233,9 +233,12 @@ fixtures, rather than individual live captures.
 The ticker and race fade now have dedicated hooks in `src/aero_race_intro.c`.
 The ordinary HUD classifier remains gated off during the intro. The banner fills
 the output width, glyphs enter from the right edge without stretching, and both
-race fade channels cover the full rendered area. Coverage uses the output aspect,
+race fade channels cover the full rendered area, including the top and bottom rows
+left uncovered by the original 4:3 fade. Coverage uses the output aspect,
 independent of Original/Clamp16x9/Full HUD layout. Original 4:3 drawing and all ROM
-timers remain intact. `AERO_WS_INTRO=0` provides a comparison/rollback switch.
+timers remain intact. Signed command coordinates are capped from `INT16_MAX` so
+pathological output ratios cannot overflow. `AERO_WS_INTRO=0` provides a
+comparison/rollback switch; unset or any non-zero value enables the change.
 See `rom-map.md` for draw boundaries and cursor ownership.
 
 `tests/test_race_intro.c` checks the real native hooks for 4:3 no-op, 16:9/21:9/32:9

@@ -4,10 +4,15 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 extern uint32_t aero_ws_get_output_aspect_bits(void);
 static float ticker_extra, fade_extra;
 static int ticker_origin;
+
+#define AERO_INTRO_BASE_WIDTH_QP (320 * 4)
+#define AERO_INTRO_MAX_DX_QP (INT16_MAX - AERO_INTRO_BASE_WIDTH_QP)
+#define AERO_INTRO_MAX_EXTRA ((float)AERO_INTRO_MAX_DX_QP / 4.0f)
 
 static void intro_emit(uint8_t* rdram, gpr* p, uint32_t a, uint32_t b) {
     MEM_W(0, *p) = a;
@@ -27,13 +32,21 @@ static float intro_extra(uint8_t* rdram) {
     uint32_t bits = aero_ws_get_output_aspect_bits();
     float aspect;
     memcpy(&aspect, &bits, sizeof(aspect));
-    // Signed 16-bit quarter-pixel commands have ample room for ultrawide output.
-    if (!isfinite(aspect) || aspect <= 4.0f / 3.0f || aspect > 8.0f) return 0;
-    return 120.0f * aspect - 160.0f;
+    if (!isfinite(aspect) || aspect <= 4.0f / 3.0f) return 0;
+    // Extended rectangle coordinates are signed 16-bit quarter-pixels. Clamp the
+    // extra width so both -dx and the 320-space right edge remain representable.
+    float extra = 120.0f * aspect - 160.0f;
+    return extra < AERO_INTRO_MAX_EXTRA ? extra : AERO_INTRO_MAX_EXTRA;
+}
+static int intro_dx(float extra) {
+    float qpixels = extra * 4.0f;
+    if (!isfinite(qpixels) || qpixels <= 0.0f) return 0;
+    int dx = (int)ceilf(qpixels);
+    return dx < AERO_INTRO_MAX_DX_QP ? dx : AERO_INTRO_MAX_DX_QP;
 }
 static void intro_open(uint8_t* rdram, gpr holder, float extra) {
     gpr p = MEM_W(0, holder);
-    int dx = (int)ceilf(extra * 4);
+    int dx = intro_dx(extra);
     // Intro runs before the steady HUD, which normally enables extended GBI.
     intro_emit(rdram, &p, (RT64_HOOK_OPCODE << 24) | RT64_HOOK_MAGIC_NUMBER,
                (RT64_HOOK_OP_ENABLE << 28) | RT64_EXTENDED_OPCODE);
@@ -72,7 +85,7 @@ void aero_intro_ticker_origin(uint8_t* rdram, recomp_context* ctx) {
 }
 void aero_intro_ticker_end(uint8_t* rdram, recomp_context* ctx) {
     if (ticker_extra > 0) intro_close(rdram, ctx->r29 + 0x2c);
-    // All early branches join at D964; D968 stores the already-loaded t6.
+    // intro_close rewrote sp+0x2c; the original sw t6, (t8) wants the new value.
     ctx->r14 = MEM_W(0x2c, ctx->r29);
     ticker_extra = 0;
 }
@@ -80,7 +93,7 @@ void aero_intro_banner(uint8_t* rdram, recomp_context* ctx) {
     if (ticker_extra <= 0) return;
     // D97C ends with one banner triplet followed by a pipe sync.
     gpr p = MEM_W(0x64, ctx->r29) - 32;
-    int dx = (int)ceilf(ticker_extra * 4);
+    int dx = intro_dx(ticker_extra);
     intro_rect(rdram, p, -dx, 1280 + dx, 180 * 4, 203 * 4);
 }
 void aero_intro_glyph(uint8_t* rdram, recomp_context* ctx) {
@@ -104,7 +117,7 @@ void aero_intro_fade_end(uint8_t* rdram, recomp_context* ctx) {
     if (fade_extra <= 0) return;
     gpr holder = ctx->r29 + 0x34;
     gpr p = MEM_W(0, holder) - 32;
-    int dx = (int)ceilf(fade_extra * 4);
+    int dx = intro_dx(fade_extra);
     intro_rect(rdram, p, -dx, 1280 + dx, 0, 960);
     intro_close(rdram, holder);
     fade_extra = 0;

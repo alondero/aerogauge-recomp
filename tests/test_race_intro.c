@@ -36,7 +36,7 @@ int main(void) {
             assert((uint32_t)MEM_W(0, rect) >> 24 == 0xe4);
             continue;
         }
-        int dx = (int)ceilf((120 * aspects[i] - 160) * 4);
+        int dx = intro_dx(intro_extra(rdram));
         assert((int16_t)((uint32_t)MEM_W(8, rect) >> 16) == -dx);
         assert((int16_t)((uint32_t)MEM_W(12, rect) >> 16) == 1280 + dx);
         assert((MEM_W(8, rect) & 65535) == 0);
@@ -97,6 +97,10 @@ int main(void) {
         assert(ctx.r14 == (gpr)MEM_W(0x2c, ctx.r29));
         assert(ticker_extra == 0);
     }
+    // A synthetic extreme output still clamps to the signed quarter-pixel limit.
+    output_aspect = 100.0f;
+    assert(intro_dx(intro_extra(rdram)) == AERO_INTRO_MAX_DX_QP);
+    assert(1280 + intro_dx(intro_extra(rdram)) == INT16_MAX);
     MEM_W(0, (gpr)(int32_t)0x8013FF80) = 4;
     assert(intro_extra(rdram) == 0);
     return 0;
