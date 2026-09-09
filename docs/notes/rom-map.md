@@ -232,6 +232,39 @@ and keeps their texrects centred as a group:
   cross the x=168 right-pin threshold, explaining the split. `N LAPS LEFT` uses
   three separate string calls, so grouping each string alone is insufficient.
 
+## Race intro drawing (2026-09-09)
+
+Derived with `tools/rom/disasm.py` against the USA ROM; hooks live in
+`src/aero_race_intro.c` and `scripts/gen_syms_toml.py`.
+
+- `func_800191FC` calls the solid-colour texrect emitter `func_80020EFC` at
+  `0x800193C4` / `0x800194B8`, with bounds (0,8)-(319,231). Post-call hooks at
+  `0x800193CC` / `0x800194C0` use the local cursor holder `sp+0x34`.
+  The final 32 bytes are E4/B4/B3 plus pipe sync. Fade channels at object
+  +0x244/+0x245 still decrement in the ROM after the draw hooks.
+- `func_8000D708` owns the pre-race ticker. At `0x8000D860`, a2 holds
+  `max(230 - 3*frame, -500)`, the shared text origin. Its cursor holder is
+  `sp+0x2C`. All exits reach `0x8000D968`, which stores t6 through t8:
+  a closing hook must refresh the register value after mutating the local holder.
+- `func_8000D97C` emits the banner (1,180)-(303,203). At `0x8000DBB0`,
+  `sp+0x64` holds its final cursor, after E4/B4/B3 and pipe sync.
+- `func_8001F998` emits individual glyphs. At `0x80020174`, v0=0 means
+  missing glyph/no draw. Otherwise `sp+0xE0` holds the caller's cursor-holder
+  pointer and `sp+0xE4` the original signed x. The final 32 bytes have the same
+  rectangle/sync layout. Using that signed x avoids the original 12-bit wrap.
+
+Intro hooks bracket only these draws with a full-output signed scissor and
+`G_EX_ASPECT_ADJUST`; rectangle triplets are replaced in place with extended
+signed-coordinate triplets. The fade intentionally changes the original y range
+(8..231) to 0..240 so the overlay covers every output row; the eight top and nine
+bottom rows that were uncovered in the ROM are therefore covered on widescreen.
+Added commands are bounded at 56 bytes per bracket
+(ticker plus at most two fades = 168 bytes), including the extended-GBI enable
+command required before the steady HUD has run. Text keeps its original glyph size
+and spacing; its origin enters at the right output edge and travels proportionally
+to output width while the ROM retains its sequence/fade timing. `AERO_WS_INTRO=0`
+disables the change. 4:3/non-Expand output follows the original drawing path.
+
 ## Key libultra globals (routing map lives in gen_syms_toml.py comments)
 
 | Global | Address |
