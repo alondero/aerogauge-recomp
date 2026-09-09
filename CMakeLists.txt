@@ -136,6 +136,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # can succeed before RSPRecomp runs.
     set(AERO_SOURCES
         src/main.cpp
+        src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/register_overlays.cpp
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
@@ -197,6 +198,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/N64Recomp/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
     add_test(NAME hud_messages COMMAND test_hud_messages)
+    add_executable(test_race_intro tests/test_race_intro.c)
+    target_include_directories(test_race_intro PRIVATE
+        ${N64MR}/N64Recomp/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    if(NOT WIN32)
+        target_link_libraries(test_race_intro PRIVATE m)
+    endif()
+    add_test(NAME race_intro COMMAND test_race_intro)
     add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)

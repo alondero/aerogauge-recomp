@@ -228,6 +228,29 @@ the dispatcher entry; no diagnostic game-state writes are in the shipped code.
 Other message families were checked through ROM draw-path review and regression
 fixtures, rather than individual live captures.
 
+## Race intro coverage (2026-09-09)
+
+The ticker and race fade now have dedicated hooks in `src/aero_race_intro.c`.
+The ordinary HUD classifier remains gated off during the intro. The banner fills
+the output width, glyphs enter from the right edge without stretching, and both
+race fade channels cover the full rendered area. Coverage uses the output aspect,
+independent of Original/Clamp16x9/Full HUD layout. Original 4:3 drawing and all ROM
+timers remain intact. `AERO_WS_INTRO=0` provides a comparison/rollback switch.
+See `rom-map.md` for draw boundaries and cursor ownership.
+
+`tests/test_race_intro.c` checks the real native hooks for 4:3 no-op, 16:9/21:9/32:9
+coverage, banner bounds, preserved glyph widths/spacing and texture payloads,
+negative offscreen coordinates, missing glyphs, and cursor restoration.
+
+Validation: regenerated the ROM translation, built all game/recompiled objects
+and linked an isolated executable against the existing runtime/RT64 archives.
+Intro and both existing HUD tests pass with `-Wall -Wextra -Werror`. A windowed
+1920x1080 RT64 run completes 2400 VIs through the intro and into racing; captures
+show the banner reaching both output edges and the whole ticker scrolling without
+glyph distortion, followed by the unchanged SET/HUD layout. Ultrawide coverage is
+host-tested; it has not had a separate live capture. The original inset border of
+the 3D viewport remains separate from the fade coverage.
+
 ## Remaining follow-ups
 
 - **Rival craft markers on the minimap** (multi-craft GP races): five white 2-triangle

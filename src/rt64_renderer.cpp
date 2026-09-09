@@ -530,14 +530,28 @@ private:
 
 } // anonymous namespace
 
+// Full rendered aspect for race-intro coverage, independent of the HUD clamp.
+// Read swapchain dimensions under the same lock as the HUD helper below.
+extern "C" uint32_t aero_ws_get_output_aspect_bits(void) {
+    float aspect = 4.0f / 3.0f;
+    const auto& cfg = ultramodern::renderer::get_graphics_config();
+    auto* active_app = g_aero_active_app.load(std::memory_order_acquire);
+    if (cfg.ar_option == ultramodern::renderer::AspectRatio::Expand &&
+        active_app && active_app->sharedQueueResources) {
+        auto& shared = *active_app->sharedQueueResources;
+        std::scoped_lock<std::mutex> lock(shared.configurationMutex);
+        if (shared.swapChainWidth > 0 && shared.swapChainHeight > 0)
+            aspect = std::max(aspect, float(shared.swapChainWidth) / float(shared.swapChainHeight));
+    }
+    uint32_t bits;
+    std::memcpy(&bits, &aspect, sizeof(bits));
+    return bits;
+}
+
 // (issue #67) Effective aspect the extended-GBI HUD rect pins travel to, as raw float
-// bits. The gEXSetRectAlign HUD pins honour hr_option -- Full reaches the real edges, Clamp16x9
-// stops at 16:9, Original doesn't move -- so the game-space HUD geometry shifts
-// (src/aero_hud_widescreen.c) key off THIS. Keying them off the raw output aspect would
-// over-translate the geometry past the rects at any non-Full ultrawide output (e.g. the
-// shipped Clamp16x9 default on a 21:9 monitor). Mirrors set_application_user_config()'s
-// hr_option map plus the extAspectPercentage math in rt64_workload_queue.cpp:159-183.
-// Same thread-safety contract and 4/3 floor as the skybox helper above.
+// bits. Full reaches the real edges, Clamp16x9 stops at 16:9, Original doesn't move.
+// Geometry must match these rect pins rather than the raw output aspect.
+// Mirrors RT64's extAspectPercentage math, with the same lock and 4/3 floor above.
 extern "C" uint32_t aero_ws_get_hud_rect_aspect_bits(void) {
     const float source = 4.0f / 3.0f;
     float aspect = source;
