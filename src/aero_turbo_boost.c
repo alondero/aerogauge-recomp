@@ -41,7 +41,10 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
         g_button_down = 1;
         return;
     }
-    const gpr car = ctx->r16;
+    // Recompiled guest pointers are 32-bit addresses carried in a 64-bit gpr.
+    // Sign-extend before feeding them to MEM_* so callers that supplied only
+    // the low 32 bits still address the canonical RDRAM window.
+    const gpr car = (gpr)(int32_t)ctx->r16;
     const uint32_t car_address = (uint32_t)car;
     if (car_address < 0x80000000u || car_address > 0x807FFFA8u) {
         g_button_down = 1;
@@ -67,14 +70,16 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     }
     if (phase != PHASE_RACING) return;
 
-    MEM_B(CAR_CONTROLS, car) = actions & (uint8_t)~CONTROL_DRIFT;
+    if (button_down) {
+        MEM_B(CAR_CONTROLS, car) = actions & (uint8_t)~CONTROL_DRIFT;
+    }
     // Do not extend an active turbo or queue a press for when it expires.
     if (!pressed || MEM_BU(CAR_BOOST_TIMER, car) != 0) return;
 
     const gpr settings = (gpr)(int32_t)MEM_W(CAR_SETTINGS, car);
     const uint32_t settings_address = (uint32_t)settings;
     if (settings_address < 0x80000000u || settings_address > 0x807FFFD7u) return;
-    MEM_W(CAR_FLAGS, car) = (uint32_t)MEM_W(CAR_FLAGS, car) & ~TURBO_PENDING_FLAG;
+    MEM_W(CAR_FLAGS, car) = (int32_t)((uint32_t)MEM_W(CAR_FLAGS, car) & ~TURBO_PENDING_FLAG);
     MEM_B(CAR_EFFECT_TIMER, car) = 5; // ROM 0x800584C0 / 0x800584D0
     MEM_B(CAR_BOOST_TIMER, car) = MEM_BU(SETTINGS_TURBO_DURATION, settings);
 }

@@ -50,15 +50,42 @@ static void reset_guest(uint32_t phase, uint32_t step, uint8_t controls, int tur
     set_turn(turn);
 }
 
-static void tick(void) {
+static void tick_with_car(gpr car) {
     recomp_context ctx = {};
-    ctx.r16 = (gpr)(int32_t)CAR; // func_8005C750's saved P1 car pointer at 0x8005C7A8
+    ctx.r16 = car; // func_8005C750's saved P1 car pointer at 0x8005C7A8
     aero_turbo_boost_tick(rdram, &ctx);
+}
+
+static void tick(void) {
+    tick_with_car((gpr)(int32_t)CAR);
 }
 
 int main(void) {
     rdram = (uint8_t*)malloc(RDRAM_SIZE);
     assert(rdram != nullptr);
+
+    // Defensive guards must tolerate missing runtime state and malformed guest
+    // pointers without touching RDRAM.
+    recomp_context guard_ctx = {};
+    guard_ctx.r16 = (gpr)(int32_t)CAR;
+    aero_turbo_boost_tick(nullptr, &guard_ctx);
+    aero_turbo_boost_tick(rdram, nullptr);
+    const gpr invalid_cars[] = { 0, 0x7FFFFFFFu, 0x80800000u };
+    for (gpr invalid_car : invalid_cars) {
+        guard_ctx.r16 = invalid_car;
+        aero_turbo_boost_tick(rdram, &guard_ctx);
+    }
+
+    // Recompiled callers may pass a zero-extended 32-bit car address. The hook
+    // must canonicalize it before the first MEM_* access.
+    reset_guest(3, 3, 0, 0);
+    w32(CAR + 0x20u, 0x80100000u);
+    w8(0x80100028u, 13);
+    tick_with_car((gpr)CAR);
+    w8(CAR + 0x40u, DRIFT);
+    tick_with_car((gpr)CAR);
+    assert(r8(CAR + 0x55u) == 13);
+    assert(actions() == 0);
 
     // Holding only the configured accelerator is enough for a boost start:
     // the assist holds semantic brake through SET, then releases immediately
@@ -97,6 +124,25 @@ int main(void) {
     assert(r8(CAR + 0x55u) == 13);
     assert(r8(CAR + 0x56u) == 5);
     assert(actions() == 0);
+
+    // An uninitialized or dangling craft-settings pointer must leave the ROM
+    // award fields untouched while still consuming the Turbo button.
+    reset_guest(3, 3, 0, 0);
+    tick();
+    w32(CAR + 0x20u, 0);
+    w32(CAR + 0x34u, 0xA0001000u);
+    w8(CAR + 0x55u, 77);
+    w8(CAR + 0x56u, 9);
+    w8(CAR + 0x40u, DRIFT);
+    tick();
+    assert(actions() == 0);
+    assert(*(uint32_t*)(rdram + off(CAR + 0x34u)) == 0xA0001000u);
+    assert(r8(CAR + 0x55u) == 77);
+    assert(r8(CAR + 0x56u) == 9);
+
+    // Restore a valid craft-settings table for the remaining award tests.
+    w32(CAR + 0x20u, 0x80100000u);
+    w8(0x80100028u, 13);
 
     // Holding the button never extends or repeats a turbo, even after expiry.
     for (int timer = 12; timer >= 0; --timer) {

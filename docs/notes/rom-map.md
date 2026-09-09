@@ -96,7 +96,7 @@ The real P1 input chain is:
 | car `+0x57/+0x58/+0x59/+0x5A` | current accelerator, accelerator counter, drift counter, current brake |
 | car `+0x34 & 0x2000` | turbo-ready drift state observed immediately before the successful release/re-press |
 | car `+0x34 & 0x20000000` just after GO | ROM-owned state bit that signals Boost Start in the launch window; it is reused by later driving states |
-| car `+0x55` | ROM-owned turbo timer; becomes `10` when the maneuver succeeds |
+| car `+0x55` | ROM-owned turbo timer; copies craft setting `+0x28` (`10` for the default craft) when the maneuver succeeds |
 
 The opt-in race assist now repurposes the configured drift button as Turbo.
 A rising edge awards the boost without steering, drift readiness, or accelerator
