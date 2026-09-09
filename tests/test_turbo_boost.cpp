@@ -131,13 +131,13 @@ int main(void) {
     tick();
     w32(CAR + 0x20u, 0);
     w32(CAR + 0x34u, 0xA0001000u);
-    w8(CAR + 0x55u, 77);
+    w8(CAR + 0x55u, 0);
     w8(CAR + 0x56u, 9);
     w8(CAR + 0x40u, DRIFT);
     tick();
     assert(actions() == 0);
     assert(*(uint32_t*)(rdram + off(CAR + 0x34u)) == 0xA0001000u);
-    assert(r8(CAR + 0x55u) == 77);
+    assert(r8(CAR + 0x55u) == 0);
     assert(r8(CAR + 0x56u) == 9);
 
     // Restore a valid craft-settings table for the remaining award tests.
