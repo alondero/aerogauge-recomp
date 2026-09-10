@@ -254,6 +254,31 @@ glyph distortion, followed by the unchanged SET/HUD layout. Ultrawide coverage i
 host-tested; it has not had a separate live capture. The original inset border of
 the 3D viewport remains separate from the fade coverage.
 
+## Championship results pages (2026-09-10)
+
+The championship replay draws its per-round results and final points table
+inside the race scene. The HUD gate therefore allowed the coordinate classifier
+to pin individual letters to different edges, splitting the results text.
+`func_8001C030` now records one centred ownership range for the entire page,
+using the existing message-range mechanism. Both page renderers and their
+scissor/background are covered; adjacent HUD drawing retains its usual anchors.
+The hooks preserve the ROM's stack-local cursor and all page transitions.
+See `rom-map.md` for the ROM-derived call chain and hook addresses.
+
+`test_hud_messages.c` includes representative per-round and points-table rows
+spanning both thresholds and the minimap region, with a results scissor and
+neighbouring edge HUD elements. The unprotected fixture failed its effective
+origin assertion; the protected fixture passes and preserves texture payloads.
+
+Validation: regenerated the ROM translation, compiled all game translation units,
+and linked an isolated executable against the existing runtime/RT64 archives.
+The 120-VI boot smoke, HUD message and shift-scale tests pass. A headless debugger
+probe triggered both actual ROM page paths and confirmed one complete ownership
+range each (no unmatched begin/end). This probe changed only the running test
+process; no synthetic race state is shipped. A full-season visual check remains
+outstanding. The neighbouring race-intro test also passes with its pre-existing
+constant-narrowing warnings suppressed; both HUD tests pass with `-Werror`.
+
 ## Remaining follow-ups
 
 - **Rival craft markers on the minimap** (multi-craft GP races): five white 2-triangle
