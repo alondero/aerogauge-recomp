@@ -104,6 +104,34 @@ int main(void) {
     assert((gpr)MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) == cur + 80);
     assert(s_message_count == 0);
 
+    // Championship replay pages (func_8001C030): per-round statistics and
+    // the final ROUND/RANK/POINT table share one stack-local cursor. Their
+    // rows span both HUD thresholds, including the minimap containment box.
+    for (int page = 0; page < 2; page++) {
+        cur = start;
+        MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+        MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE) = 7;
+        aero_ws_hud_scan_begin(ram, NULL);
+        rect(&cur, 247, 172, 53);
+        aero_ws_message_begin(ram, cur); // func_8001C030 entry hook
+        emit_at(ram, &cur, 0xED040080u, 0x004BC33Cu); // results scissor
+        messages = 0;
+        const int x = page ? 52 : 28;
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 18; col++) {
+                rect(&cur, x + 14 * col, 72 + row * 14, 14);
+                messages++;
+            }
+        }
+        aero_ws_message_end(ram, cur); // 8001C250, before stack restoration
+        rect(&cur, 20, 194, 44);
+        MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+        aero_ws_hud_frame_end(ram, NULL);
+        end = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
+        check_origins(start, end, messages);
+        assert(end == cur + 2 * 80);
+    }
+
     // Unclosed or over-capacity metadata must leave both passes inactive.
     for (int overflow = 0; overflow < 2; overflow++) {
         cur = start;

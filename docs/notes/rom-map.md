@@ -7,6 +7,25 @@ project has derived so far. Each block names how it was derived; per CLAUDE.md,
 Authoritative per-function evidence for libultra routing lives as comments in
 `scripts/gen_syms_toml.py` (LIBULTRA_NAMES); this file covers *game* code.
 
+## Championship replay results (2026-09-10)
+
+Derived by finding the ROM string `ROUND  RANK  POINT` at ROM `0x97A4C`
+(`0x80096E4C`), tracing its caller, and disassembling the draw chain:
+
+- `func_800191FC` calls `func_8001C030` at `0x800192C0` when race flags
+  `0x8013FC8C & 0x1000` and mode byte `0x8013FF90` is 9 or 10.
+- `func_8001C030` selects pages using race frame counter / 300. It draws
+  per-round statistics via `func_8001C29C`, then the final points table via
+  `func_8001C758`. These are overlays in the race replay, so the HUD's race
+  scene/phase gate does not exclude them.
+- Entry receives a DL cursor holder in `$a0`. The function copies its cursor
+  into `sp+0x58` and commits it back at `0x8001C24C`. All branches converge
+  before `0x8001C250`; the stack is restored later at `0x8001C258`.
+- Widescreen ownership hooks bracket `0x8001C030..0x8001C250`, reading
+  `MEM_W(0, ctx->r4)` on entry and `MEM_W(0x58, ctx->r29)` at the end.
+  This protects the complete page, including its original scissor, without
+  moving the ROM's local cursor or changing page timing/input handling.
+
 ## ROM layout
 
 | Fact | Value |

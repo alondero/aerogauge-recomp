@@ -399,6 +399,21 @@ func = "func_800191FC"
 before_vram = 0x800194C0
 text = "extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);"
 
+# Championship replay results (modes 9/10, func_800191FC -> func_8001C030).
+# One range covers every per-round page (8001C29C) and the final points table
+# (8001C758), including their background/scissor. The race scene/phase gate
+# remains active during this replay, so coordinate classification splits rows.
+# ROM: entry dereferences a0; local cursor is sp+0x58, committed at 8001C24C.
+[[patches.hook]]
+func = "func_8001C030"
+before_vram = 0x8001C030
+text = "extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));"
+
+[[patches.hook]]
+func = "func_8001C030"
+before_vram = 0x8001C250
+text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x58, ctx->r29));"
+
 # Central race announcements. Capture their original DL ranges, without inserting
 # commands while the ROM still owns stack-local cursors. End hooks run after the
 # final cursor store and before register restores (ROM-disassembled).
