@@ -74,6 +74,7 @@ enum Command : UINT {
     CMD_API_AUTO,
     CMD_API_D3D12,
     CMD_API_VULKAN,
+    CMD_DEVELOPER_MODE,
     CMD_WINDOW_1280X720,
     CMD_WINDOW_1600X900,
     CMD_WINDOW_1920X1080,
@@ -90,7 +91,6 @@ enum Command : UINT {
     CMD_TEXTURE_DUMP_CLEAR,
     CMD_EASY_TURBO,
     CMD_FULL_TRACK,
-    CMD_DEVELOPER_MODE,
 };
 
 constexpr std::array<UINT, 4> kSupersamplingCommands{CMD_SS_1X, CMD_SS_2X, CMD_SS_3X, CMD_SS_4X};
@@ -270,6 +270,9 @@ void apply_graphics_command(UINT command) {
         case CMD_API_AUTO: cfg.api_option = GraphicsApi::Auto; apply_live = false; break;
         case CMD_API_D3D12: cfg.api_option = GraphicsApi::D3D12; apply_live = false; break;
         case CMD_API_VULKAN: cfg.api_option = GraphicsApi::Vulkan; apply_live = false; break;
+        // RT64 reads developerMode once while constructing the renderer. Save
+        // the selection now; it takes effect on the next launch.
+        case CMD_DEVELOPER_MODE: cfg.developer_mode = !cfg.developer_mode; apply_live = false; break;
         default: return;
     }
     aero::config::apply_graphics(cfg, apply_live);
@@ -320,15 +323,6 @@ void dispatch(UINT command) {
         case CMD_TEXTURE_DUMP_CLEAR: aero::config::set_texture_dump_dir({}); break;
         case CMD_EASY_TURBO: aero::config::set_easy_turbo_boost(!aero::config::easy_turbo_boost()); break;
         case CMD_FULL_TRACK: aero::config::set_full_track(!aero::config::full_track()); break;
-        case CMD_DEVELOPER_MODE: {
-            // RT64 reads developerMode once while constructing the renderer, so
-            // this persists now and takes effect on the next launch (same class
-            // as the graphics-API selection above).
-            ultramodern::renderer::GraphicsConfig dev_cfg = aero::config::current_graphics();
-            dev_cfg.developer_mode = !dev_cfg.developer_mode;
-            aero::config::apply_graphics(dev_cfg, false);
-            break;
-        }
         default: apply_graphics_command(command); break;
     }
     refresh();

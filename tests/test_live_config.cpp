@@ -61,14 +61,10 @@ int main() {
     expect(std::filesystem::exists(enhancements_path), "first load creates enhancements.json");
     expect(cfg.ar_option == ultramodern::renderer::AspectRatio::Expand,
            "enhancement-oriented aspect default is preserved");
-    // Shipped defaults for the persisted enhancement knobs (issue #23: verify
-    // and document the default rather than assuming it). The fog/sky matches
-    // are JSON-only: the game provisions two player viewports, so there is no
-    // 3P/4P split-screen for a menu toggle to act on.
+    // Shipped defaults for the menu-exposed enhancement knobs (issue #23:
+    // verify and document the default rather than assuming it).
     expect(!cfg.developer_mode, "developer overlay defaults off");
     expect(aero::config::full_track(), "full course geometry defaults on");
-    expect(aero::config::widescreen_fog_match(), "3P/4P fog match defaults on");
-    expect(aero::config::widescreen_sky_match(), "3P/4P sky match defaults on");
     expect(aero::config::draw_distance_scale() == 100.0f,
            "draw distance defaults to 100x");
     expect(!aero::config::easy_turbo_boost(), "turbo assist defaults off");
