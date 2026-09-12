@@ -198,6 +198,22 @@ Two engines; confusing them wasted sessions:
 loader (not music); `func_80032BB0` = Controller Pak / ghost service (`func_800643E4`
 = pak note read). Ghost slots `0x801AFE70 + n*0x2DE0`, resident flag `0x8019E32E`.
 
+Intro crackling (2026-09-12): ROM disassembly of `func_80001CA0`, especially
+`0x80001CDC..0x80001D2C`, shows that the game submits the preceding PCM task,
+reads AI length, and sizes the next task as `(target - remaining + 0x60) & 0xFFF0`,
+then clamps to its minimum. Initialization at `0x800017AC..0x80001854` derives
+target `0x8010C75C` = 368 and minimum `0x8010C758` = 352 at 22050 Hz / 60 VI.
+The old virtual FIFO reset its end time on every underrun, reporting the whole
+just-submitted buffer and trapping synthesis near 352 frames/VI (~21120 Hz).
+Measured Windows intro playback hit an empty SDL queue 7–17 times/second.
+The device-backed sink now uses actual SDL queue feedback in guest frame units,
+reserves about 100 ms of host buffering, and primes playback before unpausing.
+Feedback is capped at one VI: larger values select the same minimum but can
+underflow the ROM's subtraction before its clamp. The virtual FIFO remains the
+headless fallback. `tests/test_audio_playback.cpp` covers resampling, the ROM's
+feedback loop, bounded latency and rebuffering; `AERO_AUDIO_STATS=1` reports
+playback starts and rebuffer counts for full-game verification (no periodic logs).
+
 ## 2D/HUD dispatch — live-derived (docs/notes/hud-widescreen.md has full evidence)
 
 - Sound/scene 2D director `func_8001E8D8`: switch on scene word, jump table `0x80096F44`.

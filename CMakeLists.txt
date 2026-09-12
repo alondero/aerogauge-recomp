@@ -189,6 +189,27 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # Host unit tests (pure math/classification, no ROM or runtime needed). Run with
     # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
     enable_testing()
+    add_executable(test_audio_playback tests/test_audio_playback.cpp)
+    target_include_directories(test_audio_playback PRIVATE
+        ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(test_audio_playback PRIVATE ${SDL2_LIBRARIES})
+    if(WIN32)
+        add_custom_command(TARGET test_audio_playback POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+                $<TARGET_FILE_DIR:test_audio_playback>)
+    endif()
+    add_test(NAME audio_playback_buffering COMMAND test_audio_playback)
+    if(WIN32)
+        add_test(NAME audio_intro_playback
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audio_intro.ps1
+                -Exe $<TARGET_FILE:aerogauge_modern>
+                -RepoRoot ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(audio_intro_playback PROPERTIES
+            TIMEOUT 150 LABELS "e2e" SKIP_RETURN_CODE 77)
+    endif()
     add_executable(test_accessories tests/test_accessories.cpp src/aero_pak.cpp src/aero_haptics.cpp)
     target_include_directories(test_accessories PRIVATE src ${N64MR}/N64Recomp/include)
     add_test(NAME controller_accessories COMMAND test_accessories)
