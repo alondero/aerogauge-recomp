@@ -6,6 +6,7 @@
 // effect timer 5, clear the pending award flag. The unmodified ROM update at
 // 0x8005AE00 owns turbo thrust, heat accumulation and overheating cancellation.
 #include <stdint.h>
+#include <string.h>
 
 #include "recomp.h"
 
@@ -27,6 +28,10 @@
 #define CAR_CONTROLS    0x40u
 #define CAR_BOOST_TIMER 0x55u
 #define CAR_EFFECT_TIMER 0x56u
+#define CAR_HEAT         0x22Cu
+// ROM 0x800583EC and 0x8005AE28/0x8005AE4C use 80 as the engine overheat
+// limit. The HUD's separate display clamp at 100 is not boost eligibility.
+#define TURBO_HEAT_MAX   80.0f
 #define SETTINGS_TURBO_DURATION 0x28u
 #define TURBO_PENDING_FLAG 0x00001000u
 
@@ -46,7 +51,7 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     // the low 32 bits still address the canonical RDRAM window.
     const gpr car = (gpr)(int32_t)ctx->r16;
     const uint32_t car_address = (uint32_t)car;
-    if (car_address < 0x80000000u || car_address > 0x807FFFA8u) {
+    if (car_address < 0x80000000u || car_address > 0x807FFDD0u) {
         g_button_down = 1;
         return;
     }
@@ -75,6 +80,14 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     }
     // Do not extend an active turbo or queue a press for when it expires.
     if (!pressed || MEM_BU(CAR_BOOST_TIMER, car) != 0) return;
+    // Overheating sets internal heat to 500, keeping the gauge full during
+    // cooldown. Reject the press before awarding any thrust/effect; the ROM
+    // applies turbo thrust before its own overheating cancellation.
+    const uint32_t heat_bits = (uint32_t)MEM_W(CAR_HEAT, car);
+    float heat;
+    memcpy(&heat, &heat_bits, sizeof(heat));
+    // Reject NaN and positive infinity as well as full/overheated gauges.
+    if (!(heat < TURBO_HEAT_MAX)) return;
 
     const gpr settings = (gpr)(int32_t)MEM_W(CAR_SETTINGS, car);
     const uint32_t settings_address = (uint32_t)settings;

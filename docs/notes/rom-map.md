@@ -132,6 +132,16 @@ the original update decrements that timer, multiplies thrust by four, adds
 craft setting `+0x20` to heat at car `+0x22C`, and cancels turbo and sets heat
 to 500 when heat exceeds 80. This update remains unmodified.
 
+ROM-byte disassembly of the turbo state gate at `0x800583EC` and the update's
+80.0 constant load at `0x8005AE28`/comparison at `0x8005AE4C` establishes the
+engine overheat limit: car heat `+0x22C` is overheated above 80
+(`0x42A00000`). The HUD separately clamps its display at 100 (`0x42C80000`)
+in `0x80010628..0x80010664`; that cosmetic limit is not the boost eligibility
+limit. Easy Turbo rejects new awards at heat >= 80, including the cooldown from
+500, because the native update applies turbo thrust before cancelling an
+overheated turbo. Rejected presses are consumed; after cooling below 80 a fresh
+press can boost. Invalid float values such as NaN are rejected fail-safe.
+
 The countdown step is the word at `0x8013FF38` (`0/1/2/3`) and the race phase is
 `0x8013FF88` (`1` setup, `2` countdown, `3` racing). A live assisted-vs-original
 comparison showed that releasing brake at step 2 was too early and produced byte-for-byte

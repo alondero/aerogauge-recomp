@@ -226,6 +226,39 @@ int main(void) {
     assert(*(uint32_t*)(rdram + off(CAR + 0x34u)) == 0xA0000000u);
     assert(*(uint32_t*)(rdram + off(CAR + 0x22Cu)) == 0x42480000u);
 
+    // An overheated gauge blocks every new press throughout overheat cooldown.
+    const uint32_t hot_values[] = {
+        0x43FA0000u, 0x42C80000u, 0x42A00001u, 0x42A00000u, 0x7FC00000u
+    }; // 500, 100, >80, 80, NaN
+    for (uint32_t heat : hot_values) {
+        reset_guest(3, 3, ACCEL, 0);
+        w32(CAR + 0x20u, 0x80100000u);
+        w8(0x80100028u, 13);
+        w32(CAR + 0x22Cu, heat);
+        w32(CAR + 0x34u, 0xA0001000u);
+        w8(CAR + 0x56u, 9);
+        tick();
+        w8(CAR + 0x40u, ACCEL | DRIFT);
+        tick();
+        assert(r8(CAR + 0x55u) == 0);
+        assert(r8(CAR + 0x56u) == 9);
+        assert(*(uint32_t*)(rdram + off(CAR + 0x34u)) == 0xA0001000u);
+        assert(*(uint32_t*)(rdram + off(CAR + 0x22Cu)) == heat);
+        assert(actions() == ACCEL);
+
+        // Cooling below the overheat limit does not queue the rejected press.
+        w32(CAR + 0x22Cu, 0x429FFFFFu); // largest float below 80
+        w8(CAR + 0x40u, ACCEL | DRIFT);
+        tick();
+        assert(r8(CAR + 0x55u) == 0);
+        w8(CAR + 0x40u, ACCEL);
+        tick();
+        w8(CAR + 0x40u, ACCEL | DRIFT);
+        tick();
+        assert(r8(CAR + 0x55u) == 13);
+        assert(r8(CAR + 0x56u) == 5);
+    }
+
     // Outside racing, the button retains its original meaning.
     reset_guest(4, 3, DRIFT, 0);
     tick();
