@@ -35,7 +35,7 @@ try {
     $env:AERO_HEADLESS = "1"
     $env:AERO_WARP = "1:1"
     $env:AERO_MODERN_INPUT = "8000:0:0" # physical A, straight launch
-    $env:AERO_MODERN_INPUT_AFTER = "1700:a000:0:0" # A+Z, straight: no drift setup or steering
+    $env:AERO_MODERN_INPUT_AFTER = "1700:8010:0:0" # A+R, straight: dedicated Turbo button, no steering
     $env:AERO_MODERN_MAX_VIS = "2600"
     $positive = Invoke-TurboScenario "1" "enabled"
     $negative = Invoke-TurboScenario "0" "disabled"

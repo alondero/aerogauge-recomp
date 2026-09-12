@@ -503,7 +503,8 @@ static void input_sample() {
         if (down(SDL_CONTROLLER_BUTTON_DPAD_DOWN))      b |= N64_DD;
         if (down(SDL_CONTROLLER_BUTTON_DPAD_LEFT))      b |= N64_DL;
         if (down(SDL_CONTROLLER_BUTTON_DPAD_RIGHT))     b |= N64_DR;
-        // N64 Z on the left analog trigger (LT); N64 R also on the right trigger (RT) for racing feel.
+        // N64 Z (default drift) on the left analog trigger (LT); N64 R on the right trigger (RT)
+        // is the dedicated race Turbo button (src/aero_turbo_boost.c), keeping the two apart.
         if (SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT)  > PAD_TRIG_THRESH) b |= N64_Z;
         if (SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > PAD_TRIG_THRESH) b |= N64_R;
         // Remaining C directions: right-stick click -> C-down; the right stick itself -> all four C's.
@@ -528,6 +529,7 @@ static void input_sample() {
         if (ks[SDL_SCANCODE_RETURN]) b |= N64_START;
         if (ks[SDL_SCANCODE_Q])      b |= N64_L;
         if (ks[SDL_SCANCODE_E])      b |= N64_R;
+        if (ks[SDL_SCANCODE_R])      b |= N64_R;   // dedicated race Turbo button
         if (ks[SDL_SCANCODE_I])      b |= N64_CU;
         if (ks[SDL_SCANCODE_K])      b |= N64_CD;
         if (ks[SDL_SCANCODE_J])      b |= N64_CL;
