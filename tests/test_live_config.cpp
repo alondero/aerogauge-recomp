@@ -61,6 +61,13 @@ int main() {
     expect(std::filesystem::exists(enhancements_path), "first load creates enhancements.json");
     expect(cfg.ar_option == ultramodern::renderer::AspectRatio::Expand,
            "enhancement-oriented aspect default is preserved");
+    // Shipped defaults for the menu-exposed enhancement knobs (issue #23:
+    // verify and document the default rather than assuming it).
+    expect(!cfg.developer_mode, "developer overlay defaults off");
+    expect(aero::config::full_track(), "full course geometry defaults on");
+    expect(aero::config::draw_distance_scale() == 100.0f,
+           "draw distance defaults to 100x");
+    expect(!aero::config::easy_turbo_boost(), "turbo assist defaults off");
 
     // A menu action must not clobber an unrelated graphics.json hand edit made
     // while the game is running.

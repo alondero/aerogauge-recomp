@@ -39,9 +39,14 @@ Then run from the repo root:
 ## In-game configuration (Windows)
 
 In windowed mode, the native menu bar exposes **Graphics** and **Enhancements** settings.
-Changes to rendering, widescreen presentation, draw distance, and window size apply
-in-game and are saved to `graphics.json`. The graphics API and texture pack/dump paths
+Changes to rendering, widescreen presentation, draw distance, full course geometry,
+and window size apply
+in-game and are saved to `graphics.json`. The graphics API, developer overlay, and
+texture pack/dump paths
 are saved for the next launch; texture paths are chosen from native file/folder dialogs.
+**Enhancements > Full course geometry** is experimental (higher CPU/GPU cost, possible
+visual regressions) and defaults on; uncheck it to restore the original 3-zone
+visibility window.
 Press **F11** (or
 Alt+Enter) to switch fullscreen; return to windowed mode to access the menu bar again.
 
