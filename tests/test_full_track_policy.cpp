@@ -17,4 +17,10 @@ int main() {
     // Keep the exception narrow: adjacent zones and tracks still merge.
     assert(!pvs_gated_section(1u, 12u, 0x803903B8u, 0x00u));
     assert(!pvs_gated_section(0u, 13u, 0x803903B8u, 0x00u));
+
+    // Bikini zone 23 entry 0 caps the rotating tunnel from zone 20's view.
+    assert(pvs_gated_section(1u, 23u, 0x80396070u, 0x00u));
+    assert(!pvs_gated_section(1u, 23u, 0x803961C8u, 0x00u));
+    assert(!pvs_gated_section(1u, 22u, 0x80396070u, 0x00u));
+    assert(!pvs_gated_section(0u, 23u, 0x80396070u, 0x00u));
 }

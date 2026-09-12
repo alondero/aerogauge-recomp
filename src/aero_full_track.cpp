@@ -256,8 +256,8 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
             // Enclosed-shell geometry the artists rely on the PVS to hide stays
             // on the faithful per-frame window instead of being merged into an
             // always-drawn bucket. This is normally hw4 bit 0x10; the policy also
-            // records one byte-verified Bikini authoring exception (including its
-            // display-list address so a table reorder cannot retarget the rule).
+            // records verified Bikini authoring exceptions (including their
+            // display-list addresses so a table reorder cannot retarget a rule).
             if (aero::full_track::pvs_gated_section(
                     static_cast<uint8_t>(k.track), zone_ids[zi], dl, hw4)) continue;
             Bucket* b = nullptr;
