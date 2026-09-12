@@ -212,16 +212,9 @@ LIBULTRA_NAMES = {
     # `trunc.l.d` error came from a prologue-less float-conversion leaf at 0x8006C890 that the
     # boundary scan absorbs into this span; routing the name skips emission of the whole span.
     0x8006C800: "osGetTime",
-    # osPfsInitPak (byte-verified 2026-07-11; seventh boot first-fault via its
-    # __osPfsGetStatus(0x800742F0) -> __osSiRawStartDma of the per-channel status frame
-    # @0x801BD350): __osSiGetAccess(0x800740F0); __osPfsGetStatus; pfs->queue@+4, channel@+8,
-    # status=0@+0, +0x65=0; __osPfsSelectBank(0x8007521C); __osContRamRead(0x80075290) of the
-    # ID area. The game's pak scan (func_80026384) probes all channels at boot. ignored ->
-    # librecomp pak.cpp osPfsInitPak_recomp returns PFS_ERR_NOPACK ("no pak"), which cleanly
-    # gates the whole recompiled PFS suite (its __osContRamRead/Write users are only reachable
-    # after a successful InitPak). TODO(aerogauge): real Controller-Pak persistence — port the
-    # Lambo .mpk image + joybus answer machinery if save support needs it.
-    0x8006B440: "osPfsInitPak",
+    # osPfsInitPak (0x8006B440) deliberately stays recompiled: its SDK
+    # filesystem operates on the native block device below, not librecomp's
+    # PFS_ERR_NOPACK stub. See docs/notes/controller-accessories.md.
     # osContStartReadData (byte-verified 2026-07-11; eighth boot first-fault — the main game
     # loop 0x800658FC polls pads each frame): __osSiGetAccess(0x800740F0); if
     # __osContLastCmd(0x801BABD0)!=1 stage read frames via __osPackReadData(0x8006B354) + SI
@@ -288,6 +281,15 @@ LIBULTRA_NAMES = {
 # these names are NOT in N64Recomp's built-in reimplemented/ignored/renamed sets
 # (symbol_lists.cpp), so the toml array is the only routing mechanism.
 NATIVE_NAMES = {
+    # Byte-verified 2026-09-12: status builds a per-channel Joybus query and
+    # returns 1 for an empty socket; read/write stage commands 2/3, transfer
+    # exactly 32 bytes, and use a2 as the block index (not a byte address).
+    # Write's fifth argument protects ID blocks 1..6 unless force == 1.
+    # Retain InitPak, Checker, note allocation and all other filesystem code.
+    0x800742F0: "aero_pak_status",
+    0x80075290: "aero_pak_read",
+    0x80077260: "aero_pak_write",
+
     # guPerspectiveF (ROM 0x8006BA60, byte-verified 2026-07-11): jal 0x8006C330
     # (guMtxIdentF), fovy cvt.d.s * double @0x80098D20 (== 3.1415926/180.0,
     # ROM-byte-exact), /2.0f, jal 0x8006AC80 (cosf) / 0x80066D50 (sinf) -> cot,
@@ -475,6 +477,18 @@ text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdra
 func = "func_8005C750"
 before_vram = 0x8005C7A8
 text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
+
+# Port haptics observe the ROM's collision damage, after every branch has stored
+# car+0x24, immediately before it is accumulated into damage at 0x80058B00.
+[[patches.hook]]
+func = "func_80058114"
+before_vram = 0x80058AD8
+text = "extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_haptics_race_tick(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80015C8C"
+text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"
+
 """
 
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):
@@ -647,7 +661,7 @@ def main():
             f.write(f'    "{n}",\n')
         f.write("]\n")
         # Verbatim hand-authored patch blocks (hooks/instruction patches; see PATCH_BLOCKS).
-        f.write(PATCH_BLOCKS)
+        f.write(PATCH_BLOCKS.rstrip() + "\n")
 
     n_auto = len(auto_stubs & known)
     named = sorted(n for n in LIBULTRA_NAMES.values() if n in known)

@@ -30,6 +30,9 @@ stubs = [
 ignored = [
     "aeroRegisterTrackSections",
     "aeroRegisterZoneObjects",
+    "aero_pak_read",
+    "aero_pak_status",
+    "aero_pak_write",
     "guPerspectiveF",
 ]
 
@@ -194,3 +197,14 @@ text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdra
 func = "func_8005C750"
 before_vram = 0x8005C7A8
 text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
+
+# Port haptics observe the ROM's collision damage, after every branch has stored
+# car+0x24, immediately before it is accumulated into damage at 0x80058B00.
+[[patches.hook]]
+func = "func_80058114"
+before_vram = 0x80058AD8
+text = "extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_haptics_race_tick(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80015C8C"
+text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"

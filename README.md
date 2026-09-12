@@ -58,6 +58,36 @@ Enable **Enhancements > Easy Turbo + Boost Start** for simplified boosts:
 This option is off by default, saved in `enhancements.json`; disabling it restores
 original drift controls and boost mechanics.
 
+## Saves and controller feedback
+
+Controller 1 has a virtual **Controller Pak** by default. Use AeroGauge's own
+Controller Pak / Time Attack ghost save and load options; notes survive closing
+and restarting the port. Cartridge progress and settings continue to use EEPROM.
+
+Both live in the application's `saves` folder:
+
+- Windows: `%LOCALAPPDATA%\AeroGaugeRecomp\saves`
+- Linux: `$XDG_CONFIG_HOME/AeroGaugeRecomp/saves`, or `~/.config/AeroGaugeRecomp/saves`
+- Portable mode (`portable.txt` in the working directory): `./saves`
+
+`aerogauge.us.mpk` is the 32 KiB Controller Pak image; `aerogauge.us.bin` is the
+512-byte EEPROM save. Back up both to keep ghosts and cartridge progress.
+A missing Pak starts formatted; existing images are never silently replaced on a
+load error. Only raw 32 KiB MPK images are supported.
+
+A rumble-capable SDL gamepad receives **impact and turbo feedback** during P1
+races, alongside Controller Pak saving. Impacts give a stronger short pulse;
+turbo gives a lighter vibration while active. Feedback stops on pause and expires
+if gameplay stops updating. This is a port enhancement driven by the original
+race physics; the ROM's unused D-pad motor test is not a race rumble implementation.
+
+Optional launch overrides:
+
+- `AERO_RUMBLE=0`: disable vibration.
+- `AERO_RUMBLE_TURBO=0`: impacts only.
+- `AERO_PAK_PATH=<path>`: use another raw MPK image.
+- `AERO_CONTROLLER_PAK=0`: disable the virtual Controller Pak.
+
 ## Developer warp menu
 
 Jump straight into a 1-player race on any track without driving the menus

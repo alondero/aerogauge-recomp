@@ -94,10 +94,24 @@ try {
     if (-not $gcc)   { throw 'gcc.exe not on PATH. Add MinGW to $env:PATH (see comment in script).' }
     if (-not $gxx)   { throw 'g++.exe not on PATH. Add MinGW to $env:PATH.' }
     if (-not $ninja) { throw 'ninja not on PATH. Install it (pip install ninja) and put on PATH.' }
+    $python = $null
+    $pyLauncher = (Get-Command py.exe -ErrorAction SilentlyContinue).Source
+    if ($pyLauncher) {
+        $resolved = (& $pyLauncher -3 -c 'import sys; print(sys.executable)' 2>$null | Select-Object -Last 1)
+        if ($LASTEXITCODE -eq 0 -and $resolved) { $python = $resolved.Trim() }
+    }
+    if (-not $python) {
+        foreach ($candidate in (Get-Command python.exe -All -ErrorAction SilentlyContinue)) {
+            & $candidate.Source -c 'import sys' >$null 2>&1
+            if ($LASTEXITCODE -eq 0) { $python = $candidate.Source; break }
+        }
+    }
+    if (-not $python) { throw 'Python 3 interpreter not found. Install Python 3 or set it on PATH.' }
     Write-Host "[tools] cmake=$cmake" -ForegroundColor DarkGray
     Write-Host "[tools] gcc=$gcc"     -ForegroundColor DarkGray
     Write-Host "[tools] g++=$gxx"     -ForegroundColor DarkGray
     Write-Host "[tools] ninja=$ninja" -ForegroundColor DarkGray
+    Write-Host "[tools] python=$python" -ForegroundColor DarkGray
 
     # Sanity check: reject MSYS2's 3.25 cmake if it slipped back onto PATH first.
     $cmakeVersion = (& $cmake --version | Select-Object -First 1) -replace 'cmake version ', ''
@@ -134,6 +148,7 @@ try {
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-ultramodern-runtime-scheduler-audio-vi.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0007-ultramodern-savestate-thread-context-relink.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0012-librecomp-pi-dma-completion-osiomesg.patch' },
+        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0014-librecomp-flush-eeprom-on-exit.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0013-ultramodern-sp-task-synchronous-failsoft.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0006-rt64-interp-angular-velocity-matching.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },
@@ -175,10 +190,14 @@ try {
     # breaks CMake's auto-detection ("C compiler is broken" at project() time).
     Write-Host "`n[3/5] Configuring CMake (first pass)..." -ForegroundColor Cyan
     if (-not (Test-Path build)) { New-Item -ItemType Directory build | Out-Null }
-    & $cmake -S . -B build -G Ninja `
-        -DCMAKE_BUILD_TYPE=Release `
-        -DCMAKE_C_COMPILER=gcc.exe `
-        -DCMAKE_CXX_COMPILER=g++.exe
+    $cmakeConfigureArgs = @(
+        '-S', '.', '-B', 'build', '-G', 'Ninja',
+        '-DCMAKE_BUILD_TYPE=Release',
+        '-DCMAKE_C_COMPILER=gcc.exe',
+        '-DCMAKE_CXX_COMPILER=g++.exe',
+        "-DPython3_EXECUTABLE=$python"
+    )
+    & $cmake @cmakeConfigureArgs
     if ($LASTEXITCODE -ne 0) { throw 'cmake configure failed.' }
 
     # --- 9. Build the recompiler tools ----------------------------------------
@@ -205,10 +224,7 @@ try {
     # glob for RecompiledFuncs/. The EXISTS check is configure-time only; the
     # second configure wires in the freshly generated files.
     Write-Host "[4/5] Configuring CMake (second pass - wires in generated sources)..." -ForegroundColor Cyan
-    & $cmake -S . -B build -G Ninja `
-        -DCMAKE_BUILD_TYPE=Release `
-        -DCMAKE_C_COMPILER=gcc.exe `
-        -DCMAKE_CXX_COMPILER=g++.exe
+    & $cmake @cmakeConfigureArgs
     if ($LASTEXITCODE -ne 0) { throw 'cmake second configure failed.' }
 
     # --- 12. Build aerogauge_modern -------------------------------------------

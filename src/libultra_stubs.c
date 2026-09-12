@@ -29,11 +29,5 @@ void __osSetSR_recomp(uint8_t* rdram, recomp_context* ctx) {
 // (that ROM's private VI-manager globals). AeroGauge's VI init has not been mapped yet;
 // re-derive it from this ROM's bytes before routing __osViInit to `ignored`.
 
-// TODO(aerogauge): the Lamborghini port carried a fully-built SI controller-read bridge
-// here (func_8007F780) that wired aero_joybus_answer (PIF joybus frame emulator) + a
-// 32 KB controller-pak image into that ROM's hand-rolled SI kernel. All of it was keyed
-// to Lambo function / global addresses (D_8011C640/680/681/6D0, the SI bridge at
-// func_8007F780). Dropped from the base stack because nothing in AeroGauge calls those
-// Lambo names. The PIF-level joybus primitives (data CRC, pak image format, frame
-// dispatch table) ARE generic and worth preserving; re-add them once AeroGauge's SI
-// read path is identified.
+// Controller Pak block I/O now lives in aero_pak.cpp. The ROM's SDK filesystem
+// remains recompiled; ordinary controller reads use ultramodern input callbacks.

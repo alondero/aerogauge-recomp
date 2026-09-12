@@ -325,3 +325,21 @@ owns the swap path outright (Lambo's promote_vi_context bridge was retired).
 
 Do NOT add to INDIRECT_STARTS: `0x800708A0/0x800708B0` ($k0 exception-handler entries),
 `0x8007BED0` (exception vector blob, memcpy source only).
+
+
+## Controller Pak and haptics (2026-09-12)
+
+ROM-byte disassembly confirmed the SDK block-device seam: `0x800742F0` is
+`__osPfsGetStatus`, `0x80075290` / `0x80077260` are `__osContRamRead/Write`
+(32-byte blocks; write force is the fifth argument). `0x8006B440` InitPak and
+its filesystem now remain recompiled. The host supplies a persistent 32 KiB MPK.
+Allocate/Find/ReadWrite/FreeBlocks are `0x8006F040`, `0x8006CDE0`, `0x8006EC1C`,
+`0x8006D0F0`; `0x8006CFA0` is NumFiles, with three arguments.
+
+The motor test `0x80063930` checks D-pad input and has no discovered callers;
+its presence does not establish native race rumble. User-requested race feedback
+instead observes actual collision damage at craft+0x24 at `0x80058AD8`, where all
+collision branches converge before damage accumulation. Turbo uses craft+0x55.
+Craft+4 == `0x8005C750` selects P1. Both hooks are read-only; no physics is changed.
+See [controller-accessories.md](controller-accessories.md) for the byte evidence,
+storage/error behavior, EEPROM shutdown barrier and verification coverage.

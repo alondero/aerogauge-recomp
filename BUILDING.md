@@ -48,6 +48,7 @@ filename).
 git -C lib/N64ModernRuntime apply ../../patches/0001-lamborghini-runtime-scheduler-audio-vi.patch
 git -C lib/N64ModernRuntime apply ../../patches/0007-ultramodern-savestate-thread-context-relink.patch
 git -C lib/N64ModernRuntime apply ../../patches/0012-librecomp-pi-dma-completion-osiomesg.patch
+git -C lib/N64ModernRuntime apply ../../patches/0014-librecomp-flush-eeprom-on-exit.patch
 
 # RT64 renderer — all platforms:
 git -C lib/rt64 apply "$(pwd)/patches/0006-rt64-interp-angular-velocity-matching.patch"
@@ -107,7 +108,7 @@ cmake --build build --target aerogauge_modern -j
 ```bash
 export PATH="/c/ProgramData/mingw64/mingw64/bin:$PATH"   # adjust to your MinGW path
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc.exe -DCMAKE_CXX_COMPILER=g++.exe
+    -DCMAKE_C_COMPILER=gcc.exe '-DCMAKE_CXX_COMPILER=g++.exe'
 cmake --build build --target aerogauge_modern -j
 ```
 

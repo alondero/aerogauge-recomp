@@ -136,6 +136,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # can succeed before RSPRecomp runs.
     set(AERO_SOURCES
         src/main.cpp
+        src/aero_haptics.cpp   # race-event feedback and motor callback publisher
+        src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/register_overlays.cpp
         src/stub_renderer.cpp
@@ -187,6 +189,55 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # Host unit tests (pure math/classification, no ROM or runtime needed). Run with
     # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
     enable_testing()
+    add_executable(test_accessories tests/test_accessories.cpp src/aero_pak.cpp src/aero_haptics.cpp)
+    target_include_directories(test_accessories PRIVATE src ${N64MR}/N64Recomp/include)
+    add_test(NAME controller_accessories COMMAND test_accessories)
+    if(WIN32)
+        add_test(NAME haptics_race_e2e
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_haptics_e2e.ps1
+                    -Exe $<TARGET_FILE:aerogauge_modern>)
+        set_tests_properties(haptics_race_e2e PROPERTIES
+            TIMEOUT 180 LABELS "e2e" SKIP_RETURN_CODE 77)
+    endif()
+
+    # Exercise the actual runtime saving worker and file publication; unrelated
+    # PI entrypoints have fail-fast stubs, so this needs neither ROM nor RT64.
+    add_executable(test_eeprom_flush tests/test_eeprom_flush.cpp
+        ${N64MR}/librecomp/src/pi.cpp ${N64MR}/librecomp/src/files.cpp)
+    target_include_directories(test_eeprom_flush PRIVATE
+        ${N64MR}/N64Recomp/include ${N64MR}/ultramodern/include
+        ${N64MR}/librecomp/include ${N64MR}/librecomp/include/librecomp
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
+    target_compile_options(test_eeprom_flush PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(test_eeprom_flush PRIVATE -Wl,--gc-sections)
+    add_test(NAME eeprom_exit_flush COMMAND test_eeprom_flush)
+    set_tests_properties(eeprom_exit_flush PROPERTIES TIMEOUT 30)
+
+    if(TARGET RecompiledFuncs)
+        # This extractor is part of the required regression suite. A missing or
+        # unusable interpreter must fail configure instead of silently omitting
+        # controller_pak_rom_filesystem from CTest.
+        if(NOT Python3_EXECUTABLE)
+            if(WIN32)
+                find_program(Python3_EXECUTABLE NAMES py.exe python.exe python3.exe py python3)
+            else()
+                find_program(Python3_EXECUTABLE NAMES python3 python py)
+            endif()
+        endif()
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        set(PFS_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/pfs_test_funcs.c)
+        add_custom_command(OUTPUT ${PFS_TEST_FUNCS}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_pfs_test.py
+                    ${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncs ${PFS_TEST_FUNCS}
+            DEPENDS tests/extract_pfs_test.py ${FUNC_C_SOURCES})
+        add_executable(test_pfs_rom tests/test_pfs_rom.cpp src/aero_pak.cpp ${PFS_TEST_FUNCS})
+        target_include_directories(test_pfs_rom PRIVATE src ${N64MR}/N64Recomp/include)
+        target_compile_options(test_pfs_rom PRIVATE -fno-strict-aliasing)
+        add_test(NAME controller_pak_rom_filesystem COMMAND test_pfs_rom
+                 "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (USA).z64")
+        set_tests_properties(controller_pak_rom_filesystem PROPERTIES TIMEOUT 30)
+    endif()
     add_executable(test_hud_shift_scale tests/test_hud_shift_scale.c)
     target_include_directories(test_hud_shift_scale PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(NOT WIN32)
