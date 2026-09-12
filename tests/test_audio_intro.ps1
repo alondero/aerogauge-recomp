@@ -3,9 +3,15 @@
 param([Parameter(Mandatory = $true)][string]$Exe,
       [string]$RepoRoot = (Split-Path $PSScriptRoot -Parent))
 $ErrorActionPreference = 'Stop'
+$resolvedRepoRoot = (Resolve-Path $RepoRoot).Path
+$rom = Join-Path $resolvedRepoRoot 'AeroGauge (USA).z64'
+if (-not (Test-Path -LiteralPath $Exe) -or -not (Test-Path -LiteralPath $rom)) {
+    Write-Host "SKIP: missing ROM ($rom) or executable ($Exe)"
+    exit 77
+}
 $info = [System.Diagnostics.ProcessStartInfo]::new()
 $info.FileName = (Resolve-Path $Exe).Path
-$info.WorkingDirectory = (Resolve-Path $RepoRoot).Path
+$info.WorkingDirectory = $resolvedRepoRoot
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true
 $info.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
@@ -30,12 +36,12 @@ if (-not $process.WaitForExit(120000)) {
 $log = $stderr.Result
 $logPath = Join-Path $env:TEMP "aero_intro_audio_$PID.log"
 [System.IO.File]::WriteAllText($logPath, $log)
-if ($process.ExitCode -ne 0 -or $log -match 'Unhandled jump target|exited unexpectedly') {
-    throw "Intro audio run crashed; see $logPath"
-}
 if ($log -match 'SDL_OpenAudioDevice failed|SDL_InitSubSystem\(SDL_INIT_AUDIO\) failed') {
     Write-Host "SKIP: no usable audio device; see $logPath"
     exit 77
+}
+if ($process.ExitCode -ne 0 -or $log -match 'Unhandled jump target|exited unexpectedly') {
+    throw "Intro audio run crashed; see $logPath"
 }
 if ($log -notmatch 'boot summary;.*vis=3600\b' -or
     $log -notmatch 'first NON-SILENT buffer' -or

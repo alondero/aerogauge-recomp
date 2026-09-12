@@ -13,6 +13,7 @@ static unsigned underruns;
 static unsigned starts;
 static SDL_AudioFormat test_format = AUDIO_F32SYS;
 static int test_rate = 48000;
+static bool test_device_available = true;
 static SDL_AudioDeviceID open_device(const char*, int, const SDL_AudioSpec*, SDL_AudioSpec* obtained, int) {
     device = {};
     device.freq = test_rate;
@@ -20,7 +21,7 @@ static SDL_AudioDeviceID open_device(const char*, int, const SDL_AudioSpec*, SDL
     device.channels = 2;
     device.samples = test_rate / 100;
     *obtained = device;
-    return 1;
+    return test_device_available ? 1 : 0;
 }
 static void pause_device(SDL_AudioDeviceID, int pause) {
     paused = pause != 0;
@@ -95,5 +96,15 @@ int main() {
     test_format = AUDIO_S16SYS;
     test_rate = 22050;
     playback(true);
+    test_device_available = false;
+    aero::audio::init(48000);
+    ultramodern::audio_callbacks_t headless{};
+    aero::audio::get_callbacks(&headless);
+    headless.set_frequency(22050);
+    std::vector<int16_t> headless_pcm(928, 1234);
+    headless.queue_samples(headless_pcm.data(), headless_pcm.size());
+    require(headless.get_frames_remaining() <= 22050 / 60,
+            "headless feedback exceeds one VI");
+    aero::audio::shutdown();
     std::puts("PASS audio playback");
 }

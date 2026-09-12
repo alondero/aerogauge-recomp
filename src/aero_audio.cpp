@@ -98,10 +98,10 @@ void log_opened_once() {
 // Guest synthesis and host playback need separate buffering. SDL's resampler
 // holds input for filter lookahead and the device drains whole callback blocks.
 // Starting an empty device causes repeated underruns even at a steady guest rate.
-// Keep four VIs (~67 ms), or three device callbacks if larger, ahead of playback.
+// Keep about 100 ms, or three device callbacks if larger, ahead of playback.
 // Re-prime after starvation as well; adding silence would splice clicks into PCM.
 uint32_t playback_buffer_frames() {
-    return std::max((uint32_t)g_obtained.freq / 15,
+    return std::max((uint32_t)g_obtained.freq / 10,
                     (uint32_t)g_obtained.samples * 3);
 }
 
@@ -134,6 +134,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
     if (pcm == nullptr || sample_count == 0) {
         return;
     }
+    std::lock_guard<std::mutex> lock(g_state_mtx);
     // One-shot content tripwire (PERMANENT harness instrumentation): distinguishes "sink receives
     // buffers" from "sink receives AUDIBLE PCM" in headless logs. Runs BEFORE the device check so
     // a headless run without a drainable audio device (e.g. SDL_AUDIODRIVER=dummy under WSL, where
@@ -178,7 +179,6 @@ void submit(const int16_t* pcm, size_t sample_count) {
         swapped[sample_count - 1] = pcm[sample_count - 1];
     }
 
-    std::lock_guard<std::mutex> lock(g_state_mtx);
     // Cheap passthrough: native format + native channels + native rate.
     const bool native_rate  = (uint32_t)g_obtained.freq == g_desired_rate;
     const bool native_fmt   = g_obtained.format == AUDIO_S16LSB;
@@ -310,6 +310,9 @@ size_t get_frames_remaining() {
         // playback or make the guest throttle while the host queue is empty.
         const uint32_t bytes_per_frame = g_obtained.channels *
                                         (SDL_AUDIO_BITSIZE(g_obtained.format) / 8);
+        if (bytes_per_frame == 0 || g_obtained.freq == 0) {
+            return 0;
+        }
         const uint32_t queued_frames = SDL_GetQueuedAudioSize(g_dev) / bytes_per_frame;
         const uint32_t reserve = playback_buffer_frames();
         const size_t remaining = queued_frames > reserve
@@ -327,7 +330,8 @@ size_t get_frames_remaining() {
     }
     const uint64_t ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
         g_ai_fifo_end - now).count();
-    return (size_t)(ns * g_desired_rate / 1'000'000'000ull);
+    const size_t remaining = (size_t)(ns * g_desired_rate / 1'000'000'000ull);
+    return std::min(remaining, (size_t)g_desired_rate / 60);
 }
 
 void set_frequency(uint32_t freq) {

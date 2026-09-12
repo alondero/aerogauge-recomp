@@ -207,7 +207,7 @@ The old virtual FIFO reset its end time on every underrun, reporting the whole
 just-submitted buffer and trapping synthesis near 352 frames/VI (~21120 Hz).
 Measured Windows intro playback hit an empty SDL queue 7–17 times/second.
 The device-backed sink now uses actual SDL queue feedback in guest frame units,
-reserves four VIs of host buffering, and primes playback before unpausing.
+reserves about 100 ms of host buffering, and primes playback before unpausing.
 Feedback is capped at one VI: larger values select the same minimum but can
 underflow the ROM's subtraction before its clamp. The virtual FIFO remains the
 headless fallback. `tests/test_audio_playback.cpp` covers resampling, the ROM's
