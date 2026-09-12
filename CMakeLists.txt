@@ -205,7 +205,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         add_test(NAME audio_intro_playback
             COMMAND powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audio_intro.ps1
-                -Exe $<TARGET_FILE:aerogauge_modern>)
+                -Exe $<TARGET_FILE:aerogauge_modern>
+                -RepoRoot ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(audio_intro_playback PROPERTIES
             TIMEOUT 150 LABELS "e2e" SKIP_RETURN_CODE 77)
     endif()

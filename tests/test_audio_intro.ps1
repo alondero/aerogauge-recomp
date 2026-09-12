@@ -1,8 +1,11 @@
 # Real-device regression: intro through attract-mode demo, with no playback starvation.
 # Needs a Windows desktop/audio device, the ROM, and a built executable.
 param([Parameter(Mandatory = $true)][string]$Exe,
-      [string]$RepoRoot = (Split-Path $PSScriptRoot -Parent))
+      [string]$RepoRoot)
 $ErrorActionPreference = 'Stop'
+if (-not $RepoRoot) {
+    $RepoRoot = Split-Path $PSScriptRoot -Parent
+}
 $resolvedRepoRoot = (Resolve-Path $RepoRoot).Path
 $rom = Join-Path $resolvedRepoRoot 'AeroGauge (USA).z64'
 if (-not (Test-Path -LiteralPath $Exe) -or -not (Test-Path -LiteralPath $rom)) {
