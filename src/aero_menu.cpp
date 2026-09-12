@@ -36,7 +36,6 @@ HMENU g_window_size_menu = nullptr;
 HMENU g_graphics_menu = nullptr;
 HMENU g_enhancements_menu = nullptr;
 HMENU g_draw_distance_menu = nullptr;
-HMENU g_split_menu = nullptr;
 
 constexpr std::array<int, 7> kManualRefreshRates{30, 60, 90, 120, 144, 165, 240};
 
@@ -91,8 +90,6 @@ enum Command : UINT {
     CMD_TEXTURE_DUMP_CLEAR,
     CMD_EASY_TURBO,
     CMD_FULL_TRACK,
-    CMD_FOG_MATCH,
-    CMD_SKY_MATCH,
     CMD_DEVELOPER_MODE,
 };
 
@@ -228,8 +225,6 @@ void refresh() {
           draw_distance_command(draw_distance));
     check(g_enhancements_menu, CMD_FULL_TRACK, aero::config::full_track());
     check(g_enhancements_menu, CMD_EASY_TURBO, aero::config::easy_turbo_boost());
-    check(g_split_menu, CMD_FOG_MATCH, aero::config::widescreen_fog_match());
-    check(g_split_menu, CMD_SKY_MATCH, aero::config::widescreen_sky_match());
     check(g_graphics_menu, CMD_DEVELOPER_MODE, cfg.developer_mode);
     if (g_hwnd != nullptr) DrawMenuBar(g_hwnd);
 }
@@ -325,8 +320,6 @@ void dispatch(UINT command) {
         case CMD_TEXTURE_DUMP_CLEAR: aero::config::set_texture_dump_dir({}); break;
         case CMD_EASY_TURBO: aero::config::set_easy_turbo_boost(!aero::config::easy_turbo_boost()); break;
         case CMD_FULL_TRACK: aero::config::set_full_track(!aero::config::full_track()); break;
-        case CMD_FOG_MATCH: aero::config::set_widescreen_fog_match(!aero::config::widescreen_fog_match()); break;
-        case CMD_SKY_MATCH: aero::config::set_widescreen_sky_match(!aero::config::widescreen_sky_match()); break;
         case CMD_DEVELOPER_MODE: {
             // RT64 reads developerMode once while constructing the renderer, so
             // this persists now and takes effect on the next launch (same class
@@ -405,9 +398,6 @@ void attach(SDL_Window* window) {
     append_item(draw_distance, CMD_DRAW_UNLIMITED, "Unlimited");
     append_item(enhancements, CMD_FULL_TRACK, "Full course geometry (experimental)");
     append_item(enhancements, CMD_EASY_TURBO, "Easy Turbo + Boost Start");
-    HMENU split = g_split_menu = append_submenu(enhancements, "Split-screen 3P/4P");
-    append_item(split, CMD_FOG_MATCH, "Match 1P fog");
-    append_item(split, CMD_SKY_MATCH, "Match 1P sky");
     HMENU texture_pack = append_submenu(enhancements, "Texture pack (restart required)");
     append_item(texture_pack, CMD_TEXTURE_PACK_DIRECTORY, "Choose directory...");
     append_item(texture_pack, CMD_TEXTURE_PACK_ARCHIVE, "Choose .rtz archive...");
