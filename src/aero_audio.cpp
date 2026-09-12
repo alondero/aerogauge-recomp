@@ -8,9 +8,8 @@
 //
 // Design notes:
 //  * Format: int16 stereo at 48 kHz initially. SDL is asked for AUDIO_S16LSB
-//    and 2 channels. The actual obtained spec may differ; queue_samples builds
-//    an SDL_AudioCVT when the obtained spec does not match the game's output
-//    (rate/format) and runs SDL_ConvertAudio on every submit.
+//    and 2 channels. A persistent SDL_AudioStream converts to the obtained spec.
+//    Playback starts after a short prebuffer to cover resampler/callback batching.
 //  * Thread model: the game's audio thread calls queue_samples (via the
 //    ultramodern shim). SDL_QueueAudio and SDL_GetQueuedAudioSize are
 //    thread-safe (per SDL2 docs) -- no extra lock needed.
@@ -26,6 +25,7 @@
 #include "recomp.h" // recomp_context + MEM_W for the func_80079720 native override below
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -50,6 +50,9 @@ uint32_t         g_desired_rate = 0;
 // g_state_mtx; recreated when the game changes the AI frequency.
 SDL_AudioStream*  g_stream = nullptr;
 uint32_t          g_stream_src_rate = 0;
+bool              g_playback_started = false; // guarded by g_state_mtx
+uint32_t          g_playback_rebuffers = 0;
+bool              g_playback_stats = false;
 std::atomic<bool> g_device_opened{false};
 std::atomic<bool> g_init_logged{false};
 std::atomic<bool> g_first_hit_logged{false};
@@ -89,6 +92,41 @@ void log_opened_once() {
                      "[probe] audio: opened SDL2 device freq=%u fmt=%d ch=%u samples=%u\n",
                      (unsigned)g_obtained.freq, (int)g_obtained.format,
                      (unsigned)g_obtained.channels, (unsigned)g_obtained.samples);
+    }
+}
+
+// Guest synthesis and host playback need separate buffering. SDL's resampler
+// holds input for filter lookahead and the device drains whole callback blocks.
+// Starting an empty device causes repeated underruns even at a steady guest rate.
+// Keep four VIs (~67 ms), or three device callbacks if larger, ahead of playback.
+// Re-prime after starvation as well; adding silence would splice clicks into PCM.
+uint32_t playback_buffer_frames() {
+    return std::max((uint32_t)g_obtained.freq / 15,
+                    (uint32_t)g_obtained.samples * 3);
+}
+
+void queue_output_locked(const void* data, uint32_t bytes) {
+    if (g_playback_started && SDL_GetQueuedAudioSize(g_dev) == 0) {
+        SDL_PauseAudioDevice(g_dev, 1);
+        g_playback_started = false;
+        ++g_playback_rebuffers;
+        if (g_playback_stats) {
+            std::fprintf(stderr, "[probe] audio: playback starved; rebuffers=%u\n", g_playback_rebuffers);
+        }
+    }
+    if (SDL_QueueAudio(g_dev, data, bytes) != 0) {
+        std::fprintf(stderr, "[probe] audio: SDL_QueueAudio failed: %s\n", SDL_GetError());
+        return;
+    }
+    const uint32_t frames = playback_buffer_frames();
+    const uint32_t target_bytes = frames * g_obtained.channels *
+                                 (SDL_AUDIO_BITSIZE(g_obtained.format) / 8);
+    if (!g_playback_started && SDL_GetQueuedAudioSize(g_dev) >= target_bytes) {
+        SDL_PauseAudioDevice(g_dev, 0);
+        g_playback_started = true;
+        if (g_playback_stats) {
+            std::fprintf(stderr, "[probe] audio: playback started; rebuffers=%u\n", g_playback_rebuffers);
+        }
     }
 }
 
@@ -146,9 +184,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
     const bool native_fmt   = g_obtained.format == AUDIO_S16LSB;
     const bool native_chan  = g_obtained.channels == 2;
     if (native_rate && native_fmt && native_chan) {
-        if (SDL_QueueAudio(g_dev, swapped.data(), byte_count) != 0) {
-            std::fprintf(stderr, "[probe] audio: SDL_QueueAudio failed: %s\n", SDL_GetError());
-        }
+        queue_output_locked(swapped.data(), byte_count);
     } else {
         // Convert via a PERSISTENT SDL_AudioStream (stateful resampler — see the note at
         // g_stream). Recreate only when the game's AI frequency changes (rare: once at boot).
@@ -167,10 +203,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
         }
         if (g_stream == nullptr) {
             // Degraded fallback: queue unconverted (wrong rate beats silence).
-            if (SDL_QueueAudio(g_dev, swapped.data(), byte_count) != 0) {
-                std::fprintf(stderr, "[probe] audio: SDL_QueueAudio (fallback) failed: %s\n",
-                             SDL_GetError());
-            }
+            queue_output_locked(swapped.data(), byte_count);
             return;
         }
         if (SDL_AudioStreamPut(g_stream, swapped.data(), (int)byte_count) != 0) {
@@ -183,10 +216,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
             out.resize((size_t)avail);
             const int got = SDL_AudioStreamGet(g_stream, out.data(), avail);
             if (got > 0) {
-                if (SDL_QueueAudio(g_dev, out.data(), (Uint32)got) != 0) {
-                    std::fprintf(stderr, "[probe] audio: SDL_QueueAudio (stream) failed: %s\n",
-                                 SDL_GetError());
-                }
+                queue_output_locked(out.data(), (Uint32)got);
             }
         }
     }
@@ -239,7 +269,7 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     submit(pcm, sample_count);
 }
 
-// Virtual AI FIFO (issue #7 follow-up, aspMain unhandled-jump crash, 2026-07-17). The N64
+// Headless virtual AI FIFO (issue #7 follow-up, aspMain crash, 2026-07-17). The N64
 // AI drains queued PCM at exactly the game's AI rate, so osAiGetLength declines smoothly and
 // only reaches 0 when the game genuinely stops feeding audio. The previous implementation
 // reported the SDL device queue, which (a) is pulled in whole callback-sized bursts (~10 ms
@@ -251,8 +281,10 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
 // count (0x240 from the preceding interleave/save block), whose wet-buffer writes wrap past
 // DMEM 0x1000 and shred the ACMD dispatch table -> "Unhandled jump target" crash (RSP DMEM
 // wraps identically on real hardware; console timing just never produces the degenerate
-// frame). Modeling the console drain keeps frame requests console-sized in windowed AND
-// headless runs. Guarded by g_state_mtx.
+// frame). Keep this fallback for runs without an audio device. Windowed playback must
+// use actual device feedback: resetting an expired virtual FIFO on each submit loses
+// the playback deficit and traps synthesis at the 352-frame minimum (~21120 Hz).
+// Guarded by g_state_mtx.
 std::chrono::steady_clock::time_point g_ai_fifo_end{};
 
 void ai_fifo_queue_locked(size_t stereo_frames) {
@@ -272,6 +304,23 @@ size_t get_frames_remaining() {
     if (g_desired_rate == 0) {
         return 0;
     }
+    if (g_device_opened.load() && g_dev != 0) {
+        // Convert obtained-device bytes to guest stereo frames. Reserve host
+        // buffering separately so SDL callback/resampler bursts do not starve
+        // playback or make the guest throttle while the host queue is empty.
+        const uint32_t bytes_per_frame = g_obtained.channels *
+                                        (SDL_AUDIO_BITSIZE(g_obtained.format) / 8);
+        const uint32_t queued_frames = SDL_GetQueuedAudioSize(g_dev) / bytes_per_frame;
+        const uint32_t reserve = playback_buffer_frames();
+        const size_t remaining = queued_frames > reserve
+            ? (uint64_t)(queued_frames - reserve) * g_desired_rate / g_obtained.freq
+            : 0;
+        // func_80001CA0 subtracts this from a one-VI target, aligns with 0xFFF0,
+        // then clamps to its minimum. A large SDL batch can underflow that
+        // subtraction BEFORE the clamp. One VI already selects the minimum;
+        // reporting more adds no backpressure and can request a garbage task.
+        return std::min(remaining, (size_t)g_desired_rate / 60);
+    }
     const auto now = std::chrono::steady_clock::now();
     if (g_ai_fifo_end <= now) {
         return 0;
@@ -289,7 +338,7 @@ void set_frequency(uint32_t freq) {
     g_desired_rate = freq;
     // We do not reopen the device on every set_frequency. SDL honours the
     // requested rate via SDL_AUDIO_ALLOW_ANY_CHANGE at open time. If the
-    // obtained spec rate does not match what the game asks for, the CVT path
+    // obtained spec rate does not match what the game asks for, the stream path
     // in submit() handles the conversion. This keeps the audio path light --
     // a reopen is heavy and would stall the game thread for tens of ms.
 }
@@ -309,8 +358,8 @@ void init(uint32_t desired_sample_rate) {
     // environment the SDL queue never drains (Pulse has no real sink; SDL's dummy driver buffers
     // forever), so a queue-based get_frames_remaining would report a full queue and the game's
     // backpressure would stop synthesising -- silently masking whether the audio pipeline works.
-    // Backpressure now comes from the virtual AI FIFO (see get_frames_remaining), which drains
-    // at the console rate with or without a device, so headless runs synthesise real PCM at the
+    // Headless backpressure comes from the virtual AI FIFO (see get_frames_remaining), so
+    // runs without a device still synthesise real PCM at the
     // console cadence (NON-SILENT tripwire in submit() still reports it).
     {
         const char* headless = std::getenv("AERO_HEADLESS");
@@ -349,7 +398,10 @@ void init(uint32_t desired_sample_rate) {
         std::fprintf(stderr, "[probe] audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
         return;
     }
-    SDL_PauseAudioDevice(g_dev, 0);  // start playback immediately
+    // SDL opens paused. queue_output_locked starts it once PCM is buffered.
+    g_playback_started = false;
+    g_playback_rebuffers = 0;
+    g_playback_stats = std::getenv("AERO_AUDIO_STATS") != nullptr;
     g_device_opened.store(true);
     log_opened_once();
 }
@@ -372,6 +424,8 @@ void shutdown() {
         g_dev = 0;
     }
     g_device_opened.store(false);
+    g_playback_started = false;
+    g_ai_fifo_end = {};
 }
 
 } // namespace aero::audio
