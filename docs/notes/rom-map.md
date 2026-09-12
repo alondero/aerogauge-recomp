@@ -116,13 +116,28 @@ The real P1 input chain is:
 | car `+0x34 & 0x2000` | turbo-ready drift state observed immediately before the successful release/re-press |
 | car `+0x34 & 0x20000000` just after GO | ROM-owned state bit that signals Boost Start in the launch window; it is reused by later driving states |
 | car `+0x55` | ROM-owned turbo timer; copies craft setting `+0x28` (`10` for the default craft) when the maneuver succeeds |
+| `0x8010CAB0 + port*8` | raw per-port controller block (func_800092C4 repacks osContGetReadData here via func_80009494); buttons u16 at +0x2, i.e. P1 `0x8010CAB2`, returned by func_80009438 |
 
-The opt-in race assist now repurposes the configured drift button as Turbo.
-A rising edge awards the boost without steering, drift readiness, or accelerator
-release/re-press; the hook consumes semantic drift and preserves other controls.
-Held buttons do not repeat; presses during active turbo are consumed, not queued.
+The opt-in race assist uses a dedicated physical button for Turbo: the raw N64 R
+bit of P1's controller block (`0x8010CAB2`), hooked only in the P1 callback
+func_8005C750 (P2's func_8005C878 carries no hook, so 2P races are unchanged).
+It is never keyed to a semantic action, so the configured drift button keeps its
+meaning and drifting is never consumed — outside the countdown Boost Start the
+hook only reads car+0x40 and never rewrites it. A rising edge awards the boost
+without steering, drift readiness, or accelerator release/re-press. Held buttons
+do not repeat; presses during active turbo are consumed, not queued.
 Countdown/disabled input also updates the edge latch to avoid a press at GO or
-when toggling the option.
+when toggling the option. Because Turbo reads the physical bit, remapping an
+action onto R makes that press do both (default bindings are assumed).
+
+R is not part of the racing control scheme (its documented in-game use is the
+car-colour selector, a menu screen). Audited pad readers: P1 in-race vehicle
+input (func_8005C750 / func_8005C878) reaches the pad only through func_8005C9E4's
+configured accel/brake/drift masks; the race runner's pad-snapshot reads
+(func_80015FD0 at 0x8001604C/0x8001613C/0x800161E8/0x80016214, func_80016464,
+func_80016890) test only START (0x1000); the one hardcoded R (0x10) test,
+func_800277E0 at 0x80027818, is on controller index 1 (P2, a cheat-code
+combination).
 
 ROM-byte disassembly of `0x800584B8..0x800584D4` identifies the award:
 clear pending flag `0x1000`, set car `+0x56 = 5`, and copy the byte at
@@ -151,8 +166,9 @@ Within six P1 input callbacks the ROM sets car flag `0x20000000` and the craft p
 decisively ahead of the unassisted control run; accelerator alone did not set it during
 the first 24 callbacks. The bit is reused during later hard steering, so the automated
 harness only classifies it as Boost Start during the first 12 callbacks after GO. The
-same post-map seam awards button Turbo. Semantic controls preserve custom bindings;
-the ROM still awards Boost Start and updates both boosts. The
+same post-map seam awards the dedicated-button Turbo. Boost Start still uses the
+mapped accelerator/brake semantics; the ROM still awards Boost Start and updates
+both boosts. The
 setting is disabled by default and persisted in `enhancements.json` (or overridden at
 process start with `AERO_EASY_TURBO=1`); it is deliberately not part of `graphics.json`.
 

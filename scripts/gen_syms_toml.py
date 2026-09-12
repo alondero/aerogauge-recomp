@@ -471,8 +471,10 @@ text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdra
 # Accelerator-only Boost Start + button-operated race Turbo (src/aero_turbo_boost.c).
 # Hooked in the real P1 vehicle-input callback immediately after func_8005C9E4
 # maps the configured physical buttons/stick into semantic car controls at +0x40.
-# This preserves custom bindings; the ROM retains boost physics and heat handling.
-# Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=0.
+# Boost Start reads those semantic controls; race Turbo reads the raw N64 R button
+# from the P1 pad block, so the drift action is never consumed. This preserves
+# custom bindings; the ROM retains boost physics and heat handling.
+# Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=1.
 [[patches.hook]]
 func = "func_8005C750"
 before_vram = 0x8005C7A8

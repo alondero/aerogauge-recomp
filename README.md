@@ -53,15 +53,19 @@ Alt+Enter) to switch fullscreen; return to windowed mode to access the menu bar 
 Enable **Enhancements > Easy Turbo + Boost Start** for simplified boosts:
 
 - At the start, hold accelerator for the existing automatic Boost Start.
-- During a race, press the configured **drift button** for Turbo (default:
-  **Z** on keyboard / **left trigger** on gamepad). With this option on, that
-  button activates Turbo instead of drift. No steering or accelerator timing is needed.
+- During a race (player 1 only), press the dedicated **Turbo** button: **R** on
+  keyboard (or **E**), **right trigger** (or **right shoulder**) on gamepad.
+  Drift keeps its own button (default **Z** on keyboard / **left trigger** on
+  gamepad), so drifting still works while Turbo is enabled. Turbo is fixed to
+  the physical R button and ignores the in-game control mapping: if you assign
+  an action to R, pressing it will also trigger Turbo.
 - Release and press again for another boost. Holding the button does not repeat
   boosts, and pressing during an active boost does not extend or queue one.
   The normal craft-specific boost duration, heat buildup and overheating still apply.
 
-This option is off by default, saved in `enhancements.json`; disabling it restores
-original drift controls and boost mechanics.
+This option is off by default, saved in `enhancements.json`; disabling it turns
+off the launch assist and race Turbo. Ordinary drift and boost mechanics are
+unaffected either way.
 
 ## Saves and controller feedback
 

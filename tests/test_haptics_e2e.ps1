@@ -8,7 +8,7 @@ $scratch = Join-Path ([IO.Path]::GetTempPath()) ('aero-haptics-' + [guid]::NewGu
 New-Item -ItemType Directory -Path $scratch | Out-Null
 $settings = @{
     AERO_HEADLESS='1'; AERO_WARP='1:1'; AERO_EASY_TURBO='1';
-    AERO_MODERN_INPUT='8000:0:0'; AERO_MODERN_INPUT_AFTER='1700:a000:80:0';
+    AERO_MODERN_INPUT='8000:0:0'; AERO_MODERN_INPUT_AFTER='1700:8010:80:0';
     AERO_MODERN_MAX_VIS='2400'; AERO_RUMBLE='1'; AERO_RUMBLE_TURBO='1';
     AERO_PAK_PATH=(Join-Path $scratch 'controller.mpk'); LOCALAPPDATA=$scratch
 }
