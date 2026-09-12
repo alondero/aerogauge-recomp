@@ -36,6 +36,7 @@ HMENU g_window_size_menu = nullptr;
 HMENU g_graphics_menu = nullptr;
 HMENU g_enhancements_menu = nullptr;
 HMENU g_draw_distance_menu = nullptr;
+HMENU g_split_menu = nullptr;
 
 constexpr std::array<int, 7> kManualRefreshRates{30, 60, 90, 120, 144, 165, 240};
 
@@ -89,6 +90,10 @@ enum Command : UINT {
     CMD_TEXTURE_DUMP_DIRECTORY,
     CMD_TEXTURE_DUMP_CLEAR,
     CMD_EASY_TURBO,
+    CMD_FULL_TRACK,
+    CMD_FOG_MATCH,
+    CMD_SKY_MATCH,
+    CMD_DEVELOPER_MODE,
 };
 
 constexpr std::array<UINT, 4> kSupersamplingCommands{CMD_SS_1X, CMD_SS_2X, CMD_SS_3X, CMD_SS_4X};
@@ -221,7 +226,11 @@ void refresh() {
     const float draw_distance = aero::config::draw_distance_scale();
     radio(g_draw_distance_menu, CMD_DRAW_ORIGINAL, CMD_DRAW_UNLIMITED,
           draw_distance_command(draw_distance));
+    check(g_enhancements_menu, CMD_FULL_TRACK, aero::config::full_track());
     check(g_enhancements_menu, CMD_EASY_TURBO, aero::config::easy_turbo_boost());
+    check(g_split_menu, CMD_FOG_MATCH, aero::config::widescreen_fog_match());
+    check(g_split_menu, CMD_SKY_MATCH, aero::config::widescreen_sky_match());
+    check(g_graphics_menu, CMD_DEVELOPER_MODE, cfg.developer_mode);
     if (g_hwnd != nullptr) DrawMenuBar(g_hwnd);
 }
 
@@ -315,6 +324,18 @@ void dispatch(UINT command) {
         }
         case CMD_TEXTURE_DUMP_CLEAR: aero::config::set_texture_dump_dir({}); break;
         case CMD_EASY_TURBO: aero::config::set_easy_turbo_boost(!aero::config::easy_turbo_boost()); break;
+        case CMD_FULL_TRACK: aero::config::set_full_track(!aero::config::full_track()); break;
+        case CMD_FOG_MATCH: aero::config::set_widescreen_fog_match(!aero::config::widescreen_fog_match()); break;
+        case CMD_SKY_MATCH: aero::config::set_widescreen_sky_match(!aero::config::widescreen_sky_match()); break;
+        case CMD_DEVELOPER_MODE: {
+            // RT64 reads developerMode once while constructing the renderer, so
+            // this persists now and takes effect on the next launch (same class
+            // as the graphics-API selection above).
+            ultramodern::renderer::GraphicsConfig dev_cfg = aero::config::current_graphics();
+            dev_cfg.developer_mode = !dev_cfg.developer_mode;
+            aero::config::apply_graphics(dev_cfg, false);
+            break;
+        }
         default: apply_graphics_command(command); break;
     }
     refresh();
@@ -369,6 +390,7 @@ void attach(SDL_Window* window) {
     HMENU api = g_api_menu = append_submenu(graphics, "Graphics API (restart required)");
     append_item(api, CMD_API_AUTO, "Automatic"); append_item(api, CMD_API_D3D12, "Direct3D 12");
     append_item(api, CMD_API_VULKAN, "Vulkan");
+    append_item(graphics, CMD_DEVELOPER_MODE, "Developer overlay (restart required)");
     HMENU window_size = g_window_size_menu = append_submenu(graphics, "Window size");
     append_item(window_size, CMD_WINDOW_1280X720, "1280 x 720");
     append_item(window_size, CMD_WINDOW_1600X900, "1600 x 900");
@@ -381,7 +403,11 @@ void attach(SDL_Window* window) {
     append_item(draw_distance, CMD_DRAW_10X, "10x");
     append_item(draw_distance, CMD_DRAW_100X, "100x");
     append_item(draw_distance, CMD_DRAW_UNLIMITED, "Unlimited");
+    append_item(enhancements, CMD_FULL_TRACK, "Full course geometry (experimental)");
     append_item(enhancements, CMD_EASY_TURBO, "Easy Turbo + Boost Start");
+    HMENU split = g_split_menu = append_submenu(enhancements, "Split-screen 3P/4P");
+    append_item(split, CMD_FOG_MATCH, "Match 1P fog");
+    append_item(split, CMD_SKY_MATCH, "Match 1P sky");
     HMENU texture_pack = append_submenu(enhancements, "Texture pack (restart required)");
     append_item(texture_pack, CMD_TEXTURE_PACK_DIRECTORY, "Choose directory...");
     append_item(texture_pack, CMD_TEXTURE_PACK_ARCHIVE, "Choose .rtz archive...");
