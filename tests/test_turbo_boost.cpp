@@ -186,10 +186,12 @@ int main(void) {
     tick();
     assert(r8(CAR + 0x55u) == 0);
 
-    // Steering and the old ready flag alone cannot trigger an assisted boost.
+    // The ROM's old turbo-ready flag and hard steering alone do not award
+    // Turbo: only a fresh press of the dedicated button does (covered above).
     w32(CAR + 0x34u, 0x2000u);
     w8(CAR + 0x40u, ACCEL);
     set_turn(20);
+    turbo(0);
     tick();
     assert(r8(CAR + 0x55u) == 0);
     assert(actions() == ACCEL);

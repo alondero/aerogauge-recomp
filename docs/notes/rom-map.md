@@ -119,13 +119,25 @@ The real P1 input chain is:
 | `0x8010CAB0 + port*8` | raw per-port controller block (func_800092C4 repacks osContGetReadData here via func_80009494); buttons u16 at +0x2, i.e. P1 `0x8010CAB2`, returned by func_80009438 |
 
 The opt-in race assist uses a dedicated physical button for Turbo: the raw N64 R
-bit of P1's controller block (`0x8010CAB2`). It is never keyed to a semantic
-action, so the configured drift button keeps its meaning and drifting is never
-consumed — outside the countdown Boost Start the hook only reads car+0x40 and
-never rewrites it. A rising edge awards the boost without steering, drift
-readiness, or accelerator release/re-press. Held buttons do not repeat; presses
-during active turbo are consumed, not queued. Countdown/disabled input also
-updates the edge latch to avoid a press at GO or when toggling the option.
+bit of P1's controller block (`0x8010CAB2`), hooked only in the P1 callback
+func_8005C750 (P2's func_8005C878 carries no hook, so 2P races are unchanged).
+It is never keyed to a semantic action, so the configured drift button keeps its
+meaning and drifting is never consumed — outside the countdown Boost Start the
+hook only reads car+0x40 and never rewrites it. A rising edge awards the boost
+without steering, drift readiness, or accelerator release/re-press. Held buttons
+do not repeat; presses during active turbo are consumed, not queued.
+Countdown/disabled input also updates the edge latch to avoid a press at GO or
+when toggling the option. Because Turbo reads the physical bit, remapping an
+action onto R makes that press do both (default bindings are assumed).
+
+R is not part of the racing control scheme (its documented in-game use is the
+car-colour selector, a menu screen). Audited pad readers: P1 in-race vehicle
+input (func_8005C750 / func_8005C878) reaches the pad only through func_8005C9E4's
+configured accel/brake/drift masks; the race runner's pad-snapshot reads
+(func_80015FD0 at 0x8001604C/0x8001613C/0x800161E8/0x80016214, func_80016464,
+func_80016890) test only START (0x1000); the one hardcoded R (0x10) test,
+func_800277E0 at 0x80027818, is on controller index 1 (P2, a cheat-code
+combination).
 
 ROM-byte disassembly of `0x800584B8..0x800584D4` identifies the award:
 clear pending flag `0x1000`, set car `+0x56 = 5`, and copy the byte at

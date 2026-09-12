@@ -64,7 +64,6 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
         g_button_down = 1;
         return;
     }
-    uint8_t actions = (uint8_t)MEM_BU(CAR_CONTROLS, car);
     // Turbo is the raw physical N64 R button, independent of the game's
     // control-config mapping, so the drift action is never stolen or consumed.
     const uint16_t pad = (uint16_t)MEM_HU(0, (gpr)(int32_t)P1_PAD_BUTTONS);
@@ -76,6 +75,7 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_PHASE);
     const uint32_t step = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_STEP);
     if (phase == PHASE_SETUP || phase == PHASE_COUNTDOWN) {
+        uint8_t actions = (uint8_t)MEM_BU(CAR_CONTROLS, car);
         if ((actions & CONTROL_ACCEL) == 0) return;
         if (phase == PHASE_SETUP || step < STEP_AFTER_SET) {
             actions |= CONTROL_BRAKE;
