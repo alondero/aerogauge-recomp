@@ -57,20 +57,20 @@ int main(int argc, char** argv) {
         MEM_B(0, name) = 0x1A;
         MEM_B(0, ext) = 0x1B;
         ctx.r4 = pfs; ctx.r5 = 0x1234; ctx.r6 = 0x4E414745; ctx.r7 = name;
-        MEM_W(0x10, stack) = ext;
+        MEM_W(0x10, stack) = static_cast<int32_t>(ext);
         if (run == 0) {
             MEM_W(0x14, stack) = size;
-            MEM_W(0x18, stack) = number;
+            MEM_W(0x18, stack) = static_cast<int32_t>(number);
             func_8006F040(rdram, &ctx);
         } else {
-            MEM_W(0x14, stack) = number;
+            MEM_W(0x14, stack) = static_cast<int32_t>(number);
             func_8006CDE0(rdram, &ctx);
         }
         assert(ctx.r2 == 0);
         for (int i = 0; i < size; ++i) MEM_B(i, buffer) = run == 0 ? (i * 37 + 11) & 255 : 0;
         ctx.r4 = pfs; ctx.r5 = MEM_W(0, number); ctx.r6 = run == 0 ? 1 : 0; ctx.r7 = 0;
         MEM_W(0x10, stack) = size;
-        MEM_W(0x14, stack) = buffer;
+        MEM_W(0x14, stack) = static_cast<int32_t>(buffer);
         func_8006EC1C(rdram, &ctx);
         assert(ctx.r2 == 0);
         for (int i = 0; i < size; ++i) assert(MEM_BU(i, buffer) == ((i * 37 + 11) & 255));

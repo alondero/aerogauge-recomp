@@ -37,6 +37,21 @@ int main() {
     aero_pak_read(rdram, &ctx);
     for (int i = 0; i < 32; ++i) assert(MEM_BU(i, ctx.r7) == static_cast<uint8_t>(i * 7));
 
+    // Native block glue must reject malformed guest pointers without touching
+    // host memory or acknowledging the transfer.
+    ctx.r7 = 0;
+    ctx.r6 = 0;
+    aero_pak_read(rdram, &ctx);
+    assert(ctx.r2 == 4);
+    aero_pak_write(rdram, &ctx);
+    assert(ctx.r2 == 4);
+    ctx.r7 = (gpr)(int32_t)0x807FFFE1;
+    aero_pak_read(rdram, &ctx);
+    assert(ctx.r2 == 4);
+    aero_pak_write(rdram, &ctx);
+    assert(ctx.r2 == 4);
+    ctx.r7 = (gpr)(int32_t)0x80001000;
+
     // Failed publication must preserve both the last good disk and memory image.
     std::filesystem::create_directory(path.string() + ".tmp");
     MEM_B(0, ctx.r7) = 99;

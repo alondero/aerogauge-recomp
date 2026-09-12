@@ -9,8 +9,8 @@
 #include <cmath>
 
 namespace {
-bool enabled = true;
-bool turbo_enabled = true;
+std::atomic<bool> enabled{true};
+std::atomic<bool> turbo_enabled{true};
 std::atomic<uint64_t> impact_until{0}, turbo_until{0};
 std::atomic<bool> native_motor{false};
 uint64_t now_ms() {
@@ -25,8 +25,8 @@ bool racing(uint8_t* rdram) {
 }
 
 void aero::haptics::configure(bool on, bool turbo) {
-    enabled = on;
-    turbo_enabled = turbo;
+    enabled.store(on, std::memory_order_relaxed);
+    turbo_enabled.store(turbo, std::memory_order_relaxed);
     stop();
 }
 void aero::haptics::stop() {
@@ -38,7 +38,7 @@ void aero::haptics::motor(bool on) {
     native_motor.store(on, std::memory_order_relaxed);
 }
 aero::haptics::Motors aero::haptics::sample() {
-    if (!enabled) return {};
+    if (!enabled.load(std::memory_order_relaxed)) return {};
     if (native_motor.load(std::memory_order_relaxed)) return {0xFFFF, 0xFFFF};
     const auto now = now_ms();
     if (now < impact_until.load(std::memory_order_relaxed)) return {0xC000, 0x9000};
@@ -47,13 +47,13 @@ aero::haptics::Motors aero::haptics::sample() {
 }
 
 extern "C" void aero_haptics_frame(uint8_t* rdram, recomp_context*) {
-    if (!enabled || !racing(rdram)) aero::haptics::stop();
+    if (!enabled.load(std::memory_order_relaxed) || !racing(rdram)) aero::haptics::stop();
 }
 
 // Hook at 0x80058AD8: s0 is the craft; +0x24 is this tick's collision damage.
 // +4 is its input callback: 0x8005C750 identifies the local P1, excluding AI/P2.
 extern "C" void aero_haptics_race_tick(uint8_t* rdram, recomp_context* ctx) {
-    if (!enabled || !racing(rdram)) return;
+    if (!enabled.load(std::memory_order_relaxed) || !racing(rdram)) return;
     const auto address = static_cast<uint32_t>(ctx->r16);
     if (address < 0x80000000u || address > 0x807FFF80u) return;
     const gpr car = static_cast<int32_t>(address);
@@ -64,6 +64,6 @@ extern "C" void aero_haptics_race_tick(uint8_t* rdram, recomp_context* ctx) {
     if (std::isfinite(damage) && damage > 0.0f)
         impact_until.store(now + 120, std::memory_order_relaxed);
     // Refresh only while the ROM timer is active; pause/stall cannot latch rumble.
-    turbo_until.store(turbo_enabled && MEM_BU(0x55, car) != 0 ? now + 150 : 0,
+    turbo_until.store(turbo_enabled.load(std::memory_order_relaxed) && MEM_BU(0x55, car) != 0 ? now + 150 : 0,
                       std::memory_order_relaxed);
 }

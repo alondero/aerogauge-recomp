@@ -4,9 +4,11 @@
 #include "recomp.h"
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <mutex>
+#include <thread>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -19,11 +21,23 @@ namespace {
 constexpr int NoPak = 1;
 constexpr int IoError = 4; // PFS_ERR_CONTRFAIL
 constexpr size_t BlockSize = 32;
+constexpr uint32_t RdramStart = 0x80000000u;
+constexpr uint32_t RdramEnd = 0x80800000u;
 using Image = std::array<uint8_t, 32768>;
 std::mutex mutex;
 Image image{};
 std::filesystem::path image_path;
 bool available = false;
+
+bool guest_range_valid(uint32_t address, size_t size) {
+    return address >= RdramStart &&
+           static_cast<uint64_t>(address) + size <= RdramEnd;
+}
+
+bool guest_range_valid(uint32_t base, uint32_t offset, size_t size) {
+    return base >= RdramStart &&
+           static_cast<uint64_t>(base) + offset + size <= RdramEnd;
+}
 
 // Same SDK-compatible one-bank layout as Automobili Lamborghini's pak formatter:
 // four redundant ID blocks, two inode tables, 123 free pages and 16 empty notes.
@@ -54,26 +68,39 @@ void format() {
 bool publish(const Image& next) {
     auto temporary = image_path;
     temporary += ".tmp";
-    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-    stream.write(reinterpret_cast<const char*>(next.data()), next.size());
-    stream.close();
-    bool success = !stream.fail();
-    if (success) {
+    constexpr unsigned MaxAttempts = 5;
+    for (unsigned attempt = 0; attempt < MaxAttempts; ++attempt) {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        stream.write(reinterpret_cast<const char*>(next.data()), next.size());
+        stream.close();
+        bool success = !stream.fail();
+        bool transient = false;
+        if (success) {
 #ifdef _WIN32
-        success = MoveFileExW(temporary.c_str(), image_path.c_str(),
-                             MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+            success = MoveFileExW(temporary.c_str(), image_path.c_str(),
+                                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+            if (!success) {
+                const auto error = GetLastError();
+                transient = error == ERROR_SHARING_VIOLATION ||
+                            error == ERROR_ACCESS_DENIED ||
+                            error == ERROR_LOCK_VIOLATION;
+            }
 #else
-        std::error_code error;
-        std::filesystem::rename(temporary, image_path, error);
-        success = !error;
+            std::error_code error;
+            std::filesystem::rename(temporary, image_path, error);
+            success = !error;
+            transient = error == std::errc::device_or_resource_busy ||
+                        error == std::errc::permission_denied;
 #endif
-    }
-    if (!success) {
-        std::fprintf(stderr, "[pak] Save failed; previous Controller Pak image retained.\n");
+        }
+        if (success) return true;
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);
+        if (!transient || attempt + 1 == MaxAttempts) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1u << (attempt + 1)));
     }
-    return success;
+    std::fprintf(stderr, "[pak] Save failed; previous Controller Pak image retained.\n");
+    return false;
 }
 }
 
@@ -100,7 +127,8 @@ void aero::pak::configure(const std::filesystem::path& path, bool enabled) {
     }
     stream.seekg(0);
     stream.read(reinterpret_cast<char*>(image.data()), image.size());
-    available = stream.good();
+    available = !stream.fail() &&
+                stream.gcount() == static_cast<std::streamsize>(image.size());
 }
 
 // __osPfsGetStatus(queue, channel), ROM 0x800742F0.
@@ -117,7 +145,9 @@ extern "C" void aero_pak_read(uint8_t* rdram, recomp_context* ctx) {
     if (!available || ctx->r5 != 0) return;
     ctx->r2 = IoError;
     if (block >= image.size() / BlockSize) return;
-    const gpr buffer = static_cast<int32_t>(ctx->r7);
+    const auto address = static_cast<uint32_t>(ctx->r7);
+    if (!guest_range_valid(address, BlockSize)) return;
+    const gpr buffer = static_cast<int32_t>(address);
     for (unsigned i = 0; i < BlockSize; ++i) MEM_B(i, buffer) = image[block * BlockSize + i];
     ctx->r2 = 0;
 }
@@ -129,9 +159,21 @@ extern "C" void aero_pak_write(uint8_t* rdram, recomp_context* ctx) {
     ctx->r2 = NoPak;
     if (!available || ctx->r5 != 0) return;
     ctx->r2 = 0;
+    const auto address = static_cast<uint32_t>(ctx->r7);
+    if (!guest_range_valid(address, BlockSize)) {
+        ctx->r2 = IoError;
+        return;
+    }
+    const gpr buffer = static_cast<int32_t>(address);
     // The SDK silently ignores unforced writes to protected ID blocks 1..6.
-    if (block > 0 && block < 7 && MEM_W(0x10, ctx->r29) != 1) return;
-    const gpr buffer = static_cast<int32_t>(ctx->r7);
+    if (block > 0 && block < 7) {
+        const auto stack = static_cast<uint32_t>(ctx->r29);
+        if (!guest_range_valid(stack, 0x10, sizeof(uint32_t))) {
+            ctx->r2 = IoError;
+            return;
+        }
+        if (MEM_W(0x10, static_cast<gpr>(static_cast<int32_t>(stack))) != 1) return;
+    }
     // __osPfsSelectBank writes its active bank to address 0x8000 (block 0x400).
     if (block == 0x400) {
         ctx->r2 = MEM_BU(0, buffer) == 0 ? 0 : IoError;

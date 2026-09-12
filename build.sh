@@ -74,6 +74,18 @@ done
 NPROC="$(nproc)"
 log "[tools] cmake=$(command -v cmake)  gcc=$(command -v gcc)  g++=$(command -v g++)  ninja=$(command -v ninja)  nproc=$NPROC"
 
+PYTHON3_EXECUTABLE="${Python3_EXECUTABLE:-}"
+if [[ -z "$PYTHON3_EXECUTABLE" ]]; then
+    for candidate in python3 python py; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys' >/dev/null 2>&1; then
+            PYTHON3_EXECUTABLE="$(command -v "$candidate")"
+            break
+        fi
+    done
+fi
+[[ -n "$PYTHON3_EXECUTABLE" ]] || die "missing Python 3 interpreter. Install python3 or set Python3_EXECUTABLE."
+log "[tools] python=$PYTHON3_EXECUTABLE"
+
 # --- 3. ROM check -----------------------------------------------------------
 # Default to the standard filename; CI overrides via the same ROM_FILENAME
 # env var the workflow already defines (workflow env block, .github/workflows/
@@ -151,7 +163,8 @@ log ""
 log "[3/5] Configuring CMake (first pass)..."
 mkdir -p build
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+    "-DPython3_EXECUTABLE=$PYTHON3_EXECUTABLE"
 
 # --- 9. Build recompiler tools ----------------------------------------------
 log "[4/5] Building N64RecompCLI + RSPRecomp..."
@@ -173,7 +186,8 @@ fi
 # --- 11. CMake configure (SECOND) -------------------------------------------
 log "[4/5] Configuring CMake (second pass — wires in generated sources)..."
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+    "-DPython3_EXECUTABLE=$PYTHON3_EXECUTABLE"
 
 # --- 12. Build aerogauge_modern -------------------------------------------
 log ""

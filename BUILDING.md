@@ -108,7 +108,7 @@ cmake --build build --target aerogauge_modern -j
 ```bash
 export PATH="/c/ProgramData/mingw64/mingw64/bin:$PATH"   # adjust to your MinGW path
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc.exe -DCMAKE_CXX_COMPILER=g++.exe
+    -DCMAKE_C_COMPILER=gcc.exe '-DCMAKE_CXX_COMPILER=g++.exe'
 cmake --build build --target aerogauge_modern -j
 ```
 

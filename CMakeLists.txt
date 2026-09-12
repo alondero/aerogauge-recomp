@@ -214,8 +214,18 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_test(NAME eeprom_exit_flush COMMAND test_eeprom_flush)
     set_tests_properties(eeprom_exit_flush PROPERTIES TIMEOUT 30)
 
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_FOUND AND TARGET RecompiledFuncs)
+    if(TARGET RecompiledFuncs)
+        # This extractor is part of the required regression suite. A missing or
+        # unusable interpreter must fail configure instead of silently omitting
+        # controller_pak_rom_filesystem from CTest.
+        if(NOT Python3_EXECUTABLE)
+            if(WIN32)
+                find_program(Python3_EXECUTABLE NAMES py.exe python.exe python3.exe py python3)
+            else()
+                find_program(Python3_EXECUTABLE NAMES python3 python py)
+            endif()
+        endif()
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
         set(PFS_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/pfs_test_funcs.c)
         add_custom_command(OUTPUT ${PFS_TEST_FUNCS}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_pfs_test.py
