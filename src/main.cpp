@@ -1,3 +1,5 @@
+#include "aero_haptics.h"
+#include "aero_pak.h"
 // Headless boot probe for the ultramodern pivot (epic #54, phase #57).
 //
 // Links the whole-ROM recompiled image (RecompiledFuncs) against librecomp +
@@ -118,7 +120,9 @@ static void thread_create_cb(uint8_t*, recomp_context*) {
 // osRecvMesg and race the munmap into a SIGSEGV. This is a headless boot/probe harness that is
 // quitting anyway, so skip the unwind and let process exit tear the game threads down.
 // (Graceful game-thread shutdown is RT64-integration work, #58.)
+extern "C" void aero_flush_eeprom(); // runtime patch 0014
 [[noreturn]] static void boot_summary_and_exit() {
+    aero_flush_eeprom();
     std::fprintf(stderr, "[probe] boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
                  g_threads.load(), g_vis.load(), (int)g_first_vi.load(), g_max_state.load(),
                  g_swaps.load());
@@ -448,36 +452,20 @@ static int      g_pulse_count = 0;   // optional 5th field: stop after N pulses 
 static std::atomic<uint32_t> g_input_snapshot{0};   // main-thread sampled, game-thread read
 static SDL_GameController* g_pad = nullptr;          // first opened controller (port 0)
 
-// --- rumble-pak sink (#69) ----------------------------------------------------------------
-// The game's SI/PIF bridge (func_8007F780 -> aero_joybus_answer, recomp/src/libultra_stubs.c)
-// runs on the GAME thread and decodes the ROM's motor-control pak writes (joybus cmd 0x03 to
-// pak block 0xC000: payload 0x01 = motor on, 0x00 = off). SDL rumble must be driven from the
-// MAIN thread (that owns g_pad open/close), so -- exactly like input -- the game thread only
-// PUBLISHES an atomic request and the main-thread pump (update_gfx_stub) applies it. Declared
-// extern "C" so the C responder in libultra_stubs.c can call aero_pak_set_rumble().
-static std::atomic<int> g_rumble_on{0};              // game-thread write, main-thread read
-extern "C" void aero_pak_set_rumble(int on) { g_rumble_on.store(on ? 1 : 0, std::memory_order_relaxed); }
-
-// (The Lamborghini port's developer warp menu / save-state hooks were dropped from the
-// base stack — they were built around that game's specific state layout. Re-grow
-// AeroGauge equivalents once its state machine is mapped.)
-
-// Apply the published rumble state to the physical pad. Called once per main-thread pump.
-// N64 rumble is bang-bang (motor fully on or off), so map to SDL full strength. We refresh the
-// effect every pump with a short expiry (150 ms > one 30 fps frame) so a sustained motor-on
-// keeps buzzing without needing a re-trigger, and a single motor-off (or a dropped controller)
-// lets it lapse. Idempotent-ish: we only issue an SDL call on an on/off EDGE plus periodic
-// refresh while on, to avoid hammering the HID layer every frame.
+// Runtime motor callbacks and race-event feedback share a thread-safe publisher.
+// SDL calls stay on the main thread, which owns controller open/close.
+extern "C" void aero_pak_set_rumble(int on) { aero::haptics::motor(on != 0); }
 static void rumble_apply() {
-    static int last = 0;
-    int on = g_rumble_on.load(std::memory_order_relaxed);
-    if (g_pad == nullptr || !SDL_GameControllerGetAttached(g_pad)) { last = 0; return; }
-    if (on) {
-        SDL_GameControllerRumble(g_pad, 0xFFFF, 0xFFFF, 150);   // refresh; expiry > frame time
-    } else if (last) {
-        SDL_GameControllerRumble(g_pad, 0, 0, 0);               // off edge: stop immediately
+    static bool was_on = false;
+    if (g_pad == nullptr || !SDL_GameControllerGetAttached(g_pad)) {
+        was_on = false;
+        return;
     }
-    last = on;
+    const auto motors = aero::haptics::sample();
+    const bool on = motors.low != 0 || motors.high != 0;
+    if (on || was_on)
+        SDL_GameControllerRumble(g_pad, motors.low, motors.high, on ? 150 : 0);
+    was_on = on;
 }
 
 static int8_t pad_axis_to_n64(int v) {              // int16 SDL axis -> int8 N64 stick (deadzoned)
@@ -591,6 +579,7 @@ static void input_close_controller(SDL_JoystickID which) {
     if (g_pad == nullptr) return;
     SDL_Joystick* js = SDL_GameControllerGetJoystick(g_pad);
     if (js != nullptr && SDL_JoystickInstanceID(js) == which) {
+        aero::haptics::stop();
         SDL_GameControllerClose(g_pad);
         g_pad = nullptr;
         std::fprintf(stderr, "[input] controller disconnected\n");
@@ -627,7 +616,7 @@ static bool input_get_input(int controller_num, uint16_t* buttons, float* x, flo
 }
 static ultramodern::input::connected_device_info_t input_device_info(int controller_num) {
     using namespace ultramodern::input;
-    if (controller_num == 0) return { Device::Controller, Pak::None };
+    if (controller_num == 0) return { Device::Controller, Pak::RumblePak };
     return { Device::None, Pak::None };
 }
 
@@ -669,6 +658,16 @@ int main(int argc, char** argv) {
     std::filesystem::path config_dir = aero::config::app_config_dir();
     std::filesystem::create_directories(config_dir);
     recomp::register_config_path(config_dir);
+    auto pak_path = config_dir / "saves" / "aerogauge.us.mpk";
+    if (const char* path = std::getenv("AERO_PAK_PATH"); path && *path)
+        pak_path = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(path)));
+    if (!pak_path.parent_path().empty()) std::filesystem::create_directories(pak_path.parent_path());
+    const char* pak_enabled = std::getenv("AERO_CONTROLLER_PAK");
+    aero::pak::configure(pak_path, !pak_enabled || std::strcmp(pak_enabled, "0") != 0);
+    const char* rumble = std::getenv("AERO_RUMBLE");
+    const char* turbo_rumble = std::getenv("AERO_RUMBLE_TURBO");
+    aero::haptics::configure(!rumble || std::strcmp(rumble, "0") != 0,
+                           !turbo_rumble || std::strcmp(turbo_rumble, "0") != 0);
 
     recomp::GameEntry game{};
     game.rom_hash          = 0x89ea0690f3e22201ULL; // XXH3_64(big-endian .z64, 8 MiB)
@@ -726,12 +725,9 @@ int main(int argc, char** argv) {
     cfg.error_handling_callbacks.message_box = message_box_stub;
     // window_handle left default-empty -> create_window_stub() is used.
 
-    // Controller 0 is wired by DEFAULT (carried over from the Lamborghini port's
-    // controller-gating issue). AeroGauge's equivalent SI read path is not yet
-    // identified — see TODO(aerogauge) on libultra_stubs.c funcs near func_80075C60 —
-    // so the rationale above (D_8011C681 count, object-slot gate func_8007A8A0) does
-    // not necessarily apply here; this is the safe default of "controller 0 connected"
-    // and we revalidate once the port's SI signal path is mapped.
+    // Keyboard and the first SDL gamepad share controller 0. The runtime's
+    // RumblePak capability supplies accessory-present status and motor callbacks;
+    // the separate native block device lets the ROM use memory and rumble together.
     // AERO_MODERN_INPUT still overrides the held-button mask for input testing (e.g. =1000 holds
     // START); default (unset) = controller 0 connected, no buttons held.
     if (const char* in = std::getenv("AERO_MODERN_INPUT")) {
@@ -782,6 +778,9 @@ int main(int argc, char** argv) {
     }
     cfg.input_callbacks.poll_input = input_poll_stub;
     cfg.input_callbacks.get_input = input_get_input;
+    cfg.input_callbacks.set_rumble = [](int channel, bool on) {
+        if (channel == 0) aero_pak_set_rumble(on);
+    };
     cfg.input_callbacks.get_connected_device_info = input_device_info;
     std::fprintf(stderr, "[probe] input: controller0 connected (default), buttons=%04x\n", g_held_buttons);
 

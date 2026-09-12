@@ -134,6 +134,7 @@ try {
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-ultramodern-runtime-scheduler-audio-vi.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0007-ultramodern-savestate-thread-context-relink.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0012-librecomp-pi-dma-completion-osiomesg.patch' },
+        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0014-librecomp-flush-eeprom-on-exit.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0013-ultramodern-sp-task-synchronous-failsoft.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0006-rt64-interp-angular-velocity-matching.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },

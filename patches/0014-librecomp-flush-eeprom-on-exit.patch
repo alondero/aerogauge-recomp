@@ -1,0 +1,71 @@
+--- a/librecomp/src/pi.cpp
++++ b/librecomp/src/pi.cpp
+@@ -4,6 +4,7 @@
+ #include <cstring>
+ #include <string>
+ #include <mutex>
++#include <condition_variable>
+ #include "recomp.h"
+ #include "librecomp/addresses.hpp"
+ #include "librecomp/game.hpp"
+@@ -96,6 +97,20 @@
+     std::mutex save_buffer_mutex;
+ } save_context;
+ 
++// The port normally uses _Exit rather than runtime teardown. A barrier keeps
++// acknowledged EEPROM writes from being lost when the window closes.
++static std::mutex flush_mutex;
++static std::condition_variable flush_complete;
++static bool saving_ready = false;
++static uint64_t flush_requested = 0, flushed = 0;
++
++extern "C" void aero_flush_eeprom() {
++    std::unique_lock lock(flush_mutex);
++    if (!saving_ready) return;
++    const uint64_t request = ++flush_requested;
++    flush_complete.wait(lock, [request] { return !saving_ready || flushed >= request; });
++}
++
+ const std::u8string save_folder = u8"saves";
+ 
+ extern std::filesystem::path config_path;
+@@ -156,10 +171,29 @@
+             update_save_file();
+         }
+ 
++        {
++            std::unique_lock lock(flush_mutex);
++            if (flush_requested != flushed) {
++                const uint64_t request = flush_requested;
++                lock.unlock();
++                // A write may have arrived just after the coalescing timeout.
++                // All file publication remains on this single saving thread.
++                update_save_file();
++                lock.lock();
++                flushed = request;
++                flush_complete.notify_all();
++            }
++        }
++
+         if (save_context.swap_file_pending_sempahore.tryWait()) {
+             save_context.swap_file_ready_sempahore.signal();
+         }
+     }
++    // Also cover runtime teardown racing a flush request, or a flush after join.
++    update_save_file();
++    std::lock_guard lock(flush_mutex);
++    saving_ready = false;
++    flush_complete.notify_all();
+ }
+ 
+ void save_write_ptr(const void* in, uint32_t offset, uint32_t count) {
+@@ -247,7 +281,9 @@
+ 
+     read_save_file();
+ 
++    std::lock_guard lock(flush_mutex);
+     save_context.saving_thread = std::thread{saving_thread_func, PASS_RDRAM};
++    saving_ready = true;
+ }
+ 
+ void ultramodern::change_save_file(const std::u8string& subfolder, const std::u8string& name) {
