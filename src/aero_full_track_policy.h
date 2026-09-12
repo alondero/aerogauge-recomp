@@ -13,12 +13,14 @@ struct SectionOverride {
 inline constexpr SectionOverride kPvsGatedExceptions[] = {
     // Bikini Island tunnel rock wedge; verified from the zone-13 section table.
     {1, 13, 0x803903B8u},
+    // Bikini Island rotating-tunnel cap; zone 20's PVS excludes zone 23.
+    {1, 23, 0x80396070u},
 };
 
 // Most enclosed course shells advertise themselves through hw4 bit 0x10. Bikini
-// Island has one authoring exception: zone 13's DL 0x803903B8 is a large rock
-// wedge outside the tunnel. The original PVS hides it from zone 15, but merging
-// it into the always-visible hw6=2 bucket makes it cut across the tunnel road.
+// Island also has unflagged authoring exceptions: the zone-13 rock wedge and
+// zone-23 rotating-tunnel cap. Keep these on the original visibility window;
+// merging them into always-visible buckets obstructs other parts of the course.
 constexpr bool pvs_gated_section(uint8_t track, uint8_t zone,
                                  uint32_t display_list, uint16_t hw4) {
     if ((hw4 & 0x10u) != 0) return true;

@@ -222,6 +222,21 @@ loader (not music); `func_80032BB0` = Controller Pak / ghost service (`func_8006
   (+0x8224) → map xlu (+0x2BE4) → obj xlu (+0xAD44). The list sentinels' node+0 tag
   pointers are the ASCII labels at `0x80095100+` ("bg", "map opa", "map xlu",
   "obj opa", "obj dec", "obj xlu") — handy for locating craft arenas in RDRAM dumps.
+- **Bikini rotating-tunnel cap** (2026-09-12, saved-RDRAM section-table attribution
+  and single-DL removal): track 1, zone 23, entry 0, `DL 0x80396070`, `hw4=0`,
+  `hw6=0`, bounds x=-1747..-1027, y=-228..456, z=8112..8280. Full-track merging
+  puts its metal panel across the rotating tunnel from section 126 / zone 20;
+  the original zone-20 PVS `[20,21,19]` excludes it. Keep this DL PVS-gated.
+  Verified the rebuilt executable at infinite draw distance: merged section count
+  drops 82→81, the captured frame omits `0x80396070`, and the corridor and rotating
+  tunnel (`0x803952A8`, `0x803A0308`) remain visible.
+  For saved-state comparisons, `func_8000631C` calls the section registrar only
+  when `func_80006704` reports a section crossing (ROM 0x80006354..0x80006390),
+  while the object registrar runs every frame. A parked restore retains its saved
+  section nodes, so changing visibility options alone is not a valid A/B test.
+  A diagnostic copy set craft `0x801511E0` to preceding section 125 and its +8
+  pointer to `*(craft+0)+125*0x8C`; the ROM returned it to section 126 and rebuilt
+  the lists without moving the craft. The original user save was left untouched.
 - The far plane: ONE global far=500 (near=5, fovy=55) passed to guPerspectiveF
   (ROM func at `0x8006BA60`) by all 11 projection sites; race cameras
   `0x8001F59C`/`0x80020748` read far from camera struct +0x10. No CPU distance culling.
