@@ -45,11 +45,13 @@ existing early-presentation behavior after that update.
 ```bash
 # ultramodern / librecomp runtime (all platforms):
 git -C lib/N64ModernRuntime apply ../../patches/0001-ultramodern-runtime-scheduler-audio-vi.patch
-git -C lib/N64ModernRuntime apply ../../patches/0017-runtime-game-presentation.patch
-git -C lib/N64ModernRuntime apply ../../patches/0015-runtime-host-config-storage.patch
 git -C lib/N64ModernRuntime apply ../../patches/0007-ultramodern-savestate-thread-context-relink.patch
 git -C lib/N64ModernRuntime apply ../../patches/0012-librecomp-pi-dma-completion-osiomesg.patch
+# Windows / MinGW only (apply here, after 0012):
+git -C lib/N64ModernRuntime apply "$(pwd)/patches/0013-ultramodern-sp-task-synchronous-failsoft.patch"
 git -C lib/N64ModernRuntime apply ../../patches/0014-librecomp-flush-eeprom-on-exit.patch
+git -C lib/N64ModernRuntime apply ../../patches/0015-runtime-host-config-storage.patch
+git -C lib/N64ModernRuntime apply ../../patches/0017-runtime-game-presentation.patch
 
 # RecompFrontend / RmlUi settings (all platforms):
 git -C lib/RecompFrontend apply ../../patches/0016-recompfrontend-integration.patch

@@ -52,8 +52,7 @@ void save_graphics() {
                                       int(std::get<double>(page.get_option_value("window_height")))};
     const auto pack = std::get<std::string>(page.get_option_value("texture_pack"));
     const auto dump = std::get<std::string>(page.get_option_value("texture_dump"));
-    enqueue([edited, before = seeded, size, old_size = seeded_size,
-             pack, old_pack = seeded_pack, dump, old_dump = seeded_dump] {
+    enqueue([edited, before = seeded, size, old_size = seeded_size, pack, dump] {
         auto cfg = aero::config::current_graphics();
         // Merge only edited fields: F11 may have changed the window mode since
         // this confirmation-backed page was opened.
@@ -62,12 +61,9 @@ void save_graphics() {
         MERGE(ar_option); MERGE(msaa_option); MERGE(rr_option); MERGE(hpfb_option);
         MERGE(ds_option); MERGE(rr_manual_value); MERGE(developer_mode);
 #undef MERGE
-        aero::config::apply_graphics(cfg);
+        aero::config::apply_graphics_settings(cfg, size, pack, dump);
         const bool resized = size.width != old_size.width || size.height != old_size.height;
-        if (resized) aero::config::set_window_size(size);
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();
-        if (pack != old_pack) aero::config::set_texture_pack_path(pack);
-        if (dump != old_dump) aero::config::set_texture_dump_dir(dump);
         refresh_settings();
     });
     seeded = edited;

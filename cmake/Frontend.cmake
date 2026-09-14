@@ -45,7 +45,7 @@ if(WIN32)
 else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
 endif()
-add_test(NAME frontend_settings COMMAND test_frontend_settings ${CMAKE_BINARY_DIR}/frontend-settings-test-data)
+add_test(NAME frontend_settings COMMAND test_frontend_settings)
 add_custom_command(TARGET aerogauge_modern POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/frontend $<TARGET_FILE_DIR:aerogauge_modern>/assets

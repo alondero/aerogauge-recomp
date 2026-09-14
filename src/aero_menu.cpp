@@ -69,7 +69,9 @@ void deinitialize() {
 }
 
 void enqueue(std::function<void()> action) {
-    // Called while the frontend lock is held by the presentation callback.
+    // Most calls happen while the frontend lock is held by the presentation
+    // callback. Keep this safe for callbacks or tests that enqueue elsewhere.
+    std::lock_guard lock(frontend_mutex);
     actions.push_back(std::move(action));
 }
 
@@ -129,31 +131,10 @@ bool handle_event(const SDL_Event& event) {
     // Hotplug must still reach the game's existing controller owner.
     if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED) return false;
     if (!ready || !captures_input()) return false;
-    // Keep gameplay bindings. Translate menu-only controller buttons without
-    // opening a second controller or assigning frontend gameplay profiles.
-    if (event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERBUTTONUP) {
-        SDL_Keycode key = SDLK_UNKNOWN;
-        switch (event.cbutton.button) {
-        case SDL_CONTROLLER_BUTTON_A: key = SDLK_RETURN; break;
-        case SDL_CONTROLLER_BUTTON_B: key = SDLK_F15; break;
-        case SDL_CONTROLLER_BUTTON_X: key = SDLK_f; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_UP: key = SDLK_UP; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: key = SDLK_DOWN; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: key = SDLK_LEFT; break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: key = SDLK_RIGHT; break;
-        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: key = SDLK_F16; break;
-        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: key = SDLK_F17; break;
-        default: return true;
-        }
-        SDL_Event mapped{};
-        mapped.type = event.type == SDL_CONTROLLERBUTTONDOWN ? SDL_KEYDOWN : SDL_KEYUP;
-        mapped.key.state = mapped.type == SDL_KEYDOWN ? SDL_PRESSED : SDL_RELEASED;
-        mapped.key.keysym.sym = key;
-        mapped.key.keysym.scancode = SDL_GetScancodeFromKey(key);
-        recompui::queue_event(mapped);
-    } else {
-        recompui::queue_event(event);
-    }
+    // Pass controller events through unchanged. RecompFrontend maps the active
+    // controller profile, tracks controller-vs-keyboard focus, and selects the
+    // matching button hints. Synthesizing keyboard events would lose that state.
+    recompui::queue_event(event);
     return true;
 }
 

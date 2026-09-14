@@ -2,6 +2,8 @@
 #include "ui/aero_frontend_settings.h"
 #include "recompui/config.h"
 #include "librecomp/game.hpp"
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -20,6 +22,51 @@ void flush() {
     pending.clear();
     for (auto& action : actions) action();
 }
+
+void set_environment(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value != nullptr ? value : "");
+#else
+    if (value != nullptr) setenv(name, value, 1);
+    else unsetenv(name);
+#endif
+}
+
+struct IsolatedConfig {
+    std::filesystem::path root;
+    std::string previous_root;
+    bool had_previous_root = false;
+
+    IsolatedConfig() {
+        const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
+        root = std::filesystem::temp_directory_path() /
+               ("aero-frontend-settings-test-" + std::to_string(unique));
+#ifdef _WIN32
+        if (const char* previous = std::getenv("LOCALAPPDATA")) {
+            previous_root = previous;
+            had_previous_root = true;
+        }
+        set_environment("LOCALAPPDATA", root.string().c_str());
+#else
+        if (const char* previous = std::getenv("XDG_CONFIG_HOME")) {
+            previous_root = previous;
+            had_previous_root = true;
+        }
+        set_environment("XDG_CONFIG_HOME", root.string().c_str());
+#endif
+    }
+
+    ~IsolatedConfig() {
+        std::error_code error;
+        std::filesystem::remove_all(root, error);
+#ifdef _WIN32
+        set_environment("LOCALAPPDATA", had_previous_root ? previous_root.c_str() : nullptr);
+#else
+        set_environment("XDG_CONFIG_HOME", had_previous_root ? previous_root.c_str() : nullptr);
+#endif
+    }
+};
+
 nlohmann::json read(const std::filesystem::path& path) {
     nlohmann::json value;
     std::ifstream(path) >> value;
@@ -33,13 +80,10 @@ void apply_window_settings() { ++window_updates; }
 
 int main(int argc, char** argv) {
     try {
-        require(argc == 2, "pass an isolated test directory");
-        const auto root = std::filesystem::absolute(argv[1]);
-#ifdef _WIN32
-        _putenv_s("LOCALAPPDATA", root.string().c_str());
-#else
-        setenv("XDG_CONFIG_HOME", root.string().c_str(), 1);
-#endif
+        (void)argc;
+        (void)argv;
+        IsolatedConfig isolated;
+        const auto& root = isolated.root;
         const auto path = aero::config::app_config_dir();
         std::filesystem::create_directories(path);
         recomp::register_config_path(path);
