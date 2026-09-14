@@ -50,11 +50,11 @@ git -C lib/N64ModernRuntime apply ../../patches/0012-librecomp-pi-dma-completion
 # Windows / MinGW only (apply here, after 0012):
 git -C lib/N64ModernRuntime apply "$(pwd)/patches/0013-ultramodern-sp-task-synchronous-failsoft.patch"
 git -C lib/N64ModernRuntime apply ../../patches/0014-librecomp-flush-eeprom-on-exit.patch
-git -C lib/N64ModernRuntime apply ../../patches/0015-runtime-host-config-storage.patch
-git -C lib/N64ModernRuntime apply ../../patches/0017-runtime-game-presentation.patch
+git -C lib/N64ModernRuntime apply --unidiff-zero ../../patches/0015-runtime-host-config-storage.patch
+git -C lib/N64ModernRuntime apply --unidiff-zero ../../patches/0017-runtime-game-presentation.patch
 
 # RecompFrontend / RmlUi settings (all platforms):
-git -C lib/RecompFrontend apply ../../patches/0016-recompfrontend-integration.patch
+git -C lib/RecompFrontend apply --unidiff-zero ../../patches/0016-recompfrontend-integration.patch
 
 # RT64 renderer — all platforms:
 git -C lib/rt64 apply "$(pwd)/patches/0006-rt64-interp-angular-velocity-matching.patch"

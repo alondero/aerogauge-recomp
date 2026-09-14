@@ -136,6 +136,7 @@ try {
     # --- 5. Defensive submodule reset -----------------------------------------
     Write-Host "[2/5] Resetting submodules to clean state before patching..." -ForegroundColor Cyan
     git -C lib/N64ModernRuntime checkout -- . | Out-Null
+    git -C lib/RecompFrontend checkout -- . | Out-Null
     git -C lib/rt64 checkout -- . | Out-Null
     git -C lib/rt64/src/contrib/plume checkout -- . | Out-Null
 
@@ -168,13 +169,13 @@ try {
         #   (a) --check 0      -> not yet applied, will apply cleanly
         #   (b) --check !=0 && --reverse --check 0 -> already applied
         #   (c) --check !=0 && --reverse --check !=0 -> context drift (submodule changed)
-        & git.exe -C $p.Sub apply --ignore-whitespace --check $PatchAbs 2>&1 | Out-Null
+        & git.exe -C $p.Sub apply --ignore-whitespace --unidiff-zero --check $PatchAbs 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            & git.exe -C $p.Sub apply --ignore-whitespace $PatchAbs 2>&1 | Out-Null
+            & git.exe -C $p.Sub apply --ignore-whitespace --unidiff-zero $PatchAbs 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "patch failed: $($p.Sub) <- $($p.Patch)" }
             Write-Host "  applied  $($p.Sub) <- $($p.Patch)" -ForegroundColor Green
         } else {
-            & git.exe -C $p.Sub apply --ignore-whitespace --reverse --check $PatchAbs 2>&1 | Out-Null
+            & git.exe -C $p.Sub apply --ignore-whitespace --unidiff-zero --reverse --check $PatchAbs 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  skipped  $($p.Sub) <- $($p.Patch) (already applied)" -ForegroundColor DarkGray
             } else {

@@ -107,6 +107,7 @@ git submodule update --init --recursive
 # --- 5. Defensive submodule reset (mirrors CI) ------------------------------
 log "[2/5] Resetting submodules to clean state before patching..."
 git -C lib/N64ModernRuntime checkout -- .
+git -C lib/RecompFrontend checkout -- .
 git -C lib/rt64 checkout -- .
 git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 
@@ -146,10 +147,10 @@ for entry in "${PATCHES[@]}"; do
     #   (a) --check 0                                         -> not yet applied
     #   (b) --check !=0 && --reverse --check 0               -> already applied
     #   (c) --check !=0 && --reverse --check !=0             -> context drift
-    if git -C "$sub" apply --ignore-whitespace --check "$patch_abs" >/dev/null 2>&1; then
-        git -C "$sub" apply --ignore-whitespace "$patch_abs"
+    if git -C "$sub" apply --ignore-whitespace --unidiff-zero --check "$patch_abs" >/dev/null 2>&1; then
+        git -C "$sub" apply --ignore-whitespace --unidiff-zero "$patch_abs"
         echo "  applied  $sub <- $patch"
-    elif git -C "$sub" apply --ignore-whitespace --reverse --check "$patch_abs" >/dev/null 2>&1; then
+    elif git -C "$sub" apply --ignore-whitespace --unidiff-zero --reverse --check "$patch_abs" >/dev/null 2>&1; then
         echo "  skipped  $sub <- $patch (already applied)"
     else
         die "patch $patch does not apply cleanly to $sub and is not already applied — likely submodule drift (upstream context changed). Re-pull the submodule or refresh the patch."

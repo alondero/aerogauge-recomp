@@ -36,6 +36,10 @@ struct IsolatedConfig {
     std::filesystem::path root;
     std::string previous_root;
     bool had_previous_root = false;
+    std::string previous_graphics_config;
+    std::string previous_enhancements_config;
+    bool had_previous_graphics_config = false;
+    bool had_previous_enhancements_config = false;
 
     IsolatedConfig() {
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -54,6 +58,16 @@ struct IsolatedConfig {
         }
         set_environment("XDG_CONFIG_HOME", root.string().c_str());
 #endif
+        if (const char* previous = std::getenv("AERO_GRAPHICS_CONFIG")) {
+            previous_graphics_config = previous;
+            had_previous_graphics_config = true;
+        }
+        if (const char* previous = std::getenv("AERO_ENHANCEMENTS_CONFIG")) {
+            previous_enhancements_config = previous;
+            had_previous_enhancements_config = true;
+        }
+        set_environment("AERO_GRAPHICS_CONFIG", nullptr);
+        set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
     }
 
     ~IsolatedConfig() {
@@ -64,6 +78,10 @@ struct IsolatedConfig {
 #else
         set_environment("XDG_CONFIG_HOME", had_previous_root ? previous_root.c_str() : nullptr);
 #endif
+        set_environment("AERO_GRAPHICS_CONFIG",
+                        had_previous_graphics_config ? previous_graphics_config.c_str() : nullptr);
+        set_environment("AERO_ENHANCEMENTS_CONFIG",
+                        had_previous_enhancements_config ? previous_enhancements_config.c_str() : nullptr);
     }
 };
 
@@ -83,7 +101,6 @@ int main(int argc, char** argv) {
         (void)argc;
         (void)argv;
         IsolatedConfig isolated;
-        const auto& root = isolated.root;
         const auto path = aero::config::app_config_dir();
         std::filesystem::create_directories(path);
         recomp::register_config_path(path);

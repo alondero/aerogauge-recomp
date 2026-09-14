@@ -71,6 +71,7 @@ __pycache__/
 CLAUDE.local.md
 nextsessionprompt.md
 .worktreeinclude
+/.codex/
 
 # --- Game artefacts --------------------------------------------------------
 *.mpk

@@ -2,46 +2,27 @@ diff --git a/recompui/lib/FindFreetype.cmake b/recompui/lib/FindFreetype.cmake
 index bbb8d6a..dd60b44 100644
 --- a/recompui/lib/FindFreetype.cmake
 +++ b/recompui/lib/FindFreetype.cmake
-@@ -1,5 +1,5 @@
- set(FREETYPE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/include)
+@@ -2 +2 @@ set(FREETYPE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binari
 -set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release static/vs2015-2022/win64/freetype.lib")
 +set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release dll/win64/freetype.lib")
- add_library(Freetype::Freetype STATIC IMPORTED)
- set_target_properties(Freetype::Freetype PROPERTIES
- 	IMPORTED_LOCATION ${FREETYPE_LIBRARIES}
 diff --git a/recompui/src/api/ui_api_events.cpp b/recompui/src/api/ui_api_events.cpp
 index 8ee95c5..161d82f 100644
 --- a/recompui/src/api/ui_api_events.cpp
 +++ b/recompui/src/api/ui_api_events.cpp
-@@ -23,8 +23,7 @@
- #include "librecomp/overlays.hpp"
- #include "librecomp/helpers.hpp"
- 
+@@ -26,2 +26 @@
 -// TODO: Forced game includes
 -#include "../../../../../patches/ui_funcs.h"
 +#include "recompui/event_structs.h"
- 
- struct QueuedCallback {
-     recompui::ResourceId resource;
 diff --git a/recompui/src/base/ui_state.cpp b/recompui/src/base/ui_state.cpp
 index 277a421..c50d342 100644
 --- a/recompui/src/base/ui_state.cpp
 +++ b/recompui/src/base/ui_state.cpp
-@@ -42,7 +42,9 @@ void recompui::open_quit_game_prompt() {
-         "Quit",
-         "Cancel",
-         []() {
+@@ -45 +45,3 @@ void recompui::open_quit_game_prompt() {
 -            ultramodern::quit();
 +            SDL_Event event{};
 +            event.type = SDL_QUIT;
 +            SDL_PushEvent(&event);
-         },
-         []() {},
-         recompui::ButtonStyle::Danger,
-@@ -803,7 +805,16 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
-             }
-             else {
-                 if (context_capturing_input) {
+@@ -806 +808,10 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
 -                    RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    // Hosts may synthesize the frontend's F16/F17 tab actions.
 +                    // The SDL backend only translates through F15.
@@ -53,94 +34,45 @@ index 277a421..c50d342 100644
 +                    } else {
 +                        RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    }
-                 }
-             }
-         }
 diff --git a/recompui/src/config/ui_config.cpp b/recompui/src/config/ui_config.cpp
 index 6c84c05..1ad8f7b 100644
 --- a/recompui/src/config/ui_config.cpp
 +++ b/recompui/src/config/ui_config.cpp
-@@ -159,7 +159,9 @@ namespace recompui {
-             if (ultramodern::is_game_started()) {
-                 recompui::open_quit_game_prompt();
-             } else {
+@@ -162 +162,3 @@ namespace recompui {
 -                ultramodern::quit();
 +                SDL_Event event{};
 +                event.type = SDL_QUIT;
 +                SDL_PushEvent(&event);
-             }
-         });
-         auto close_button = config_modal->modal_root_context.create_element<IconButton>(header_right, "icons/X.svg", ButtonStyle::Basic);
 diff --git a/recompui/src/config/ui_config_tab_graphics.cpp b/recompui/src/config/ui_config_tab_graphics.cpp
 index 4fdf81f..ff84e45 100644
 --- a/recompui/src/config/ui_config_tab_graphics.cpp
 +++ b/recompui/src/config/ui_config_tab_graphics.cpp
-@@ -26,13 +26,15 @@ namespace recompui {
-         };
- 
-         enum class DownsamplingOption {
+@@ -29 +29 @@ namespace recompui {
 -            Off = 0,
 +            Off = 1,
-             X2 = 2,
+@@ -30,0 +31 @@ namespace recompui {
 +            X3 = 3,
-             X4 = 4,
-         };
-         static EnumOptionVector downsampling_options = {
-             {DownsamplingOption::Off, "Off"},
-             {DownsamplingOption::X2, "2x"},
+@@ -35,0 +37 @@ namespace recompui {
 +            {DownsamplingOption::X3, "3x"},
-             {DownsamplingOption::X4, "4x"},
-         };
- 
-@@ -74,7 +76,7 @@ namespace recompui {
-             {ultramodern::renderer::Antialiasing::None, "None"},
-             {ultramodern::renderer::Antialiasing::MSAA2X, "MSAA2X", "2X"},
-             {ultramodern::renderer::Antialiasing::MSAA4X, "MSAA4X", "4X"},
+@@ -77 +79 @@ namespace recompui {
 -            // {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X"},
 +            {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X", "8X"},
-         };
- 
-         static EnumOptionVector refresh_rate_options = {
-@@ -229,7 +231,7 @@ namespace recompui {
-                 "Dev Mode",
-                 "Enables developer features.",
-                 false,
+@@ -232 +234 @@ namespace recompui {
 -                true
 +                false
-             );
- 
-             config.add_enum_option(
-@@ -347,7 +349,7 @@ namespace recompui {
-                 "Selects the graphics API to use.",
-                 graphics_api_options,
-                 ultramodern::renderer::GraphicsApi::Auto,
+@@ -350 +352 @@ namespace recompui {
 -                true
 +                false
-             );
- 
-             config.add_enum_option(
-@@ -356,7 +358,7 @@ namespace recompui {
-                 "Sets whether to use a high precision framebuffer.",
-                 hpfb_options,
-                 ultramodern::renderer::HighPrecisionFramebuffer::Off,
+@@ -359 +361 @@ namespace recompui {
 -                true
 +                false
-             );
- 
-             return config;
 diff --git a/recompui/src/util/file.cpp b/recompui/src/util/file.cpp
 index 7ee84ed..340879c 100644
 --- a/recompui/src/util/file.cpp
 +++ b/recompui/src/util/file.cpp
-@@ -120,7 +120,10 @@ namespace recompui {
- #elif defined(__linux__) && defined(RECOMP_FLATPAK)
-         return "/app/bin";
- #else
+@@ -123 +123,4 @@ namespace recompui {
 -        return "";
 +        char* base = SDL_GetBasePath();
 +        std::filesystem::path result = base ? std::filesystem::u8path(base) : std::filesystem::current_path();
 +        SDL_free(base);
 +        return result;
- #endif
-     }
- 

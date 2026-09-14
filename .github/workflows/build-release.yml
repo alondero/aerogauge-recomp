@@ -85,6 +85,7 @@ jobs:
         # 0006, 0008, 0009, 0010, 0011) idempotently.
         run: |
           git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/RecompFrontend checkout -- .
           git -C lib/rt64 checkout -- .
           git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 
@@ -190,6 +191,7 @@ jobs:
         run: |
           git config --global core.autocrlf false
           git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/RecompFrontend checkout -- .
           git -C lib/rt64 checkout -- .
           git -C lib/rt64/src/contrib/plume checkout -- .
 
