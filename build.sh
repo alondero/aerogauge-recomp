@@ -118,6 +118,9 @@ git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 log "[2/5] Applying Lamborghini submodule patches..."
 PATCHES=(
     "lib/N64ModernRuntime:0001-ultramodern-runtime-scheduler-audio-vi.patch"
+    "lib/N64ModernRuntime:0017-runtime-game-presentation.patch"
+    "lib/N64ModernRuntime:0015-runtime-host-config-storage.patch"
+    "lib/RecompFrontend:0016-recompfrontend-integration.patch"
     "lib/N64ModernRuntime:0007-ultramodern-savestate-thread-context-relink.patch"
     "lib/N64ModernRuntime:0012-librecomp-pi-dma-completion-osiomesg.patch"
     "lib/N64ModernRuntime:0014-librecomp-flush-eeprom-on-exit.patch"

@@ -1423,6 +1423,7 @@ public:
     bool update_config(const ultramodern::renderer::GraphicsConfig&,
                        const ultramodern::renderer::GraphicsConfig&) override { return true; }
     void enable_instant_present() override {}
+    void send_dummy_workload(uint32_t) override {}
     // The game's main loop built a DL and osSpTaskStartGo -> submit_rsp_task delivered it
     // here. The software reference renderer (swrender) rasterizes it into m_fb on the
     // DEFAULT path every frame -- the trunk renders, so the trunk is what gets stress-tested

@@ -291,10 +291,6 @@ static void input_open_controller(int joystick_index);
 static void input_close_controller(SDL_JoystickID which);
 static void rumble_apply();  // rumble-pak sink (#69); defined in the input section below
 
-static void toggle_fullscreen() {
-    aero::menu::toggle_fullscreen();
-}
-
 static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/) {
     // RT64 default presenter (#58): RT64 needs a real window with a Vulkan surface
     // (Linux). Created on the main thread; the SDL event pump runs in update_gfx_stub
@@ -370,6 +366,7 @@ static void update_gfx_stub(void* /*gfx_data*/) {
     // Pump SDL events on the main thread so the RT64 window stays responsive under WSLg.
     if (aero_rt64::enabled()) {
         SDL_Event event;
+        aero::menu::update();
         while (SDL_PollEvent(&event)) {
             // Play mode has no VI cap (see quit_after_vis), so closing the window is the
             // quit path: reuse the summary+_Exit teardown (game threads are torn down by
@@ -377,15 +374,11 @@ static void update_gfx_stub(void* /*gfx_data*/) {
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)) {
                 std::fprintf(stderr, "[probe] window closed; quitting\n");
+                aero::menu::update();
                 boot_summary_and_exit();
             }
             else if (aero::menu::handle_event(event)) {
                 continue;
-            }
-            else if (event.type == SDL_KEYDOWN && !event.key.repeat &&
-                     (event.key.keysym.sym == SDLK_F11 ||
-                      (event.key.keysym.sym == SDLK_RETURN && (event.key.keysym.mod & KMOD_ALT)))) {
-                toggle_fullscreen();
             }
             else if (event.type == SDL_CONTROLLERDEVICEADDED) {
                 input_open_controller(event.cdevice.which);   // which = joystick index (ADDED)
@@ -478,6 +471,10 @@ static int8_t pad_axis_to_n64(int v) {              // int16 SDL axis -> int8 N6
 
 // Sample SDL keyboard + gamepad on the MAIN thread and publish the atomic snapshot.
 static void input_sample() {
+    if (aero::menu::captures_input()) {
+        g_input_snapshot.store(0, std::memory_order_relaxed);
+        return;
+    }
     uint16_t b = 0;
     int sx = 0, sy = 0;
 
@@ -591,6 +588,12 @@ static void input_close_controller(SDL_JoystickID which) {
 static void input_poll_stub() {}
 static bool input_get_input(int controller_num, uint16_t* buttons, float* x, float* y) {
     if (controller_num != 0) return false;
+    if (aero::menu::captures_input()) {
+        if (buttons) *buttons = 0;
+        if (x) *x = 0;
+        if (y) *y = 0;
+        return true;
+    }
     uint32_t snap = g_input_snapshot.load(std::memory_order_relaxed);
     const int vi = g_vis.load(std::memory_order_relaxed);
     const uint64_t after = g_after_input_packed.load(std::memory_order_relaxed);
@@ -674,6 +677,7 @@ int main(int argc, char** argv) {
     recomp::GameEntry game{};
     game.rom_hash          = 0x89ea0690f3e22201ULL; // XXH3_64(big-endian .z64, 8 MiB)
     game.internal_name     = "AEROGAUGE           "; // ROM header name @0x20 (20 bytes)
+    game.display_name      = "AeroGauge";
     game.game_id           = u8"aerogauge.us";
     game.is_enabled        = true;
     // 4Kbit EEPROM (512 B): the ROM's save loader (0x80061D00) probes with osEepromProbe and
@@ -701,7 +705,7 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         std::fprintf(stderr, "[probe] calling start_game\n");
         std::u8string gid = game_id;
-        recomp::start_game(gid);
+        recomp::start_game(gid, "");
     });
     starter.detach();
 

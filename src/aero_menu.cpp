@@ -1,466 +1,185 @@
 #include "aero_menu.h"
-
-#include <algorithm>
-#include <array>
-#include <cmath>
+#include "aero_config.h"
+#include "ui/aero_frontend_settings.h"
+#include "recompui/recompui.h"
+#include "recompui/config.h"
+#include "recompui/program_config.h"
+#include "librecomp/game.hpp"
+#include "rt64_render_hooks.h"
+#include <SDL.h>
+#include <atomic>
 #include <cstdio>
-#include <cstring>
-#include <optional>
-#include <string>
+#include <mutex>
 #include <vector>
 
-#include <SDL.h>
-
-#include "aero_config.h"
-
-#if defined(_WIN32)
-#include <SDL_syswm.h>
-#include <commdlg.h>
-#include <shlobj.h>
-
-namespace {
-
-SDL_Window* g_window = nullptr;
-HWND g_hwnd = nullptr;
-HMENU g_menu_bar = nullptr;
-HMENU g_game_menu = nullptr;
-HMENU g_resolution_menu = nullptr;
-HMENU g_supersampling_menu = nullptr;
-HMENU g_aspect_menu = nullptr;
-HMENU g_hud_menu = nullptr;
-HMENU g_rate_menu = nullptr;
-HMENU g_aa_menu = nullptr;
-HMENU g_hpfb_menu = nullptr;
-HMENU g_api_menu = nullptr;
-HMENU g_window_size_menu = nullptr;
-HMENU g_graphics_menu = nullptr;
-HMENU g_enhancements_menu = nullptr;
-HMENU g_draw_distance_menu = nullptr;
-
-constexpr std::array<int, 7> kManualRefreshRates{30, 60, 90, 120, 144, 165, 240};
-
-enum Command : UINT {
-    CMD_FULLSCREEN = 1000,
-    CMD_QUIT,
-
-    CMD_RES_AUTO = 1100,
-    CMD_RES_ORIGINAL,
-    CMD_RES_ORIGINAL_2X,
-    CMD_SS_1X,
-    CMD_SS_2X,
-    CMD_SS_3X,
-    CMD_SS_4X,
-    CMD_ASPECT_ORIGINAL,
-    CMD_ASPECT_EXPAND,
-    CMD_HUD_ORIGINAL,
-    CMD_HUD_CLAMP_16X9,
-    CMD_HUD_FULL,
-    CMD_RATE_ORIGINAL,
-    CMD_RATE_DISPLAY,
-    CMD_RATE_30,
-    CMD_RATE_60,
-    CMD_RATE_90,
-    CMD_RATE_120,
-    CMD_RATE_144,
-    CMD_RATE_165,
-    CMD_RATE_240,
-    CMD_AA_NONE,
-    CMD_AA_2X,
-    CMD_AA_4X,
-    CMD_AA_8X,
-    CMD_HPFB_AUTO,
-    CMD_HPFB_ON,
-    CMD_HPFB_OFF,
-    CMD_API_AUTO,
-    CMD_API_D3D12,
-    CMD_API_VULKAN,
-    CMD_DEVELOPER_MODE,
-    CMD_WINDOW_1280X720,
-    CMD_WINDOW_1600X900,
-    CMD_WINDOW_1920X1080,
-
-    CMD_DRAW_ORIGINAL = 1200,
-    CMD_DRAW_2X,
-    CMD_DRAW_10X,
-    CMD_DRAW_100X,
-    CMD_DRAW_UNLIMITED,
-    CMD_TEXTURE_PACK_DIRECTORY,
-    CMD_TEXTURE_PACK_ARCHIVE,
-    CMD_TEXTURE_PACK_CLEAR,
-    CMD_TEXTURE_DUMP_DIRECTORY,
-    CMD_TEXTURE_DUMP_CLEAR,
-    CMD_EASY_TURBO,
-    CMD_FULL_TRACK,
-};
-
-constexpr std::array<UINT, 4> kSupersamplingCommands{CMD_SS_1X, CMD_SS_2X, CMD_SS_3X, CMD_SS_4X};
-constexpr std::array<std::pair<float, UINT>, 5> kDrawDistanceCommands{{
-    {1.0f, CMD_DRAW_ORIGINAL}, {2.0f, CMD_DRAW_2X}, {10.0f, CMD_DRAW_10X},
-    {100.0f, CMD_DRAW_100X}, {0.0f, CMD_DRAW_UNLIMITED}}};
-
-void append_item(HMENU menu, UINT id, const char* label) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, label, -1, nullptr, 0);
-    std::vector<wchar_t> wide(static_cast<size_t>(std::max(n, 1)));
-    MultiByteToWideChar(CP_UTF8, 0, label, -1, wide.data(), n);
-    AppendMenuW(menu, MF_STRING, id, wide.data());
-}
-
-HMENU append_submenu(HMENU parent, const char* label) {
-    HMENU child = CreatePopupMenu();
-    int n = MultiByteToWideChar(CP_UTF8, 0, label, -1, nullptr, 0);
-    std::vector<wchar_t> wide(static_cast<size_t>(std::max(n, 1)));
-    MultiByteToWideChar(CP_UTF8, 0, label, -1, wide.data(), n);
-    AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(child), wide.data());
-    return child;
-}
-
-void check(HMENU menu, UINT id, bool checked) {
-    CheckMenuItem(menu, id, MF_BYCOMMAND | (checked ? MF_CHECKED : MF_UNCHECKED));
-}
-
-void radio(HMENU menu, UINT first, UINT last, UINT selected) {
-    CheckMenuRadioItem(menu, first, last, selected, MF_BYCOMMAND);
-}
-
-bool close(float a, float b) {
-    return std::abs(a - b) < 0.0001f;
-}
-
-UINT draw_distance_command(float value) {
-    for (const auto& [scale, command] : kDrawDistanceCommands) {
-        if (close(value, scale)) return command;
-    }
-    return 0;
-}
-
-std::optional<std::string> select_directory(const char* title) {
-    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    BROWSEINFOW dialog{};
-    dialog.hwndOwner = g_hwnd;
-    int title_len = MultiByteToWideChar(CP_UTF8, 0, title, -1, nullptr, 0);
-    std::vector<wchar_t> title_w(static_cast<size_t>(std::max(title_len, 1)));
-    MultiByteToWideChar(CP_UTF8, 0, title, -1, title_w.data(), title_len);
-    dialog.lpszTitle = title_w.data();
-    dialog.ulFlags = BIF_RETURNONLYFSDIRS;
-    PIDLIST_ABSOLUTE item = SHBrowseForFolderW(&dialog);
-    if (item == nullptr) { if (SUCCEEDED(com)) CoUninitialize(); return std::nullopt; }
-
-    std::array<wchar_t, MAX_PATH> path{};
-    const bool selected = SHGetPathFromIDListW(item, path.data()) == TRUE;
-    CoTaskMemFree(item);
-    if (SUCCEEDED(com)) CoUninitialize();
-    if (!selected) return std::nullopt;
-    const int bytes = WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, nullptr, 0, nullptr, nullptr);
-    std::string utf8(static_cast<size_t>(std::max(bytes, 1)), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, utf8.data(), bytes, nullptr, nullptr);
-    utf8.resize(std::strlen(utf8.c_str()));
-    return utf8;
-}
-
-std::optional<std::string> select_texture_archive() {
-    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    std::array<wchar_t, 32768> path{};
-    OPENFILENAMEW dialog{};
-    dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = g_hwnd;
-    dialog.lpstrFilter = L"RT64 texture archives (*.rtz)\0*.rtz\0All files (*.*)\0*.*\0";
-    dialog.lpstrFile = path.data();
-    dialog.nMaxFile = static_cast<DWORD>(path.size());
-    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
-    if (GetOpenFileNameW(&dialog) == FALSE) { if (SUCCEEDED(com)) CoUninitialize(); return std::nullopt; }
-    const int bytes = WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, nullptr, 0, nullptr, nullptr);
-    std::string utf8(static_cast<size_t>(std::max(bytes, 1)), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, path.data(), -1, utf8.data(), bytes, nullptr, nullptr);
-    if (SUCCEEDED(com)) CoUninitialize();
-    utf8.resize(std::strlen(utf8.c_str()));
-    return utf8;
-}
-
-void refresh() {
-    using namespace ultramodern::renderer;
-    const GraphicsConfig cfg = aero::config::current_graphics();
-    check(g_game_menu, CMD_FULLSCREEN, g_window != nullptr &&
-          (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0);
-
-    radio(g_resolution_menu, CMD_RES_AUTO, CMD_RES_ORIGINAL_2X,
-          cfg.res_option == Resolution::Auto ? CMD_RES_AUTO :
-          cfg.res_option == Resolution::Original2x ? CMD_RES_ORIGINAL_2X : CMD_RES_ORIGINAL);
-    radio(g_supersampling_menu, CMD_SS_1X, CMD_SS_4X,
-          cfg.ds_option >= 1 && cfg.ds_option <= 4 ? kSupersamplingCommands[static_cast<size_t>(cfg.ds_option - 1)] : 0);
-    radio(g_aspect_menu, CMD_ASPECT_ORIGINAL, CMD_ASPECT_EXPAND,
-          cfg.ar_option == AspectRatio::Expand ? CMD_ASPECT_EXPAND :
-          cfg.ar_option == AspectRatio::Original ? CMD_ASPECT_ORIGINAL : 0);
-    radio(g_hud_menu, CMD_HUD_ORIGINAL, CMD_HUD_FULL,
-          cfg.hr_option == HUDRatioMode::Full ? CMD_HUD_FULL :
-          cfg.hr_option == HUDRatioMode::Clamp16x9 ? CMD_HUD_CLAMP_16X9 : CMD_HUD_ORIGINAL);
-
-    UINT rate = CMD_RATE_ORIGINAL;
-    if (cfg.rr_option == RefreshRate::Display) rate = CMD_RATE_DISPLAY;
-    else if (cfg.rr_option == RefreshRate::Manual) {
-        const auto it = std::find(kManualRefreshRates.begin(), kManualRefreshRates.end(),
-                                  cfg.rr_manual_value);
-        rate = it == kManualRefreshRates.end() ? 0 :
-               CMD_RATE_30 + UINT(it - kManualRefreshRates.begin());
-    }
-    radio(g_rate_menu, CMD_RATE_ORIGINAL, CMD_RATE_240, rate);
-    radio(g_aa_menu, CMD_AA_NONE, CMD_AA_8X,
-          cfg.msaa_option == Antialiasing::MSAA8X ? CMD_AA_8X :
-          cfg.msaa_option == Antialiasing::MSAA4X ? CMD_AA_4X :
-          cfg.msaa_option == Antialiasing::MSAA2X ? CMD_AA_2X : CMD_AA_NONE);
-    radio(g_hpfb_menu, CMD_HPFB_AUTO, CMD_HPFB_OFF,
-          cfg.hpfb_option == HighPrecisionFramebuffer::On ? CMD_HPFB_ON :
-          cfg.hpfb_option == HighPrecisionFramebuffer::Off ? CMD_HPFB_OFF : CMD_HPFB_AUTO);
-    radio(g_api_menu, CMD_API_AUTO, CMD_API_VULKAN,
-          cfg.api_option == GraphicsApi::D3D12 ? CMD_API_D3D12 :
-          cfg.api_option == GraphicsApi::Vulkan ? CMD_API_VULKAN :
-          cfg.api_option == GraphicsApi::Auto ? CMD_API_AUTO : 0);
-    const auto window_size = aero::config::window_size();
-    radio(g_window_size_menu, CMD_WINDOW_1280X720, CMD_WINDOW_1920X1080,
-          window_size.width == 1920 && window_size.height == 1080 ? CMD_WINDOW_1920X1080 :
-          window_size.width == 1600 && window_size.height == 900 ? CMD_WINDOW_1600X900 :
-          window_size.width == 1280 && window_size.height == 720 ? CMD_WINDOW_1280X720 : 0);
-
-    const float draw_distance = aero::config::draw_distance_scale();
-    radio(g_draw_distance_menu, CMD_DRAW_ORIGINAL, CMD_DRAW_UNLIMITED,
-          draw_distance_command(draw_distance));
-    check(g_enhancements_menu, CMD_FULL_TRACK, aero::config::full_track());
-    check(g_enhancements_menu, CMD_EASY_TURBO, aero::config::easy_turbo_boost());
-    check(g_graphics_menu, CMD_DEVELOPER_MODE, cfg.developer_mode);
-    if (g_hwnd != nullptr) DrawMenuBar(g_hwnd);
-}
-
-void apply_graphics_command(UINT command) {
-    using namespace ultramodern::renderer;
-    GraphicsConfig cfg = aero::config::current_graphics();
-    bool apply_live = true;
-    switch (command) {
-        case CMD_RES_AUTO: cfg.res_option = Resolution::Auto; break;
-        case CMD_RES_ORIGINAL: cfg.res_option = Resolution::Original; break;
-        case CMD_RES_ORIGINAL_2X: cfg.res_option = Resolution::Original2x; break;
-        case CMD_SS_1X: case CMD_SS_2X: case CMD_SS_3X: case CMD_SS_4X: {
-            const auto it = std::find(kSupersamplingCommands.begin(), kSupersamplingCommands.end(), command);
-            if (it == kSupersamplingCommands.end()) return;
-            cfg.ds_option = static_cast<int>(std::distance(kSupersamplingCommands.begin(), it)) + 1;
-            break;
-        }
-        case CMD_ASPECT_ORIGINAL: cfg.ar_option = AspectRatio::Original; break;
-        case CMD_ASPECT_EXPAND: cfg.ar_option = AspectRatio::Expand; break;
-        case CMD_HUD_ORIGINAL: cfg.hr_option = HUDRatioMode::Original; break;
-        case CMD_HUD_CLAMP_16X9: cfg.hr_option = HUDRatioMode::Clamp16x9; break;
-        case CMD_HUD_FULL: cfg.hr_option = HUDRatioMode::Full; break;
-        case CMD_RATE_ORIGINAL: cfg.rr_option = RefreshRate::Original; break;
-        case CMD_RATE_DISPLAY: cfg.rr_option = RefreshRate::Display; break;
-        case CMD_RATE_30: case CMD_RATE_60: case CMD_RATE_90: case CMD_RATE_120:
-        case CMD_RATE_144: case CMD_RATE_165: case CMD_RATE_240: {
-            cfg.rr_option = RefreshRate::Manual;
-            const size_t index = static_cast<size_t>(command - CMD_RATE_30);
-            if (index >= kManualRefreshRates.size()) return;
-            cfg.rr_manual_value = kManualRefreshRates[index];
-            break;
-        }
-        case CMD_AA_NONE: cfg.msaa_option = Antialiasing::None; break;
-        case CMD_AA_2X: cfg.msaa_option = Antialiasing::MSAA2X; break;
-        case CMD_AA_4X: cfg.msaa_option = Antialiasing::MSAA4X; break;
-        case CMD_AA_8X: cfg.msaa_option = Antialiasing::MSAA8X; break;
-        case CMD_HPFB_AUTO: cfg.hpfb_option = HighPrecisionFramebuffer::Auto; break;
-        case CMD_HPFB_ON: cfg.hpfb_option = HighPrecisionFramebuffer::On; break;
-        case CMD_HPFB_OFF: cfg.hpfb_option = HighPrecisionFramebuffer::Off; break;
-        // RT64 selects its backend while constructing the renderer. Save the
-        // selection now; it takes effect on the next launch.
-        case CMD_API_AUTO: cfg.api_option = GraphicsApi::Auto; apply_live = false; break;
-        case CMD_API_D3D12: cfg.api_option = GraphicsApi::D3D12; apply_live = false; break;
-        case CMD_API_VULKAN: cfg.api_option = GraphicsApi::Vulkan; apply_live = false; break;
-        // RT64 reads developerMode once while constructing the renderer. Save
-        // the selection now; it takes effect on the next launch.
-        case CMD_DEVELOPER_MODE: cfg.developer_mode = !cfg.developer_mode; apply_live = false; break;
-        default: return;
-    }
-    aero::config::apply_graphics(cfg, apply_live);
-}
-
-void dispatch(UINT command) {
-    switch (command) {
-        case CMD_FULLSCREEN: aero::menu::toggle_fullscreen(); break;
-        case CMD_QUIT: {
-            SDL_Event quit{};
-            quit.type = SDL_QUIT;
-            SDL_PushEvent(&quit);
-            break;
-        }
-        case CMD_DRAW_ORIGINAL: aero::config::set_draw_distance_scale(1.0f); break;
-        case CMD_DRAW_2X: aero::config::set_draw_distance_scale(2.0f); break;
-        case CMD_DRAW_10X: aero::config::set_draw_distance_scale(10.0f); break;
-        case CMD_DRAW_100X: aero::config::set_draw_distance_scale(100.0f); break;
-        case CMD_DRAW_UNLIMITED: aero::config::set_draw_distance_scale(0.0f); break;
-        case CMD_WINDOW_1280X720:
-            aero::config::set_window_size({1280, 720});
-            SDL_SetWindowSize(g_window, 1280, 720);
-            break;
-        case CMD_WINDOW_1600X900:
-            aero::config::set_window_size({1600, 900});
-            SDL_SetWindowSize(g_window, 1600, 900);
-            break;
-        case CMD_WINDOW_1920X1080:
-            aero::config::set_window_size({1920, 1080});
-            SDL_SetWindowSize(g_window, 1920, 1080);
-            break;
-        case CMD_TEXTURE_PACK_DIRECTORY: {
-            const auto path = select_directory("Select RT64 texture-pack directory");
-            if (path.has_value()) aero::config::set_texture_pack_path(*path);
-            break;
-        }
-        case CMD_TEXTURE_PACK_ARCHIVE: {
-            const auto path = select_texture_archive();
-            if (path.has_value()) aero::config::set_texture_pack_path(*path);
-            break;
-        }
-        case CMD_TEXTURE_PACK_CLEAR: aero::config::set_texture_pack_path({}); break;
-        case CMD_TEXTURE_DUMP_DIRECTORY: {
-            const auto path = select_directory("Select RT64 texture-dump directory");
-            if (path.has_value()) aero::config::set_texture_dump_dir(*path);
-            break;
-        }
-        case CMD_TEXTURE_DUMP_CLEAR: aero::config::set_texture_dump_dir({}); break;
-        case CMD_EASY_TURBO: aero::config::set_easy_turbo_boost(!aero::config::easy_turbo_boost()); break;
-        case CMD_FULL_TRACK: aero::config::set_full_track(!aero::config::full_track()); break;
-        default: apply_graphics_command(command); break;
-    }
-    refresh();
-}
-
-} // anonymous namespace
+// RecompFrontend host contract. SDL owns the window; RT64 owns rendering.
+SDL_Window* window = nullptr;
+std::vector<recomp::GameEntry> supported_games;
+void init_hook(plume::RenderInterface*, plume::RenderDevice*);
+void draw_hook(plume::RenderCommandList*, plume::RenderFramebuffer*);
+void deinit_hook();
 
 namespace aero::menu {
+namespace {
+std::recursive_mutex frontend_mutex;
+std::atomic<bool> capture{false};
+bool ready = false;
+enum class Request { None, Open, Close };
+Request request = Request::None;
+std::vector<std::function<void()>> actions;
 
-void attach(SDL_Window* window) {
-    g_window = window;
-    SDL_SysWMinfo info{};
-    SDL_VERSION(&info.version);
-    if (SDL_GetWindowWMInfo(window, &info) != SDL_TRUE) return;
-    g_hwnd = info.info.win.window;
-
-    g_menu_bar = CreateMenu();
-    HMENU game = g_game_menu = append_submenu(g_menu_bar, "&Game");
-    append_item(game, CMD_FULLSCREEN, "&Fullscreen\tF11");
-    AppendMenuA(game, MF_SEPARATOR, 0, nullptr);
-    append_item(game, CMD_QUIT, "E&xit");
-
-    HMENU graphics = g_graphics_menu = append_submenu(g_menu_bar, "&Graphics");
-    HMENU resolution = g_resolution_menu = append_submenu(graphics, "Internal resolution");
-    append_item(resolution, CMD_RES_AUTO, "Automatic (window scale)");
-    append_item(resolution, CMD_RES_ORIGINAL, "Original");
-    append_item(resolution, CMD_RES_ORIGINAL_2X, "Original 2x");
-    HMENU supersampling = g_supersampling_menu = append_submenu(graphics, "Supersampling");
-    append_item(supersampling, CMD_SS_1X, "1x"); append_item(supersampling, CMD_SS_2X, "2x");
-    append_item(supersampling, CMD_SS_3X, "3x"); append_item(supersampling, CMD_SS_4X, "4x");
-    HMENU aspect = g_aspect_menu = append_submenu(graphics, "Aspect ratio");
-    append_item(aspect, CMD_ASPECT_ORIGINAL, "Original (4:3)");
-    append_item(aspect, CMD_ASPECT_EXPAND, "Expand (widescreen)");
-    HMENU hud = g_hud_menu = append_submenu(graphics, "HUD placement");
-    append_item(hud, CMD_HUD_ORIGINAL, "Original (4:3)");
-    append_item(hud, CMD_HUD_CLAMP_16X9, "Clamp to 16:9");
-    append_item(hud, CMD_HUD_FULL, "Full width");
-    HMENU rate = g_rate_menu = append_submenu(graphics, "Presentation rate");
-    append_item(rate, CMD_RATE_ORIGINAL, "Original");
-    append_item(rate, CMD_RATE_DISPLAY, "Display refresh rate");
-    AppendMenuA(rate, MF_SEPARATOR, 0, nullptr);
-    append_item(rate, CMD_RATE_30, "30 Hz"); append_item(rate, CMD_RATE_60, "60 Hz");
-    append_item(rate, CMD_RATE_90, "90 Hz"); append_item(rate, CMD_RATE_120, "120 Hz");
-    append_item(rate, CMD_RATE_144, "144 Hz"); append_item(rate, CMD_RATE_165, "165 Hz");
-    append_item(rate, CMD_RATE_240, "240 Hz");
-    HMENU aa = g_aa_menu = append_submenu(graphics, "Anti-aliasing");
-    append_item(aa, CMD_AA_NONE, "Off"); append_item(aa, CMD_AA_2X, "MSAA 2x");
-    append_item(aa, CMD_AA_4X, "MSAA 4x"); append_item(aa, CMD_AA_8X, "MSAA 8x");
-    HMENU hpfb = g_hpfb_menu = append_submenu(graphics, "High-precision framebuffer");
-    append_item(hpfb, CMD_HPFB_AUTO, "Automatic"); append_item(hpfb, CMD_HPFB_ON, "On");
-    append_item(hpfb, CMD_HPFB_OFF, "Off");
-    HMENU api = g_api_menu = append_submenu(graphics, "Graphics API (restart required)");
-    append_item(api, CMD_API_AUTO, "Automatic"); append_item(api, CMD_API_D3D12, "Direct3D 12");
-    append_item(api, CMD_API_VULKAN, "Vulkan");
-    append_item(graphics, CMD_DEVELOPER_MODE, "Developer overlay (restart required)");
-    HMENU window_size = g_window_size_menu = append_submenu(graphics, "Window size");
-    append_item(window_size, CMD_WINDOW_1280X720, "1280 x 720");
-    append_item(window_size, CMD_WINDOW_1600X900, "1600 x 900");
-    append_item(window_size, CMD_WINDOW_1920X1080, "1920 x 1080");
-
-    HMENU enhancements = g_enhancements_menu = append_submenu(g_menu_bar, "&Enhancements");
-    HMENU draw_distance = g_draw_distance_menu = append_submenu(enhancements, "Draw distance");
-    append_item(draw_distance, CMD_DRAW_ORIGINAL, "Original (1x)");
-    append_item(draw_distance, CMD_DRAW_2X, "2x");
-    append_item(draw_distance, CMD_DRAW_10X, "10x");
-    append_item(draw_distance, CMD_DRAW_100X, "100x");
-    append_item(draw_distance, CMD_DRAW_UNLIMITED, "Unlimited");
-    append_item(enhancements, CMD_FULL_TRACK, "Full course geometry (experimental)");
-    append_item(enhancements, CMD_EASY_TURBO, "Easy Turbo + Boost Start");
-    HMENU texture_pack = append_submenu(enhancements, "Texture pack (restart required)");
-    append_item(texture_pack, CMD_TEXTURE_PACK_DIRECTORY, "Choose directory...");
-    append_item(texture_pack, CMD_TEXTURE_PACK_ARCHIVE, "Choose .rtz archive...");
-    append_item(texture_pack, CMD_TEXTURE_PACK_CLEAR, "Clear selection");
-    HMENU texture_dump = append_submenu(enhancements, "Texture dump (restart required)");
-    append_item(texture_dump, CMD_TEXTURE_DUMP_DIRECTORY, "Choose output directory...");
-    append_item(texture_dump, CMD_TEXTURE_DUMP_CLEAR, "Disable texture dump");
-
-    if ((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0) {
-        SetMenu(g_hwnd, g_menu_bar);
-        SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+void initialize(plume::RenderInterface* interface, plume::RenderDevice* device) {
+    std::lock_guard lock(frontend_mutex);
+    auto& graphics = recompui::config::get_graphics_config();
+    const bool samples = device->getCapabilities().sampleLocations;
+    graphics.update_option_disabled("msaa_option", !samples);
+    if (samples) {
+        const auto counts = device->getSampleCountsSupported(plume::RenderFormat::R8G8B8A8_UNORM) &
+                            device->getSampleCountsSupported(plume::RenderFormat::D32_FLOAT);
+        using AA = ultramodern::renderer::Antialiasing;
+        graphics.update_enum_option_disabled("msaa_option", uint32_t(AA::MSAA2X), !(counts & plume::RenderSampleCount::Bits::COUNT_2));
+        graphics.update_enum_option_disabled("msaa_option", uint32_t(AA::MSAA4X), !(counts & plume::RenderSampleCount::Bits::COUNT_4));
+        graphics.update_enum_option_disabled("msaa_option", uint32_t(AA::MSAA8X), !(counts & plume::RenderSampleCount::Bits::COUNT_8));
     }
-    SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
-    refresh();
+    init_hook(interface, device);
+    ready = true;
 }
 
+void render(plume::RenderCommandList* commands, plume::RenderFramebuffer* framebuffer) {
+    std::lock_guard lock(frontend_mutex);
+    if (request == Request::Open) {
+        recompui::config::open();
+        recompui::config::set_tab("graphics");
+    } else if (request == Request::Close) {
+        // Preserve the Apply/Discard prompt when a confirmation-backed page is dirty.
+        if (recompui::config::close()) recompui::hide_all_contexts();
+    }
+    request = Request::None;
+    // This port starts the game directly, with no pre-game launcher.
+    if (ultramodern::is_game_started() || capture.load()) draw_hook(commands, framebuffer);
+    capture.store(recompui::is_context_capturing_input(), std::memory_order_release);
+}
+
+void deinitialize() {
+    std::lock_guard lock(frontend_mutex);
+    ready = false;
+    capture.store(false, std::memory_order_release);
+    deinit_hook();
+}
+}
+
+void enqueue(std::function<void()> action) {
+    // Called while the frontend lock is held by the presentation callback.
+    actions.push_back(std::move(action));
+}
+
+void update() {
+    std::lock_guard lock(frontend_mutex);
+    // Persistence, config snapshots and SDL window changes belong to the main
+    // thread. Never execute these from RT64's presentation callback.
+    auto pending = std::move(actions);
+    actions.clear();
+    for (auto& action : pending) action();
+}
+
+void attach(SDL_Window* value) {
+    window = value;
+    recompui::programconfig::set_program_name("AeroGauge Recompiled");
+    recompui::programconfig::set_program_id(u8"AeroGaugeRecomp");
+    recompui::register_primary_font("LatoLatin-Regular.ttf", "LatoLatin");
+    recompui::register_extra_font("LatoLatin-Bold.ttf");
+    // The stock launcher dereferences supported_games[0]. This direct-boot
+    // port only uses the config modal, so it supplies an empty launcher.
+    recompui::register_launcher_init_callback([](recompui::LauncherMenu*) {});
+    create_settings();
+    recompui::config::finalize();
+    SDL_DisplayMode display{};
+    if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(window), &display) == 0)
+        recompui::config::graphics::update_refresh_rate(display.refresh_rate);
+    RT64::SetRenderHooks(initialize, render, deinitialize);
+    std::fprintf(stderr, "[menu] Settings: Escape / F10 / controller Back\n");
+}
+
+bool captures_input() { return capture.load(std::memory_order_acquire); }
+
 bool handle_event(const SDL_Event& event) {
-    if (event.type != SDL_SYSWMEVENT || event.syswm.msg == nullptr) return false;
-    const SDL_SysWMmsg& msg = *event.syswm.msg;
-    if (msg.subsystem != SDL_SYSWM_WINDOWS || msg.msg.win.msg != WM_COMMAND) return false;
-    dispatch(LOWORD(msg.msg.win.wParam));
+    std::lock_guard lock(frontend_mutex);
+    if (event.type == SDL_KEYDOWN && !event.key.repeat &&
+        (event.key.keysym.sym == SDLK_F11 ||
+         (event.key.keysym.sym == SDLK_RETURN && (event.key.keysym.mod & KMOD_ALT)))) {
+        toggle_fullscreen();
+        return true;
+    }
+    const bool toggle = (event.type == SDL_KEYDOWN && !event.key.repeat &&
+                         (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_F10)) ||
+                        (event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK);
+    if (toggle && ready) {
+        if (captures_input()) request = Request::Close;
+        else {
+            refresh_settings();
+            capture.store(true, std::memory_order_release);
+            request = Request::Open;
+        }
+        return true;
+    }
+    if (event.type == SDL_DROPFILE || event.type == SDL_DROPTEXT) {
+        SDL_free(event.drop.file);
+        return true;
+    }
+    // Hotplug must still reach the game's existing controller owner.
+    if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED) return false;
+    if (!ready || !captures_input()) return false;
+    // Keep gameplay bindings. Translate menu-only controller buttons without
+    // opening a second controller or assigning frontend gameplay profiles.
+    if (event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERBUTTONUP) {
+        SDL_Keycode key = SDLK_UNKNOWN;
+        switch (event.cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_A: key = SDLK_RETURN; break;
+        case SDL_CONTROLLER_BUTTON_B: key = SDLK_F15; break;
+        case SDL_CONTROLLER_BUTTON_X: key = SDLK_f; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: key = SDLK_UP; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: key = SDLK_DOWN; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: key = SDLK_LEFT; break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: key = SDLK_RIGHT; break;
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: key = SDLK_F16; break;
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: key = SDLK_F17; break;
+        default: return true;
+        }
+        SDL_Event mapped{};
+        mapped.type = event.type == SDL_CONTROLLERBUTTONDOWN ? SDL_KEYDOWN : SDL_KEYUP;
+        mapped.key.state = mapped.type == SDL_KEYDOWN ? SDL_PRESSED : SDL_RELEASED;
+        mapped.key.keysym.sym = key;
+        mapped.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+        recompui::queue_event(mapped);
+    } else {
+        recompui::queue_event(event);
+    }
     return true;
 }
 
-void toggle_fullscreen() {
-    if (g_window == nullptr) return;
-    const bool fullscreen = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
-    if (SDL_SetWindowFullscreen(g_window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
-        std::fprintf(stderr, "[config] fullscreen toggle FAILED: %s\n", SDL_GetError());
-        return;
+void apply_window_settings() {
+    if (!window) return;
+    const auto cfg = aero::config::current_graphics();
+    const bool fullscreen = cfg.wm_option == ultramodern::renderer::WindowMode::Fullscreen;
+    if (SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
+        std::fprintf(stderr, "[config] fullscreen failed: %s\n", SDL_GetError());
+        aero::config::update_saved_window_mode((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP)
+            ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed);
     }
-    SetMenu(g_hwnd, fullscreen ? nullptr : g_menu_bar);
-    SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-    aero::config::update_saved_window_mode(
-        fullscreen ? ultramodern::renderer::WindowMode::Fullscreen
-                   : ultramodern::renderer::WindowMode::Windowed);
-    std::fprintf(stderr, "[config] fullscreen %s (menu / F11 / Alt+Enter)\n",
-                 fullscreen ? "ON" : "OFF");
-    refresh();
+    const auto size = aero::config::window_size();
+    SDL_SetWindowSize(window, size.width, size.height);
 }
-
-} // namespace aero::menu
-
-#else
-
-namespace {
-SDL_Window* g_window = nullptr;
-}
-
-namespace aero::menu {
-
-void attach(SDL_Window* window) { g_window = window; }
-bool handle_event(const SDL_Event&) { return false; }
 
 void toggle_fullscreen() {
-    if (g_window == nullptr) return;
-    const bool fullscreen = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
-    if (SDL_SetWindowFullscreen(g_window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
-        std::fprintf(stderr, "[config] fullscreen toggle FAILED: %s\n", SDL_GetError());
+    std::lock_guard lock(frontend_mutex);
+    if (!window) return;
+    const bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
+    if (SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
+        std::fprintf(stderr, "[config] fullscreen failed: %s\n", SDL_GetError());
         return;
     }
-    aero::config::update_saved_window_mode(
-        fullscreen ? ultramodern::renderer::WindowMode::Fullscreen
-                   : ultramodern::renderer::WindowMode::Windowed);
-    std::fprintf(stderr, "[config] fullscreen %s (F11 / Alt+Enter)\n", fullscreen ? "ON" : "OFF");
+    aero::config::update_saved_window_mode(fullscreen ? ultramodern::renderer::WindowMode::Fullscreen
+                                                    : ultramodern::renderer::WindowMode::Windowed);
+    refresh_settings();
 }
-
 } // namespace aero::menu
-
-#endif

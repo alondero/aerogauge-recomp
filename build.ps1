@@ -145,7 +145,10 @@ try {
     # relative path doesn't resolve.
     Write-Host "[2/5] Applying submodule patches..." -ForegroundColor Cyan
     $patches = @(
+        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0015-runtime-host-config-storage.patch' },
+        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0016-recompfrontend-integration.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-ultramodern-runtime-scheduler-audio-vi.patch' },
+        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0017-runtime-game-presentation.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0007-ultramodern-savestate-thread-context-relink.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0012-librecomp-pi-dma-completion-osiomesg.patch' },
         @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0014-librecomp-flush-eeprom-on-exit.patch' },

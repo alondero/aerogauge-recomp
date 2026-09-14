@@ -6,10 +6,13 @@ struct SDL_Window;
 
 namespace aero::menu {
 
-// Attach the native quick-access menu bar where the platform supports it
-// (currently Win32). All menu actions update the live renderer and graphics.json.
+// RecompFrontend/RmlUi overlay rendered by RT64 on every platform.
+// Attach before creating the renderer; call update on the SDL/main thread.
 void attach(SDL_Window* window);
 bool handle_event(const SDL_Event& event);
+bool captures_input();
+void update();
+void apply_window_settings();
 void toggle_fullscreen();
 
 } // namespace aero::menu

@@ -3,7 +3,7 @@
 // Schema and behaviour mirror Zelda64Recomp's src/game/config.cpp graphics.json
 // (same key names, same per-key fall-back-to-default on missing/corrupt values,
 // and a "portable.txt in the LAUNCH directory -> keep config there" escape hatch),
-// minus the RmlUi menu: this port's UI is the JSON file itself plus hotkeys.
+// RecompFrontend's RmlUi menu queues changes to this main-thread persistence layer.
 #include "aero_config.h"
 
 #include <atomic>
@@ -64,9 +64,9 @@ std::atomic_bool g_full_track{true};
 // handling, so it is explicitly opt-in and defaults to the original game.
 std::atomic_bool g_easy_turbo_boost{false};
 
-// The native menu runs on the main SDL thread. Retaining a local snapshot means
-// it never has to read ultramodern's reference-returning getter while RT64 is
-// applying a setting on another thread.
+// The menu queues config operations onto the main SDL thread. This snapshot
+// avoids reading ultramodern's reference-returning getter while RT64 applies a
+// setting on another thread.
 ultramodern::renderer::GraphicsConfig g_current_graphics{};
 
 float clamp_draw_distance(float v) {

@@ -35,20 +35,24 @@ git -c core.longpaths=true submodule update --init --recursive
 
 ## 2. Apply the dependency patches
 
-The port needs small compatibility patches applied to the submodule working trees.
-The submodules are pinned to their public upstream commits; these patches carry the
-runtime changes the stack was developed against (cooperative scheduler dispatch,
-VI-mode fallback, 30fps pacing, save-state thread relink, RT64 frame-interpolation and
-widescreen features, and — on Windows — the MinGW/D3D12 COM ABI fixes for RT64/plume).
-They are inherited unchanged from the Automobili Lamborghini port (hence the 0001 patch
-filename).
+The port needs small compatibility patches in the submodule working trees.
+The submodules use fixed upstream commits. The patches add the runtime, save-state,
+frame-interpolation, widescreen, and platform fixes used by this port.
+The shared settings screen follows the Automobili Lamborghini integration. Its config
+API needs the newer pinned N64ModernRuntime revision. Patch 0017 keeps AeroGauge's
+existing early-presentation behavior after that update.
 
 ```bash
 # ultramodern / librecomp runtime (all platforms):
-git -C lib/N64ModernRuntime apply ../../patches/0001-lamborghini-runtime-scheduler-audio-vi.patch
+git -C lib/N64ModernRuntime apply ../../patches/0001-ultramodern-runtime-scheduler-audio-vi.patch
+git -C lib/N64ModernRuntime apply ../../patches/0017-runtime-game-presentation.patch
+git -C lib/N64ModernRuntime apply ../../patches/0015-runtime-host-config-storage.patch
 git -C lib/N64ModernRuntime apply ../../patches/0007-ultramodern-savestate-thread-context-relink.patch
 git -C lib/N64ModernRuntime apply ../../patches/0012-librecomp-pi-dma-completion-osiomesg.patch
 git -C lib/N64ModernRuntime apply ../../patches/0014-librecomp-flush-eeprom-on-exit.patch
+
+# RecompFrontend / RmlUi settings (all platforms):
+git -C lib/RecompFrontend apply ../../patches/0016-recompfrontend-integration.patch
 
 # RT64 renderer — all platforms:
 git -C lib/rt64 apply "$(pwd)/patches/0006-rt64-interp-angular-velocity-matching.patch"
@@ -127,6 +131,10 @@ Run from the repository root so the ROM path resolves:
 
 - `lib/N64ModernRuntime`'s root CMake deliberately omits RT64; it is pulled in only by
   this project's `CMakeLists.txt`.
+- Keep the generated `build/assets/` directory beside the executable when copying
+  the port. Windows also needs `freetype.dll`, next to the existing SDL2/DXC DLLs.
+- The settings screen and its config ownership are described in
+  [docs/frontend.md](docs/frontend.md).
 - `RecompiledFuncs/` is regenerated from your ROM and is never committed. Re-run step 3
   after changing the symbol map, `force_stub.txt`, or the config.
 - `force_stub.txt` is the recompiler-error iteration loop: when N64Recomp fails on a
