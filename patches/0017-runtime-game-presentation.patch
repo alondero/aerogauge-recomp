@@ -1,0 +1,13 @@
+diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
+index a2101a0..1cc6ba6 100644
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -399,2 +399,8 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+             if (const auto* task_action = std::get_if<SpTaskAction>(&action)) {
++                // The launcher uses dummy workloads; switch only for the first game DL.
++                // Retain the port renderer's pre-HFR-launcher presentation contract.
++                if (ultramodern::is_game_started() && !enabled_instant_present) {
++                    renderer_context->enable_instant_present();
++                    enabled_instant_present = true;
++                }
+                 // Tell the game that the RSP completed instantly. This will allow it to queue other task types, but it won't

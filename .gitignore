@@ -1,5 +1,5 @@
 # --- Copyrighted game data (NEVER commit) ---------------------------------
-# The original ROM must be supplied by the user. This project ships no assets.
+# The original ROM must be supplied by the user. This project ships no game assets.
 *.z64
 *.n64
 *.v64
@@ -71,6 +71,7 @@ __pycache__/
 CLAUDE.local.md
 nextsessionprompt.md
 .worktreeinclude
+/.codex/
 
 # --- Game artefacts --------------------------------------------------------
 *.mpk

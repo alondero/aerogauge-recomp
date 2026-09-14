@@ -36,19 +36,21 @@ Then run from the repo root:
 ./build/aerogauge_modern
 ```
 
-## In-game configuration (Windows)
+## In-game configuration (Windows and Linux)
 
-In windowed mode, the native menu bar exposes **Graphics** and **Enhancements** settings.
-Changes to rendering, widescreen presentation, draw distance, full course geometry,
-and window size apply
-in-game and are saved to `graphics.json`. The graphics API, developer overlay, and
-texture pack/dump paths
-are saved for the next launch; texture paths are chosen from native file/folder dialogs.
+Press **Escape**, **F10**, or controller **Back/Select** to open the settings screen,
+including in fullscreen. Use the mouse, keyboard, or controller D-pad to move around
+(A accepts, B goes back, X applies, and the shoulder buttons switch tabs). The screen
+uses the game input while it is open, but the race keeps running.
+Graphics changes use **Apply** or **Discard**. Enhancement changes save immediately.
+Rendering, widescreen, draw distance, full course geometry, and window size changes
+apply in-game and are saved to `graphics.json`. The graphics API, developer overlay,
+and texture pack/dump paths are saved for the next launch. Texture paths can be
+typed or pasted into the screen. Settings set by environment variables are disabled.
 **Enhancements > Full course geometry** is experimental (higher CPU/GPU cost, possible
 visual regressions) and defaults on; uncheck it to restore the original 3-zone
 visibility window.
-Press **F11** (or
-Alt+Enter) to switch fullscreen; return to windowed mode to access the menu bar again.
+Press **F11** (or Alt+Enter) to switch fullscreen.
 
 Enable **Enhancements > Easy Turbo + Boost Start** for simplified boosts:
 
