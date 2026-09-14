@@ -129,7 +129,10 @@ bool handle_event(const SDL_Event& event) {
         return true;
     }
     // Hotplug must still reach the game's existing controller owner.
-    if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED) return false;
+    if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED) {
+        recompui::queue_event(event);
+        return false;
+    }
     if (!ready || !captures_input()) return false;
     // Pass controller events through unchanged. RecompFrontend maps the active
     // controller profile, tracks controller-vs-keyboard focus, and selects the

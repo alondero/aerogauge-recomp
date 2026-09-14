@@ -2,27 +2,37 @@ diff --git a/recompui/lib/FindFreetype.cmake b/recompui/lib/FindFreetype.cmake
 index bbb8d6a..dd60b44 100644
 --- a/recompui/lib/FindFreetype.cmake
 +++ b/recompui/lib/FindFreetype.cmake
-@@ -2 +2 @@ set(FREETYPE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binari
+@@ -1,3 +1,3 @@
+ set(FREETYPE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/include)
 -set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release static/vs2015-2022/win64/freetype.lib")
 +set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release dll/win64/freetype.lib")
+ add_library(Freetype::Freetype STATIC IMPORTED)
 diff --git a/recompui/src/api/ui_api_events.cpp b/recompui/src/api/ui_api_events.cpp
 index 8ee95c5..161d82f 100644
 --- a/recompui/src/api/ui_api_events.cpp
 +++ b/recompui/src/api/ui_api_events.cpp
-@@ -26,2 +26 @@
+@@ -23,7 +23,4 @@
+ #include "librecomp/overlays.hpp"
+ #include "librecomp/helpers.hpp"
+-
 -// TODO: Forced game includes
 -#include "../../../../../patches/ui_funcs.h"
+-
 +#include "recompui/event_structs.h"
+ struct QueuedCallback {
 diff --git a/recompui/src/base/ui_state.cpp b/recompui/src/base/ui_state.cpp
 index 277a421..c50d342 100644
 --- a/recompui/src/base/ui_state.cpp
 +++ b/recompui/src/base/ui_state.cpp
-@@ -45 +45,3 @@ void recompui::open_quit_game_prompt() {
+@@ -44,3 +44,5 @@ void recompui::open_quit_game_prompt() {
+         []() {
 -            ultramodern::quit();
 +            SDL_Event event{};
 +            event.type = SDL_QUIT;
 +            SDL_PushEvent(&event);
-@@ -806 +808,10 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
+         },
+@@ -805,3 +807,12 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
+                 if (context_capturing_input) {
 -                    RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    // Hosts may synthesize the frontend's F16/F17 tab actions.
 +                    // The SDL backend only translates through F15.
@@ -34,45 +44,62 @@ index 277a421..c50d342 100644
 +                    } else {
 +                        RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    }
+                 }
 diff --git a/recompui/src/config/ui_config.cpp b/recompui/src/config/ui_config.cpp
 index 6c84c05..1ad8f7b 100644
 --- a/recompui/src/config/ui_config.cpp
 +++ b/recompui/src/config/ui_config.cpp
-@@ -162 +162,3 @@ namespace recompui {
+@@ -161,3 +161,5 @@ namespace recompui {
+             } else {
 -                ultramodern::quit();
 +                SDL_Event event{};
 +                event.type = SDL_QUIT;
 +                SDL_PushEvent(&event);
+             }
 diff --git a/recompui/src/config/ui_config_tab_graphics.cpp b/recompui/src/config/ui_config_tab_graphics.cpp
 index 4fdf81f..ff84e45 100644
 --- a/recompui/src/config/ui_config_tab_graphics.cpp
 +++ b/recompui/src/config/ui_config_tab_graphics.cpp
-@@ -29 +29 @@ namespace recompui {
+@@ -28,4 +28,5 @@ namespace recompui {
+         enum class DownsamplingOption {
 -            Off = 0,
 +            Off = 1,
-@@ -30,0 +31 @@ namespace recompui {
+             X2 = 2,
 +            X3 = 3,
-@@ -35,0 +37 @@ namespace recompui {
+             X4 = 4,
+@@ -35,2 +36,3 @@ namespace recompui {
+             {DownsamplingOption::X2, "2x"},
 +            {DownsamplingOption::X3, "3x"},
-@@ -77 +79 @@ namespace recompui {
+             {DownsamplingOption::X4, "4x"},
+@@ -76,3 +78,3 @@ namespace recompui {
+             {ultramodern::renderer::Antialiasing::MSAA4X, "MSAA4X", "4X"},
 -            // {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X"},
 +            {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X", "8X"},
-@@ -232 +234 @@ namespace recompui {
+         };
+@@ -231,3 +233,3 @@ namespace recompui {
+                 false,
 -                true
 +                false
-@@ -350 +352 @@ namespace recompui {
+             );
+@@ -349,3 +351,3 @@ namespace recompui {
+                 ultramodern::renderer::GraphicsApi::Auto,
 -                true
 +                false
-@@ -359 +361 @@ namespace recompui {
+             );
+@@ -358,3 +360,3 @@ namespace recompui {
+                 ultramodern::renderer::HighPrecisionFramebuffer::Off,
 -                true
 +                false
+             );
 diff --git a/recompui/src/util/file.cpp b/recompui/src/util/file.cpp
 index 7ee84ed..340879c 100644
 --- a/recompui/src/util/file.cpp
 +++ b/recompui/src/util/file.cpp
-@@ -123 +123,4 @@ namespace recompui {
+@@ -122,3 +122,6 @@ namespace recompui {
+ #else
 -        return "";
 +        char* base = SDL_GetBasePath();
 +        std::filesystem::path result = base ? std::filesystem::u8path(base) : std::filesystem::current_path();
 +        SDL_free(base);
 +        return result;
+ #endif

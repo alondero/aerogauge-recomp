@@ -39,6 +39,14 @@ void seed_graphics() {
     page.revert_temp_config();
 }
 
+void seed_enhancements() {
+    auto& page = recompui::config::get_config("enhancements");
+    sync(page, "full_track", aero::config::full_track());
+    sync(page, "easy_turbo", aero::config::easy_turbo_boost());
+    sync(page, "draw_distance", double(aero::config::draw_distance_scale()));
+    page.revert_temp_config();
+}
+
 void save_graphics() {
     auto& page = recompui::config::get_graphics_config();
     auto edited = seeded;
@@ -85,7 +93,9 @@ void boolean(Config& page, const char* id, const char* label, const char* descri
 
 void refresh_settings() {
     auto& graphics = recompui::config::get_graphics_config();
+    auto& enhancements = recompui::config::get_config("enhancements");
     if (!graphics.is_dirty()) seed_graphics();
+    if (!enhancements.is_dirty()) seed_enhancements();
 }
 
 void create_settings() {
@@ -112,6 +122,7 @@ void create_settings() {
 
     auto& enhancements = settings::create_config_tab("Enhancements", "enhancements", false);
     enhancements.external_storage = true;
+    enhancements.set_load_callback(seed_enhancements);
     boolean(enhancements, "full_track", "Full course geometry (experimental)",
         "Draw the whole course instead of the original visibility zones. AERO_FULL_TRACK overrides this setting.",
         port::full_track(), port::set_full_track, "AERO_FULL_TRACK");

@@ -147,10 +147,10 @@ for entry in "${PATCHES[@]}"; do
     #   (a) --check 0                                         -> not yet applied
     #   (b) --check !=0 && --reverse --check 0               -> already applied
     #   (c) --check !=0 && --reverse --check !=0             -> context drift
-    if git -C "$sub" apply --ignore-whitespace --unidiff-zero --check "$patch_abs" >/dev/null 2>&1; then
-        git -C "$sub" apply --ignore-whitespace --unidiff-zero "$patch_abs"
+    if git -C "$sub" apply --ignore-whitespace --check "$patch_abs" >/dev/null 2>&1; then
+        git -C "$sub" apply --ignore-whitespace "$patch_abs"
         echo "  applied  $sub <- $patch"
-    elif git -C "$sub" apply --ignore-whitespace --unidiff-zero --reverse --check "$patch_abs" >/dev/null 2>&1; then
+    elif git -C "$sub" apply --ignore-whitespace --reverse --check "$patch_abs" >/dev/null 2>&1; then
         echo "  skipped  $sub <- $patch (already applied)"
     else
         die "patch $patch does not apply cleanly to $sub and is not already applied — likely submodule drift (upstream context changed). Re-pull the submodule or refresh the patch."

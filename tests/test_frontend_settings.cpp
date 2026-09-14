@@ -164,6 +164,15 @@ int main(int argc, char** argv) {
         require(saved.at("ds_option") == 4 && saved.at("api_option") == "Vulkan", "graphics persistence");
         require(saved.at("texture_dump") == "new-dump", "texture dump persistence");
         require(read(path / "enhancements.json").at("easy_turbo_boost") == true, "enhancement persistence");
+        enhancements.revert_temp_config();
+        aero::config::set_full_track(true);
+        aero::config::set_draw_distance_scale(75.0f);
+        aero::config::set_easy_turbo_boost(false);
+        aero::menu::refresh_settings();
+        require(std::get<bool>(enhancements.get_option_value("full_track")), "full-track refresh");
+        require(!std::get<bool>(enhancements.get_option_value("easy_turbo")), "easy turbo refresh");
+        require(std::get<double>(enhancements.get_option_value("draw_distance")) == 75.0,
+                "draw distance refresh");
         std::cout << "Frontend settings integration passed\n";
         return 0;
     } catch (const std::exception& error) {
