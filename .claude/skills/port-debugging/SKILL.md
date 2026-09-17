@@ -54,7 +54,7 @@ and caused a 1Hz gameplay hitch; event-driven one-time logs only.
 
 PowerShell: get the process `MainWindowHandle` + `PrintWindow` flag 2 (grabs
 the D3D12 "AeroGauge" window; `FindWindow($null,...)` from PowerShell marshals
-$null as "" and fails). Capture recipe in docs/notes/hud-widescreen.md.
+$null as "" and fails). Capture recipe in `docs/debugging.md`.
 
 ## Log analysis — the 20-line rule
 
@@ -73,4 +73,5 @@ killer — always summarize regardless of size.
 Verify against ares (ares-debugger skill), not screenshots or vibes: same
 global, same event order, same value. When a diagnosis is "solved", name the
 one-line root cause and the probe that proves it, and check
-`docs/notes/rom-map.md` still agrees.
+`docs/reference/rom.md` still agrees. Record only confirmed, lasting ROM facts
+there; keep temporary probe output and chronology in the issue or pull request.

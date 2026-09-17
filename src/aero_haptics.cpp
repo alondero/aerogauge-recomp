@@ -1,5 +1,5 @@
 // Port enhancement: feedback observes the ROM's collision damage and turbo timer.
-// No guest state is changed. See docs/notes/controller-accessories.md for ROM evidence.
+// No guest state is changed. See docs/controllers.md for the device boundary.
 #include "aero_haptics.h"
 #include "recomp.h"
 

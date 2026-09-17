@@ -11,7 +11,7 @@
 // MEM helpers because the buffer has N64 byte order. Invalid ranges, raw
 // 3D commands, and unsafe branch shapes make the pass skip or preserve the
 // original stream. The coordinate thresholds are evidence for this ROM, not
-// a general RT64 rule. See docs/reference/renderer.md and docs/notes/.
+// a general RT64 rule. See docs/reference/renderer.md.
 
 #include "recomp.h"
 #include "rt64_extended_gbi.h"
@@ -356,7 +356,7 @@ void aero_ws_hud_scan_begin(uint8_t* rdram, recomp_context* ctx) {
 // Diagnostic probe (AERO_WS_TRACE=1, =2 adds per-rect dumps every 25th frame): per-frame
 // race-scene log of the scene phase, the fade/wipe channel bytes (0x8019DDF0 +0x244/+0x245),
 // the countdown step, the gate decision, and how the frame's rects classify. This is how
-// the phase-2 countdown timeline in docs/notes/hud-widescreen.md was measured.
+// the phase-2 countdown behavior was measured against the accepted ROM.
 static void aero_ws_trace(uint8_t* rdram, gpr start, gpr end) {
     static int s_on = -1;
     if (s_on < 0) {

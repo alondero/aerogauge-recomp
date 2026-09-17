@@ -106,8 +106,8 @@ The option variables that end in 1 use exactly 1 for true when they are set.
 
 ### Developer and test settings
 
-These options may change across investigations. They are documented so a
-future developer can identify them, not because they are a supported player
+These options are developer and test controls. They are documented so a
+developer can reproduce a run, not because they are a supported player
 interface.
 
 | Variable | Form | Effect |
@@ -135,7 +135,7 @@ interface.
 | LAMBO_THREAD_TRACE | present | Enables the legacy thread-message trace in local runtime patch 0001 |
 | RT64_MATCH_DEBUG | 1 or 2 | Enables local interpolation-match diagnostics; 2 is more verbose |
 
-### Renderer and display-list investigations
+### Renderer and display-list probes
 
 The following variables are for ROM and renderer investigations. They can
 write large dumps to the current directory, so set an explicit output name
@@ -177,8 +177,7 @@ patches. They are off by default and may produce timing-sensitive logs.
 
 The tables above are a quick effect index. This table records the contract for
 each variable named in this document. "Unset" means that the process does not
-have the variable. Read timing is from source inspection, not a fresh
-interactive run. Examples use POSIX shell syntax; in PowerShell set
+have the variable. Examples use POSIX shell syntax; in PowerShell set
 $env:NAME before running the executable.
 
 ### Launch and player overrides
@@ -267,7 +266,6 @@ players should put in JSON or expect to work after the program starts.
 
 | Name | Scope and accepted form | Default and precedence | Read timing | Effect and owner | Example |
 | --- | --- | --- | --- | --- | --- |
-| AERO_MINGW_BIN | Windows build script; directory path | Unset leaves MinGW lookup to PATH | Before compiler checks | Prepends the supplied directory to PATH; build.ps1 | $env:AERO_MINGW_BIN='path/to/mingw/bin'; .\build.ps1 |
 | AERO_PYTHON_SCRIPTS | Windows build script; directory path | Unset searches the local Python installation, then PATH | Before CMake checks | Prepends Python's Scripts directory; build.ps1 | $env:AERO_PYTHON_SCRIPTS='path/to/python/Scripts'; .\build.ps1 |
 | ROM_FILENAME | Build and CI; ROM file name | Defaults to AeroGauge (USA).z64; CI supplies the same name to both scripts | Before the ROM check | Selects the input file; build scripts and build-release.yml | ROM_FILENAME='AeroGauge (USA).z64' ./build.sh |
 | Python3_EXECUTABLE | CMake configure; interpreter path | Unset searches standard interpreter names | Configure time | Selects the Python used by ROM-backed helper generation; CMakeLists.txt | cmake -S . -B build -DPython3_EXECUTABLE=python3 |

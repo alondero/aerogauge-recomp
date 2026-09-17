@@ -112,4 +112,4 @@ echo "  Version:    ${VERSION}"
 echo "  Tag SHA:    ${HEAD_SHA}"
 echo "  Run ID:     ${RUN_ID}"
 echo
-echo "Next: ./scripts/wait-for-build.sh ${RUN_ID}"
+echo "Next: ./.claude/skills/release/scripts/wait-for-build.sh ${RUN_ID}"

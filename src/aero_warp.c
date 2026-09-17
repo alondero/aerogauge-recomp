@@ -142,14 +142,10 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
         env_parsed = 1;
         parse_env_request();
     }
-    // Temporary settle heuristic (empirical pacing, not a decoded mechanic): track how long the
-    // current scene has been current and idle (no transition in flight). The ROM's
-    // own launches fire from a quiescent scene behind a completed fade;
-    // acting on a 1-2 frame old scene (whose entry loading is still in flight)
-    // crashes the course loader (func_80007310 chain, guest NULL deref)
-    // nondeterministically. Thirty ticks is about one fade. A ROM-derived
-    // ready signal should replace this heuristic; record that change as an
-    // investigation before altering the gate.
+    // Require a conservative settled window before changing race parameters.
+    // Scene equality alone does not show that the previous loader has finished.
+    // A ROM-derived ready signal would be preferable; replacing this condition
+    // requires a regression check for transitions and course loading.
     uint32_t cur = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
     uint32_t tgt = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_REQ);
     static uint32_t stable_scene = ~0u;

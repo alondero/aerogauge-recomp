@@ -46,8 +46,7 @@ std::atomic_bool g_widescreen_sky_match{true};
 // universal far plane is 500 units -- the pop-in). 1.0 = original game.
 //   0.0 = infinite far plane (m22=-1, m32=-2*n -- no clip whatsoever)
 //   1.0 = the unmodified game's 500-unit far plane
-//   >1  = finite scaled far plane; default 100 -> 50,000 units (the user's
-//         "we should no longer need to compromise on this" with margin)
+//   >1  = finite scaled far plane; the default 100 is an enhancement.
 // Clamped to {0} U [1, 10000]: below 1 (non-zero) would SHRINK the frustum and
 // is almost certainly a typo, and beyond 10000 the s15.16 fixed-point matrix
 // loses precision faster than the geometry extends (the (n-f) divisor converges
@@ -531,9 +530,8 @@ extern "C" int aero_easy_turbo_enabled(void) {
     return easy_turbo_boost() ? 1 : 0;
 }
 
-// AERO_HARNESS_LOG=1 enables the periodic hot-thread diagnostics (see aero_config.h).
-// Env-only and cached: this is read once per frame on the gfx and VI threads, so it
-// must stay a single static-bool load when disabled.
+// AERO_HARNESS_LOG=1 enables the low-rate hot-thread diagnostics (see aero_config.h).
+// The value is cached because these queries run on the graphics and VI threads.
 bool harness_log() {
     static const bool enabled = []() {
         const char* v = std::getenv("AERO_HARNESS_LOG");

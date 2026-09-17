@@ -1,10 +1,9 @@
-// Platform settings menu.
+// RecompFrontend settings-overlay integration.
 //
-// Ownership: the SDL/main thread calls attach(), handle_event(), and
-// toggle_fullscreen(). On Windows this file owns the Win32 menu objects and
-// translates their choices into the port's configuration snapshot. The
-// configuration module owns JSON persistence and the renderer/runtime own
-// the live graphics state.
+// The SDL/main thread calls attach(), handle_event(), update(), and
+// toggle_fullscreen(). RecompFrontend owns the temporary page state; the
+// configuration module owns JSON persistence; the renderer and runtime own
+// live graphics state.
 //
 // This is intentionally a narrow integration layer. The shared settings
 // overlay is built on the Windows and Linux paths. Menu writes are

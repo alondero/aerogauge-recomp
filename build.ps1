@@ -79,9 +79,7 @@ try {
             if ($candidate) { $PythonScripts = $candidate }
         }
     }
-    # Leave MinGW discovery to PATH by default. Set AERO_MINGW_BIN when the
-    # compiler is installed outside PATH.
-    $MinGW         = $env:AERO_MINGW_BIN
+    $MinGW         = 'C:\ProgramData\mingw64\mingw64\bin'
     $NewPrefix     = @($PythonScripts, $MinGW) | Where-Object { $_ -and (Test-Path $_) }
     if ($NewPrefix.Count -gt 0) {
         $env:PATH = ($NewPrefix -join ';') + ';' + $env:PATH

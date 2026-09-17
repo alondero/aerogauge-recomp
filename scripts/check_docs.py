@@ -1,8 +1,4 @@
-"""Check repository Markdown without needing a ROM or build.
-
-Historical notes and the documentation audit are included, so a missing local
-script or broken link cannot hide in the research path.
-"""
+"""Check repository documentation and patch metadata without a ROM or build."""
 
 from __future__ import annotations
 
@@ -22,18 +18,19 @@ ROOT_MARKDOWN = [
     ROOT / ".github" / "pull_request_template.md",
 ]
 REQUIRED = ROOT_MARKDOWN + [
-    ROOT / "docs" / "index.md",
+    ROOT / "docs" / "README.md",
     ROOT / "docs" / "architecture.md",
     ROOT / "docs" / "testing.md",
     ROOT / "docs" / "debugging.md",
     ROOT / "docs" / "configuration.md",
     ROOT / "docs" / "glossary.md",
+    ROOT / "docs" / "controllers.md",
+    ROOT / "docs" / "peer-projects.md",
     ROOT / "docs" / "reference" / "rom.md",
     ROOT / "docs" / "reference" / "runtime.md",
     ROOT / "docs" / "reference" / "renderer.md",
     ROOT / "docs" / "reference" / "audio.md",
-    ROOT / "docs" / "investigations" / "index.md",
-    ROOT / "docs" / "decisions" / "index.md",
+    ROOT / "patches" / "README.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "reverse_engineering.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.md",
@@ -42,7 +39,7 @@ REQUIRED = ROOT_MARKDOWN + [
 LINK_RE = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
 SCRIPT_RE = re.compile(
     r"(?<![\w./-])"
-    r"((?:scripts|tests|tools)/[\w./-]+\.(?:py|ps1|sh|gdb|toml)"
+    r"((?:\.claude/skills/release/)?(?:scripts|tests|tools)/[\w./-]+\.(?:py|ps1|sh|gdb|toml)"
     r"|build\.(?:ps1|sh))"
 )
 DRIVE_PATH_RE = re.compile(r"(?<![\w])(?:[A-Za-z]:[\\/]|\\\\)")
@@ -52,7 +49,7 @@ PRIVATE_URL_RE = re.compile(
 )
 PLACEHOLDER_URL_RE = re.compile(
     r"(?i)https?://(?:example\.(?:com|org|net)|localhost(?:[:/)]|$)|"
-    r"github\.com/\.\.\.)"
+    r"github\.com/\.\.\.|[^\s)<>]*<[^>\n]+>)"
 )
 PATCH_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -78,6 +75,12 @@ def markdown_files() -> list[Path]:
         if path not in EXCLUDED:
             files.append(path)
     for path in (ROOT / "assets").rglob("*.md"):
+        if path not in EXCLUDED:
+            files.append(path)
+    for path in (ROOT / "patches").rglob("*.md"):
+        if path not in EXCLUDED:
+            files.append(path)
+    for path in (ROOT / ".claude").rglob("*.md"):
         if path not in EXCLUDED:
             files.append(path)
     return sorted(set(files))

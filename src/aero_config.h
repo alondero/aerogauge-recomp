@@ -108,12 +108,9 @@ int aero_easy_turbo_enabled(void);
 }
 #endif
 
-// Periodic harness diagnostics on hot threads (the 1 Hz [rt64] send_dl heartbeat on
-// the gfx thread, the ~8.5 s [probe] fb-swap line on the VI thread): AERO_HARNESS_LOG=1
-// enables. Env-only, DEFAULT OFF: a Windows console write is a synchronous cross-process
-// call, and the 1 Hz heartbeat measured 10-77 ms per write on the gfx thread when stderr
-// was a live console -- a user-visible hitch every second of play. Event-driven logs
-// (scene transitions, warp, init) are not gated; they are silent during steady play.
+// Low-rate harness diagnostics on the graphics and VI threads. They are off by
+// default because synchronous logging on these hot paths can change timing.
+// Event-driven logs are not gated.
 bool harness_log();
 
 // Open the frame-pacing probe log (AERO_FRAME_LOG=<path>) with an optional suffix on the

@@ -2,7 +2,7 @@
 """Attribute a display-list address to its course row + zone + section entry.
 
 AeroGauge's course table (see src/aero_full_track.cpp header comment and
-docs/notes/rom-map.md "Course zone/visibility model"):
+docs/reference/rom.md):
     row = 0x8008B290 + 0x14 * track
     row[0]    section -> zone byte map
     row[1]    zone visibility rows (3 bytes per zone, hand-authored PVS)
@@ -20,9 +20,8 @@ operates on the live RDRAM dump produced by AERO_RACE_DL_DUMP, not on the
 ROM file directly. The course row table itself IS in ROM and is used to
 walk every track; the section tables themselves come from RDRAM.
 
-Why a tool: a track-artefact investigation (see the
-track-artefact-diagnosis skill) attributes a stale-bank or skipped DL to
-its zone and section in seconds instead of minutes. The display-list
+Why a tool: this reports the course row, zone, and section for a display-list
+address in seconds instead of minutes. The display-list
 address is the stable ROM fact -- section index is corroboration only,
 because a table reorder cannot retarget an address-based policy rule.
 

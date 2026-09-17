@@ -58,29 +58,17 @@ thread unless the runtime explicitly documents otherwise.
 The current save-state hook runs on the game thread at a frame boundary. It
 copies guest RDRAM but cannot copy native register files, C stacks, or work
 already in progress on another thread. This is why the feature is a
-debugging aid rather than a general save system. The evidence behind the
-clock rebasing and settle gate is in the
-[save-state investigation](../investigations/2026-09-14-savestate.md).
+debugging aid rather than a general save system. A live renderer can still
+read guest memory while a load replaces it, so the windowed load path remains
+unsafe.
 
-## Current local runtime patches
+## Local runtime patch boundary
 
-The build applies these parent-repository patches to the pinned runtime:
-
-| Patch | Purpose | Boundary |
-| --- | --- | --- |
-| 0001 | Scheduler, video timing, and audio path changes needed by the port | Local runtime integration; recheck against upstream before refresh |
-| 0007 | Thread-context registry and relink support for the RDRAM save-state experiment | Transitional save-state support |
-| 0012 | Correct PI DMA completion message behavior | Candidate for an upstream fix if the behavior is general |
-| 0013 | Synchronous non-graphics RSP task handling with fail-soft behavior | Applied by Windows build path; Linux parity is unresolved |
-| 0014 | EEPROM flush barrier before process exit | Candidate for upstream if the shutdown contract is general |
-
-Patch 0001 also exposes a legacy thread-trace hook used by the diagnostic
-path. Its symbol and environment-variable names are compatibility details of
-the local patch, not a model for a new runtime API.
-
-Patch numbers are local file names, not issue identifiers. The exact order is
-in [BUILDING](../../BUILDING.md). The platform-parity question is recorded in
-the [patch investigation](../investigations/2026-09-14-build-patch-parity.md).
+The [patch inventory](../../patches/README.md) lists every runtime patch, its
+host coverage, and its purpose. Patch 0001 also exposes a diagnostic
+thread-trace hook; its names are compatibility details of the local patch, not
+a model for a new runtime API. The exact application order is part of
+[BUILDING](../../BUILDING.md).
 
 ## Failure and shutdown
 

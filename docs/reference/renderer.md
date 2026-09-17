@@ -3,9 +3,8 @@
 The normal player renderer is
 [RT64](https://github.com/rt64/rt64), pinned by this repository at
 [f0728a2](https://github.com/rt64/rt64/tree/f0728a2520d5aa735886240de3fee75cc805f6d6).
-The current worktree does not have the submodule contents initialized, so
-the audit below uses the public RT64 documentation and the port's checked-in
-patches. Before removing a patch, compare it with the exact pinned source.
+The parent gitlink is the version used by the build. Before removing or
+refreshing a local patch, compare it with that exact source.
 
 ## What RT64 already owns
 
@@ -28,6 +27,18 @@ The port should not reimplement those services in a game hook. Its renderer
 responsibility is to pass the correct window, task, ROM, settings, and
 game-specific evidence to RT64.
 
+## Headless renderer
+
+stub_renderer.cpp is a software renderer used for bounded tests and captures.
+It reads guest RDRAM and writes a private host framebuffer. It does not write
+guest state and it is not the normal player renderer.
+
+It covers the display-list, matrix, texture, lighting, fog, and combiner
+subset needed by the port's current boot and capture tests. Unsupported
+formats and some texture level-of-detail behavior use a limited fallback.
+Passing a headless test does not prove that RT64 or a physical graphics device
+will produce the same image.
+
 ## Local and upstream responsibilities
 
 | Behavior | Current owner | Status |
@@ -46,25 +57,62 @@ The distinction matters. A local rule about AeroGauge's HUD coordinates does
 not belong in RT64. A general interpolation or viewport defect should be
 reduced to a small renderer test and proposed upstream.
 
-## Local RT64 and Plume patches
+## AeroGauge display-list behavior
 
-The current source tree carries five behavioral RT64 patches, one
-MinGW/Windows RT64 compatibility patch, and one Plume compatibility patch:
+The race HUD is emitted by a shared 2D dispatcher, not by one static draw call
+per element. The dispatcher walks object lists and calls handlers indirectly.
+The display-list cursor is passed through a guest-memory holder, and the
+display list alternates between two buffers. Port code must use the holder and
+must not assume that an absolute display-list address stays stable.
 
-| Patch | Current purpose | First question before keeping it local |
-| --- | --- | --- |
-| 0005 | GCC/MinGW compatibility in RT64 | Does current upstream build cleanly with the supported MinGW toolchain? |
-| 0006 | Angular-velocity-aware interpolation matching | Is the matching rule useful to other games, and can a small upstream test show it? |
-| 0008 | Stretching a sky backdrop without translating it | Is this an AeroGauge camera policy or a general backdrop feature? |
-| 0009 | Split-screen wide-subviewport handling | Can RT64 expose the behavior as a general viewport option? |
-| 0010 | View/projection decomposition with an axis-aligned pivot choice | Is the NaN avoidance a general numerical fix with a reproducible matrix case? |
-| 0011 | Aspect adjustment that tolerates symmetric overscan | Is the overscan detection valid for other games and window systems? |
-| 0004 | Plume D3D12 COM ABI compatibility for MinGW | Can the toolchain fix be accepted upstream without a game-specific assumption? |
+The widescreen HUD hook scans the emitted commands. It classifies rectangle
+coordinates in the original 320-pixel space, then adds RT64 rectangle-alignment
+and scissor commands around left- and right-anchored groups. It also identifies
+the speedometer needle by its display-list marker and shifts the related
+matrix. At 4:3 output, the adjustment is a no-op.
 
-This table describes intent from the local patch names and comments. It is
-not a claim that any patch is ready to upstream. A developer must compare the
-patch with current upstream source, create a minimal reproduction, and obtain
-maintainer approval before changing the dependency boundary.
+These rules are specific to this ROM and its current display-list layout. The
+classification and matrix math have host tests. A change to the HUD hook must
+keep the ROM evidence, the guest-memory cursor rules, and the test together.
+
+### HUD hook contract
+
+The current HUD pass uses the original 320-pixel coordinate space. A rectangle
+with a right edge at or below 100 pixels pins left. A rectangle with a left
+edge at or above 168 pixels pins right. The centre band stays in its original
+position. The minimap has a separate 16-to-108 pixel box because its moving
+craft marker can cross the normal left threshold.
+
+The pass runs only for the race scene once the HUD has reached its stable
+layout: race phase 3 or 7, or countdown phase 2 after countdown step 2. This
+avoids moving the fade, ticker, READY banner, or other transitional rectangles.
+The speedometer needle is not a rectangle. The pass identifies its static
+display-list target at 0x800995C0 and shifts its model-view matrix instead.
+
+The main 2D dispatcher is function 0x80022408. It calls handlers indirectly
+and some handlers mix left and right elements, so the port brackets the whole
+dispatcher rather than guessing an element-specific call boundary. The cursor
+holder is guest address 0x8016C508; its pointed-to display-list buffer changes
+between frames. Port code must read and update the holder with N64Recomp
+memory helpers.
+
+Race announcements, intro banners, and championship result pages use separate
+ROM-disassembled ranges. Their hooks preserve the game's stack-local cursor
+and keep each centred message together. The exact ranges and generated hook
+text are maintained in [the symbol generator](../../scripts/gen_syms_toml.py).
+Do not move a range or add a new renderer command without a matching
+display-list test or capture.
+
+## Local patch boundary
+
+The [patch inventory](../../patches/README.md) lists each local RT64 and Plume
+patch, its platform, and its purpose. It is the build inventory, not a list of
+upstream proposals.
+
+A game-specific display-list rule belongs in the port. A general interpolation
+or viewport behavior needs a small renderer test and a proposal to RT64. A
+toolchain compatibility patch should be removed when the pinned upstream
+supports the same toolchain.
 
 ## Renderer-specific failure modes
 
@@ -85,23 +133,7 @@ Their current switches are listed in [configuration](../configuration.md).
 The local interpolation patch also accepts RT64_MATCH_DEBUG for diagnostic
 logging; it is not an RT64 player setting.
 
-## Upstream path
-
-For each local renderer patch:
-
-1. record the exact pinned base and the patch's smallest failing example;
-2. decide whether the behavior is game-specific, host-toolchain-specific, or
-   a general renderer rule;
-3. add or update a test that fails without the change;
-4. propose a general fix upstream when the evidence supports one; and
-5. remove the local patch only after the pinned upstream version contains the
-   equivalent behavior and the AeroGauge tests pass.
-
 The long-term architecture keeps ROM-specific behavior in named source
 patches or code mods and keeps general renderer behavior in RT64. The current
 custom patch stack is a transition point, not proof that every local change
 belongs in the port.
-
-One historical note in the original ROM research says that G_CULLDL was made
-a no-op in a renderer path. Treat that as an experiment to reverify against
-the pinned RT64 source, not as a permanent renderer contract.

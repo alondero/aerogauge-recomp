@@ -3,11 +3,10 @@
 AeroGauge: Recompiled is a PC version of the Nintendo 64 racing game AeroGauge.
 It runs your own copy of the game in a native window.
 
-This branch includes an in-game settings screen. It is still being checked.
-The whole game, audio, and visual enhancements need more testing.
-The details below describe the current main branch. A release archive can
-predate this branch, so check its release notes before expecting the settings
-screen or other newly merged features.
+This version includes an in-game settings screen. Some visual enhancements and
+less common hardware paths still need more testing; see Known limitations.
+The details below describe this checkout. A release archive can predate it, so
+check the release notes before expecting newly merged features.
 
 ## Supported computers
 
@@ -24,7 +23,7 @@ another system is not proof that the game runs there.
 1. Download the archive for your system from
    [GitHub Releases](https://github.com/alondero/aerogauge-recomp/releases).
 2. Extract it to a folder.
-3. Put your legally dumped USA ROM in that folder. Name it
+3. Put your legally dumped copy of the USA game in that folder. Name it
    `AeroGauge (USA).z64`.
 4. Start `aerogauge_modern.exe` on Windows or `aerogauge_modern` on Linux.
 
@@ -51,8 +50,7 @@ These are the default port bindings:
 | R button | E or R | Right shoulder or right trigger |
 | C buttons | I/J/K/L | X/Y/right stick |
 
-The port exposes one physical controller as Controller 1. The gamepad uses the
-standard SDL game-controller mapping.
+The port exposes one physical controller as Controller 1.
 
 ## Settings
 
@@ -68,6 +66,8 @@ The **Enhancements** page controls draw distance, full-course geometry, and
 Easy Turbo + Boost Start. These changes are saved as soon as they are made.
 Full-course geometry is experimental and can cost performance or show visual
 errors. Easy Turbo changes the driving controls; it is off by default.
+With Easy Turbo on, press the R button during a race to start Turbo and use the
+assisted Boost Start.
 
 The settings screen does not change the game's normal control bindings. F11 and
 Alt+Enter switch fullscreen. Graphics API and texture-path changes take effect
@@ -102,8 +102,8 @@ that folder before testing a new build.
 - Platform, graphics-driver, and physical-controller coverage is incomplete.
 - The settings screen is not shown by headless test runs.
 
-See [docs/index.md](docs/index.md) for developer documentation, test commands,
-configuration details, and the current evidence record.
+See the [documentation map](docs/README.md) for developer documentation, test
+commands, and configuration details.
 
 ## License
 

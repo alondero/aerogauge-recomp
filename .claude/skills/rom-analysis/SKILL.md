@@ -9,9 +9,10 @@ Ground rule (CLAUDE.md): **read the actual ROM bytes before reasoning about a
 function.** These tools make that cheap — never hand-roll capstone or hexdump
 the ROM into context.
 
-Check `docs/notes/rom-map.md` FIRST — the address you're hunting is likely
+Check `docs/reference/rom.md` FIRST — the address you're hunting is likely
 already derived (scene manager, race params, music, HUD dispatch, zones,
-libultra globals). Only derive what the map doesn't have, then add it there.
+libultra globals). Only derive what the reference doesn't have, then add a
+confirmed lasting fact there.
 
 ## The three tools (`tools/rom/`, need the ROM at the repo root)
 
@@ -37,7 +38,7 @@ find the pointer table or the `lui/addiu` constructor site.
 ## Typical hunts
 
 - **"What does the game do at event X?"** — find a global that changes at X
-  (rom-map, or ares watchpoint via the `ares-debugger` skill), then
+  (the ROM reference, or an ares watchpoint via the `ares-debugger` skill), then
   `find_refs.py --stores` → disassemble each writer.
 - **Decode a table**: get the base from a `; = 0x...` annotation, then read raw
   bytes with a 5-line Python snippet using `tools/rom/romlib.py`
@@ -50,8 +51,8 @@ find the pointer table or the `lui/addiu` constructor site.
 - **Classify a ucode/blob over its WHOLE length, never the first words.** The
   aspMain mixer's scalar DMA prologue was mistaken for CPU code once; the
   proof was 42% COP2/LWC2/SWC2 density across all 0xE1C bytes. Cross-ROM byte
-  match against the Lamborghini port's known blobs is a legit derivation —
-  SDK blobs are shared across same-era titles.
+  match against an independently identified shared SDK blob is a valid
+  supporting observation, not proof by itself.
 - **Jump-table case labels are not functions.** Reject an INDIRECT_STARTS
   candidate if it is branch-reachable from earlier inside its containing span.
 - **Boundary errors decode as:** `Failed to find function at 0x...` = a
@@ -65,6 +66,7 @@ find the pointer table or the `lui/addiu` constructor site.
 
 ## After deriving something new
 
-Add it to `docs/notes/rom-map.md` with a one-line method note. An address
-without recorded derivation method will (correctly) be re-derived by the next
-session — wasted work.
+If it is a stable fact, add it to `docs/reference/rom.md` with the evidence
+needed to re-check it. Keep unresolved findings and temporary derivation
+chronology in the issue or pull request; do not create a permanent note for
+an unconfirmed address.

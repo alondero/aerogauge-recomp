@@ -1,4 +1,4 @@
-// Developer save-state experiment.
+// Developer save-state support.
 //
 // Ownership: the SDL/main thread publishes an atomic F7/F8 request. The game
 // thread consumes it at the per-frame scene-driver hook and copies the low
@@ -34,8 +34,7 @@ extern void ultramodern_relink_thread_contexts(uint8_t* rdram);
 
 // The runtime's native osGetTime is a 64-bit monotonic clock with a
 // process-local epoch. RAM-resident samples therefore need rebasing on load;
-// the current anchor and its evidence are recorded in
-// docs/investigations/2026-09-14-savestate.md.
+// the current anchor is listed in docs/reference/rom.md.
 extern uint64_t osGetTime(void);
 
 #define SCENE_CUR   0x8013FF80u       // u32 current scene (see src/aero_warp.c; race = 5)
@@ -46,8 +45,8 @@ extern uint64_t osGetTime(void);
 // osGetTime anchors stored in guest RAM (64-bit, high word first). The race
 // timekeeper uses the per-frame delta to advance the race clock, so do_load
 // rebases each known anchor by the save/load process-epoch difference. Add any
-// newly discovered RAM-resident anchor to this list; see the dated investigation
-// for the original failure evidence.
+// newly discovered RAM-resident anchor to this list and update the ROM
+// reference and its test evidence.
 static const uint32_t k_ostime_anchors[] = {
     0x8016C4F0u,                      // race timekeeper's last-frame sample (func_8001D7F0, pair 0x8016C4F0/F4)
 };
@@ -223,11 +222,9 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
         env_checked = 1;
         const char* l = getenv("AERO_STATE_LOAD");
         env_load = (l != NULL && l[0] != '\0') ? l : NULL;
-        // Exact match, NOT a ">= floor": boot-cascade scene ids are not ordered by
-        // progress (0 -> 9 -> 0 -> 2 attract -> 5 DEMO RACE -> 2 -> 3 title), so a floor
-        // fires at the attract demo race -- and a snapshot restored over the demo self-
-        // exits within 2 frames (measured: the pause/quit status 0x801402B4 path requests
-        // phase 6 -> scene 6). Default 3 = the title screen, the first calm settled scene.
+        // Match one scene exactly. Scene ids are not ordered by progress, so a
+        // floor could fire in the attract demo. Default 3 is the title screen,
+        // the first calm settled scene.
         const char* lm = getenv("AERO_STATE_LOAD_SCENE");
         load_at_scene = (lm != NULL) ? atoi(lm) : 3;
         const char* ld = getenv("AERO_STATE_LOAD_DELAY");
@@ -242,13 +239,11 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
 
     int scene = (int32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
 
-    // Settled = the scene manager is quiescent: no transition in flight, the same scene for
-    // 30+ ticks (the warp's empirical fade-length SCAFFOLD, same rationale), and -- for the
-    // race scene -- the phase walk 1->2 (loading) has reached 3 (running; dispatch at
-    // 0x800161C4, see aero_warp.c). Measured consequence of skipping this: a load fired at
-    // the 2-VI transient boot scene 9, or a save taken at race phase 2, crashes the restore
-    // (aspMain DMEM wrap / native fault) because the loader threads' native state does not
-    // match the restored RAM. Every trigger below fires only from a settled frame.
+    // Settled = no scene transition, the same scene for at least 30 ticks, and
+    // race phase 3 when the scene is a race. This conservative port condition
+    // avoids copying guest memory while the loader or race setup is active.
+    // It is not a decoded ROM ready signal; replacing it requires a focused
+    // regression check for transitions and native readers.
     uint32_t req_scene = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_REQ);
     uint32_t phase     = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_PHASE);
     static uint32_t stable_scene = ~0u;

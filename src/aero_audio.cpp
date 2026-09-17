@@ -20,10 +20,9 @@
 //  * Thread model: the game's audio thread calls queue_samples (via the
 //    ultramodern shim). SDL_QueueAudio and SDL_GetQueuedAudioSize are
 //    thread-safe (per SDL2 docs) -- no extra lock needed.
-//  * First-AICall tripwire: submit() logs once the first time it sees a NON-SILENT
-//    buffer. With aspMain synthesis wired it fires once the game starts
-//    mixing -- the headless boot-smoke's "first NON-SILENT buffer" line is the
-//    end-to-end proof that PCM is reaching the sink.
+//  * submit() logs the first non-silent buffer before checking for a host device.
+//    This distinguishes generated PCM from audible host playback in headless
+//    and windowed runs.
 
 #include "aero_audio.h"
 
@@ -53,8 +52,7 @@ uint32_t         g_desired_rate = 0;
 // Persistent stream converter: resampling needs filter state carried across
 // submits. Recreating a one-shot converter for every small buffer resets that
 // state at each boundary and can corrupt the mix. Guarded by g_state_mtx;
-// recreated when the game changes the AI frequency. Historical evidence is in
-// docs/investigations/2026-09-14-audio.md.
+// recreated when the game changes the AI frequency. See docs/reference/audio.md.
 SDL_AudioStream*  g_stream = nullptr;
 uint32_t          g_stream_src_rate = 0;
 bool              g_playback_started = false; // guarded by g_state_mtx
@@ -276,9 +274,8 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
 // Headless virtual AI FIFO for the generated audio path. It models queued
 // guest-side drain at the requested AI rate so osAiGetLength declines smoothly
 // when no host device exists. Windowed playback uses actual device feedback;
-// the virtual FIFO is only the no-device fallback. Historical failure-chain
-// evidence is in docs/investigations/2026-09-14-audio.md. Guarded by
-// g_state_mtx.
+// the virtual FIFO is only the no-device fallback. See docs/reference/audio.md.
+// Guarded by g_state_mtx.
 std::chrono::steady_clock::time_point g_ai_fifo_end{};
 
 void ai_fifo_queue_locked(size_t stereo_frames) {

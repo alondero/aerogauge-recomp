@@ -8,8 +8,8 @@ The test suite has three levels:
    device, graphics device, or debugger.
 
 A test that is skipped because its prerequisite is missing does not prove that
-the missing behavior works. Record the skip reason in a development report or
-pull request.
+the missing behavior works. Record the skip reason in the issue or pull
+request that owns the change.
 
 ## CTest
 

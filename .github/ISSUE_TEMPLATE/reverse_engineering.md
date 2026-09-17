@@ -1,10 +1,20 @@
 ---
 name: Reverse-engineering finding
-about: Record ROM evidence, a hypothesis, or a falsification
-title: ""
+about: Record a measured ROM, runtime, or renderer finding
+title: "[RE] "
 labels: ""
 assignees: ""
 ---
+
+Use this issue when you are trying to answer a question about the original
+game, the port, guest memory, or the renderer before making a code change.
+Examples include an input layout, a display-list boundary, a ROM data format,
+or ownership of a guest-memory field.
+
+This is a work record, not permanent documentation. Once the finding is
+confirmed, move the lasting rule into the owning source comment, focused test,
+or stable subsystem page, and link this issue or its pull request. Keep the
+issue open only while the measurement or follow-up is still needed.
 
 ## Question
 
@@ -14,7 +24,7 @@ What are you trying to establish?
 
 - Port commit:
 - ROM name, region, size, and hash:
-- Host OS and architecture:
+- Host operating system and architecture:
 - Renderer/backend, if relevant:
 - Tool or capture method:
 
@@ -35,14 +45,14 @@ What would disprove it?
 
 ## Proposed repository change
 
-- [ ] investigation only
-- [ ] symbol or named table
+- [ ] Issue record only
+- [ ] Stable symbol or named table
 - [ ] TOML hook or stub
-- [ ] generated output after regeneration
-- [ ] hand-written port code
-- [ ] dependency patch
-- [ ] regression test
-- [ ] reference or decision document
+- [ ] Generated output after regeneration
+- [ ] Hand-written port code
+- [ ] Dependency patch
+- [ ] Regression test
+- [ ] Stable reference or subsystem page
 
 List the files you expect to change. Generated files must be identified as
 generated and must not be edited by hand.
@@ -54,4 +64,4 @@ generated and must not be edited by hand.
 - Expected result:
 - Actual result:
 - Remaining uncertainty:
-- Human decision needed:
+- Question for pull-request review:

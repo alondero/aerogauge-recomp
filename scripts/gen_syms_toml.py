@@ -9,7 +9,7 @@ There is no checked-in disassembly for this ROM, so this script derives function
 boundaries from the ROM itself:
 
   * Measured code extent during ROM analysis; see
-    docs/investigations/2026-09-17-generated-symbols.md: CPU text is
+    docs/reference/rom.md: CPU text is
     contiguous at ROM 0x1000..~0x7F4C0. Every jal located inside that window targets
     inside it (zero out-of-window targets), after which instruction decoding turns to
     data/RSP-ucode noise. The tail (last ~0x100) is the CP0 exception handler.
@@ -39,7 +39,7 @@ FORCE_STUB = REPO / "force_stub.txt"
 
 ENTRY = 0x80000400           # ROM header bytes 0x08-0x0B
 SECTION_ROM = 0x1000
-CODE_ROM_END = 0x7F4C0       # end of contiguous CPU text (see investigation document)
+CODE_ROM_END = 0x7F4C0       # end of contiguous CPU text (see ROM reference)
 
 
 def rom_to_vram(off):
@@ -57,9 +57,8 @@ def vram_to_rom(v):
 #   * reimplemented_funcs -> call sites renamed `<name>_recomp`, librecomp provides the native.
 #   * ignored_funcs       -> body skipped, call sites renamed `<name>_recomp`, WE must provide
 #                            the symbol in src/libultra_stubs.c.
-# Every entry must be verified from the ROM bytes before it lands here (CLAUDE.md: source is
-# ground truth). The dated evidence summary is in
-# docs/investigations/2026-09-17-generated-symbols.md.
+# Every entry must be verified from the ROM bytes before it lands here. Review
+# the generated diff and keep the supporting test or ROM reference current.
 LIBULTRA_NAMES = {
     # __osInitialize_common (size 0x290, byte-verified during ROM analysis): stores __osFinalrom=1 to
     # 0x801AC110, then jal 0x80078840 (__osGetSR) -> __osSetSR(sr|CU1 0x20000000) ->
@@ -215,7 +214,7 @@ LIBULTRA_NAMES = {
     0x8006C800: "osGetTime",
     # osPfsInitPak (0x8006B440) deliberately stays recompiled: its SDK
     # filesystem operates on the native block device below, not librecomp's
-    # PFS_ERR_NOPACK stub. See docs/notes/controller-accessories.md.
+    # PFS_ERR_NOPACK stub. See docs/controllers.md.
     # osContStartReadData (byte-verified during ROM analysis; eighth boot first-fault — the main game
     # loop 0x800658FC polls pads each frame): __osSiGetAccess(0x800740F0); if
     # __osContLastCmd(0x801BABD0)!=1 stage read frames via __osPackReadData(0x8006B354) + SI

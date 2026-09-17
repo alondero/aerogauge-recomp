@@ -2,13 +2,10 @@
 
 ## Status
 
-The shared RecompFrontend settings screen is built on the Windows and Linux
-paths in this branch. This review checked the Windows build and host tests.
-It did not run a Linux executable, open the menu manually, or test a physical
-controller.
+The shared RecompFrontend settings screen is part of the Windows and Linux
+build paths. It needs a normal window and graphics device.
 
-The menu needs a normal window and graphics device. Headless test runs do not
-show it.
+Headless test runs do not show the menu.
 
 ## Player behavior
 
@@ -57,11 +54,14 @@ actions on the SDL main thread.
 The frontend callbacks must not write JSON, change the SDL window, or call game
 code directly. They capture values and queue a main-thread action. The render
 callback and the menu share a lock in the current integration. Running a
-blocking action while that lock is held can block rendering or deadlock. This
-is an open design decision, not a solved property.
+blocking action while that lock is held can block rendering or deadlock.
 
-See [Architecture](architecture.md), [Configuration](configuration.md), and
-[decision 0003](decisions/0003-settings-frontend-boundary.md).
+See [Architecture](architecture.md) and [Configuration](configuration.md).
+The known departures from the intended boundary are tracked in
+the [synchronous graphics-write issue](https://github.com/alondero/aerogauge-recomp/issues/26)
+and the [live-configuration thread-safety issue](https://github.com/alondero/aerogauge-recomp/issues/25).
+No current issue changes the ownership rule: JSON and SDL actions still belong
+on the SDL main thread.
 
 ## Dependency boundary
 

@@ -1,6 +1,6 @@
 ---
 name: release
-description: User-invoked skill for cutting a new release of this project. Walks through tagging the merge commit, dispatching the Build & Release workflow, waiting for the binaries, and replacing the workflow's placeholder notes with the rich release-notes body. Deterministic steps live in scripts/ — Claude fills in the variable parts (the notes body, the headline).
+description: User-invoked skill for cutting a new release of this project. Walks through tagging the merge commit, dispatching the Build & Release workflow, waiting for the binaries, and replacing the workflow's placeholder notes with the rich release-notes body. Deterministic steps live in .claude/skills/release/scripts/ — Claude fills in the variable parts (the notes body, the headline).
 disable-model-invocation: true
 ---
 
@@ -8,11 +8,11 @@ disable-model-invocation: true
 
 Cut a new release of **AeroGauge: Recompiled**. The pattern is intentionally
 narrow: this project's releases follow a fixed tag-and-build sequence, and
-the only variable part is the release-notes body. Scripts in `scripts/` do
-everything that's deterministic; Claude fills in the prose.
+the only variable part is the release-notes body. The release scripts in
+.claude/skills/release/scripts/ do everything that is deterministic; Claude
+fills in the prose.
 
-The expected output is a published GitHub release at
-`https://github.com/alondero/aerogauge-recomp/releases/tag/<tag>` with
+The expected output is a published GitHub release for the requested tag with
 `draft: false, prerelease: false`, the workflow's two build artifacts attached,
 and a rich release-notes body replacing the `Automated build from commit ...`
 placeholder.
@@ -26,10 +26,10 @@ repository. Verify with:
 gh workflow list --repo alondero/aerogauge-recomp
 ```
 
-If the output is empty, the workflow needs to be ported first (see the
-canonical version at `alondero/automobililamborghini-recomp/.github/workflows/build-release.yml`,
-with the AeroGauge substitutions documented in `references/release-notes-template.md`).
-The skill's `tag-and-dispatch.sh` will fail if the workflow is missing.
+If the output is empty, this repository does not have the workflow needed for
+this release. Stop and record that gap in the release issue or pull request;
+do not copy another project's workflow without a project-specific review.
+The release scripts cannot run if the workflow is missing.
 
 ## When to invoke
 
@@ -53,7 +53,7 @@ re-runnable; if one fails partway, fix the upstream issue and re-run.
 ### 1. List changes since the base tag
 
 ```
-./scripts/list-changes.sh <base-tag>
+./.claude/skills/release/scripts/list-changes.sh <base-tag>
 ```
 
 Prints a structured summary of:
@@ -65,13 +65,13 @@ Prints a structured summary of:
 Use this to draft the "Closed since <prev-version>" section of the notes.
 Read each PR's body via `gh pr view <N>` for the prose context.
 
-For the inaugural release (`v0.1.0`), pass the SHA of the first commit on
+For a first release with no previous tag, pass the SHA of the first commit on
 `main` instead of a tag — the script accepts any `git rev-parse`-able ref.
 
 ### 2. Tag the merge commit and dispatch the workflow
 
 ```
-./scripts/tag-and-dispatch.sh <version>
+./.claude/skills/release/scripts/tag-and-dispatch.sh <version>
 ```
 
 Does, in order:
@@ -82,18 +82,16 @@ Does, in order:
 4. `gh workflow run "Build & Release" --ref main \
         -f tag=<version> -f prerelease=false -f draft=false`
 
-The script does NOT take `--prerelease=true --draft=true`. Those flags trigger
-the `untagged-<id>` URL trap documented in `references/gotchas.md` — every
-prior Lambo release (v0.1.0 / v0.3.0 / v0.4.0 / v0.4.1 / v0.4.2 / …) was
-dispatched with `--prerelease=false --draft=false`, and AeroGauge should
-follow that convention from release #1.
+The script passes `--prerelease=false --draft=false` for a published release.
+Those values avoid the `untagged-<id>` URL trap documented in
+`references/gotchas.md`.
 
 Prints the workflow run ID — needed by step 3.
 
 ### 3. Wait for the build
 
 ```
-./scripts/wait-for-build.sh <run-id>
+./.claude/skills/release/scripts/wait-for-build.sh <run-id>
 ```
 
 `gh run watch <run-id> --exit-status --interval 30` — blocks until the run
@@ -103,7 +101,7 @@ for the `release` job. Exits non-zero on build failure.
 ### 4. Verify the release is properly bound
 
 ```
-./scripts/verify-release.sh <version>
+./.claude/skills/release/scripts/verify-release.sh <version>
 ```
 
 Checks, in order:
@@ -122,7 +120,7 @@ If any check fails, prints a diagnostic and exits non-zero. Common failures:
 ### 5. Update the notes
 
 ```
-./scripts/update-notes.sh <version> <path-to-notes.md>
+./.claude/skills/release/scripts/update-notes.sh <version> <path-to-notes.md>
 ```
 
 `gh release edit <version> --notes-file <path>` — replaces the workflow's
@@ -137,14 +135,12 @@ template in `references/release-notes-template.md`.
   for the user to review, then handed to step 5. The `drafts/` directory has
   a self-cleaning `.gitignore` so drafts never accidentally get committed.
 - **Headline of the "What's working" section** — pick the single most
-  user-visible change since the base tag. For v0.1.0 (the inaugural release)
-  this is the headline capability ("the whole-ROM recompile runs races at
-  native resolution"). For follow-up releases it follows the Lambo pattern
-  (see `references/prior-release-format.md`).
+  user-visible change since the base tag. For a first release, describe the
+  initial player path. Follow-up releases use the section structure in
+  `references/prior-release-format.md`.
 - **"What's not done yet" follow-ups** — any open issues referenced in the
-  PRs that ship as known gaps. AeroGauge still has `force_stub.txt` entries
-  for some game primitives; name them in the inaugural release and shrink
-  the list each cycle.
+  PRs that ship as known gaps. Name only limitations that still exist in the
+  target release.
 
 ## Reference files
 
@@ -152,10 +148,8 @@ Read these when you need them — don't load them all upfront.
 
 - `references/release-notes-template.md` — the skeleton with all required
   sections and placeholder text.
-- `references/gotchas.md` — the four lessons from the Lambo v0.4.1 → v0.4.2
-  release cycle (the `--draft` URL trap, the merge-commit tagging pattern,
-  the actual GitHub flag values vs body copy, the workflow's placeholder
-  notes). Read this before doing anything.
-- `references/prior-release-format.md` — the inaugural-release caveat plus
-  the Lambo v0.1.0 / v0.3.0 / v0.4.0 / v0.4.1 / v0.4.2 release bodies
-  side-by-side, so you can match the voice and structure for the new notes.
+- `references/gotchas.md` — four release-flow failure modes: the `--draft`
+  URL trap, merge-commit tagging, GitHub flag values versus body copy, and
+  workflow placeholder notes. Read this before doing anything.
+- `references/prior-release-format.md` — the inaugural-release caveat and
+  the section structure for future notes.

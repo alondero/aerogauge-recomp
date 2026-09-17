@@ -44,8 +44,8 @@ namespace headless {
 //
 // The headless context receives the real command stream the game built in
 // RDRAM. It is useful for checking whether game logic produced a display list
-// before involving RT64. Historical captures recorded a F3DEX v1 stream with
-// textured 3D geometry; recheck that observation when the ROM or hook set changes.
+// before involving RT64. The current capture path expects F3DEX v1 commands
+// with textured 3D geometry; confirm that assumption when the ROM or hook set changes.
 // F3DEX (Fast3DEX v1), NOT F3DEX2 -- 0xB1=G_TRI2 present, 0x01=G_MTX/0x04=G_VTX low
 // opcodes. This matters for RT64: the HLE must select the F3DEX ucode profile.
 // Env-gated so normal runs stay quiet. AERO_DL_INSPECT=1 dumps a one-shot
@@ -463,7 +463,7 @@ static void geom_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16
 // help separate game display-list production from host renderer setup, but a
 // matching software capture is not proof that RT64 or a human-facing image
 // is correct. Keep capture switches bounded and record their ROM/commit
-// inputs in docs/investigations.
+// inputs in the issue or pull request that owns the check.
 namespace swrender {
 
 // Reuse the F3DEX opcode enum + address resolver from dlinspect (same translation unit).
@@ -1120,7 +1120,7 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                     bool load = (flags & 0x02) != 0;
                     bool push = (flags & 0x04) != 0;
                     if (proj) {
-                        // Projection-matrix probe (AERO_PROJ_PROBE=1, widescreen investigation):
+                        // Projection-matrix probe (AERO_PROJ_PROBE=1, widescreen probe):
                         // RT64 only FOV-widens scenes whose PROJECTION matrix looks perspective
                         // (m[3][3]==0 && m[1][1]!=0, rt64_rsp.cpp getCurrentProjectionType). Log
                         // the first few proj loads so we can see what this ROM actually loads.

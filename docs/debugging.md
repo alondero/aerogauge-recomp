@@ -93,7 +93,7 @@ to the game thread and is accepted only at a safe scene boundary.
 For scripted input, use AERO_MODERN_INPUT for held N64 button bits and
 AERO_INPUT_PULSE for repeated button edges. The exact formats are in
 [Configuration](configuration.md). Keep a copy of the command and the
-resulting stderr in the investigation.
+resulting stderr in the issue or pull request.
 
 ## Native debugger
 
@@ -139,9 +139,9 @@ commit ROM or guest-memory dumps.
 
 Some older probes use a game-state sentinel that is not mapped in the current
 port. A state-based trigger can therefore remain inactive. Use a send count
-trigger where the probe supports one, or first add the missing state mapping
-as a documented investigation. Do not silently change a threshold and call
-the capture comparable.
+trigger where the probe supports one, or first add the missing state mapping to
+the ROM reference and a focused test. Do not silently change a threshold and
+call the capture comparable.
 
 When comparing a port capture with an emulator capture, record:
 
@@ -167,17 +167,13 @@ windowed-restore failure is tracked by the
 [save-state issue](https://github.com/alondero/aerogauge-recomp/issues/22).
 Use the headless round-trip script while investigating the state format.
 
-## Reproducible investigation record
+## Unresolved findings
 
-Put a dated record in docs/investigations with:
+Use the [reverse-engineering issue template](../.github/ISSUE_TEMPLATE/reverse_engineering.md)
+for a ROM, guest-memory, runtime, or renderer question that is not yet
+confirmed. Include the fixed inputs, observation, hypothesis, falsifying check,
+and remaining uncertainty.
 
-1. the question;
-2. the exact build, ROM, and host;
-3. the command and environment;
-4. expected and actual output;
-5. the current hypothesis;
-6. a falsifying test; and
-7. the next decision needed from the human maintainer.
-
-If the result changes a lasting boundary, add or update an ADR. If it only
-explains a historical capture, keep it in the investigation.
+When the answer is confirmed, move the lasting rule into the owning source
+comment, focused test, or stable reference page. Keep the issue as the work
+record. Do not create a dated document just to record that a check was not run.

@@ -1,40 +1,48 @@
 # Contributing
 
-This project needs developers who can question a plausible explanation. A
-machine-generated answer, code suggestion, or measurement summary is not a
-decision. The human maintainer decides when evidence is enough, which trade-off
-is acceptable, and whether a temporary workaround may ship.
+The pull request is the review and approval point for a change. The author
+should describe the evidence and the trade-offs. The maintainer decides
+whether the change is safe and whether a dependency or architecture boundary
+should move.
 
-Please use the [documentation map](docs/index.md), then read
-[Architecture](docs/architecture.md) and [Testing](docs/testing.md) before
-changing runtime or generated-code boundaries.
+AI tools may help with drafting or analysis. They do not replace source
+reading, tests, measurements, or pull-request review.
+
+Start with the [documentation map](docs/README.md), then read
+[BUILDING.md](BUILDING.md), [Architecture](docs/architecture.md), and
+[Testing](docs/testing.md). Read the relevant source and reference page before
+changing a subsystem.
 
 ## Before changing code
 
-1. Check the branch and the exact ROM you will use.
-2. Read the relevant source and its reference page.
-3. Search for existing investigations, decisions, tests, and open
-   [GitHub issues](https://github.com/alondero/aerogauge-recomp/issues).
-4. Write down the current behavior and the behavior you want.
-5. Decide whether the change belongs in generated game code, hand-written port
-   code, a dependency patch, a test, or documentation.
+1. Check the branch, dependency pins, and supported ROM identity.
+2. Read the owning source, tests, and build path.
+3. Reproduce the behavior when possible. If it cannot be reproduced, say so.
+4. Decide whether the change belongs in generated input, hand-written port
+   code, a dependency patch, a test, or stable documentation.
+5. Open an issue when the question is still uncertain. Use the
+   [reverse-engineering issue template](.github/ISSUE_TEMPLATE/reverse_engineering.md)
+   for measured ROM or guest-memory findings.
 
-Do not start with a fix based only on a crash message or an AI explanation.
-Reproduce the behavior where possible. If you cannot reproduce it, say so.
+An issue can preserve a question while it is being worked out. It is not a
+replacement for a source comment, test, or stable reference page once the
+answer is known.
 
-## What is hand-written
+## File ownership
 
 | Path | Owner | Normal change |
 | --- | --- | --- |
 | src/ | Port maintainers | Hand-written host code and narrow game hooks |
 | tests/ | Port maintainers | Host, ROM-backed, and end-to-end regression tests |
-| docs/ | Port maintainers | Stable facts, investigations, decisions, and user guidance |
+| docs/ | Port maintainers | Stable facts and user or developer guidance |
 | patches/ | Port maintainers | Diffs against pinned dependency commits |
-| aerogauge.syms.toml | Port maintainers and ROM evidence | Regenerated and reviewed symbol input |
-| aerogauge.us.toml | Port maintainers and ROM evidence | Regenerated input plus reviewed hooks |
+| scripts/gen_syms_toml.py | Port maintainers and ROM evidence | Generator for the symbol and hook TOML |
+| aerogauge.syms.toml | Generated output | Regenerate and review; do not edit |
+| aerogauge.us.toml | Generated output | Regenerate and review; do not edit |
+| aspMain.us.toml | Port maintainers and ROM evidence | Reviewed RSP input |
 | force_stub.txt | Port maintainers | Deliberate translation fallbacks |
 
-## What is generated
+## Generated files
 
 | Path | Generator | Rule |
 | --- | --- | --- |
@@ -42,138 +50,132 @@ Reproduce the behavior where possible. If you cannot reproduce it, say so.
 | src/aspMain.cpp | RSPRecomp | Never edit; regenerate from the ROM |
 | build/ | CMake and Ninja | Never commit |
 
-If generated code is wrong, find the input that is wrong. That may be the ROM
-identity, symbol boundary, stub list, hook address, or recompiler behavior.
-Change the input, regenerate, and review the result.
+If generated code is wrong, check the ROM identity, symbol input, stub list,
+hook address, and recompiler input. Change the input, regenerate, and review
+the generated diff. Do not repair generated C or C++ by hand.
 
-## Turning ROM evidence into a change
+## From ROM evidence to a change
 
-Use this chain:
+Use this path:
 
 ~~~text
-ROM observation
-    -> dated investigation with address, bytes, and method
-    -> stable symbol or named table
-    -> narrow hook or source patch
+ROM or runtime observation
+    -> named function, table, or invariant
+    -> generator input or narrow hook
     -> focused test or capture
-    -> reference entry and decision, if the behavior is lasting
+    -> stable reference or subsystem documentation
 ~~~
 
-An address by itself is not a stable interface. Include the ROM version and
-explain why the address is safe. If a hook relies on a frame phase, cursor,
-allocator range, or byte-swapped field, write that invariant down.
+An address alone is not an interface. Include the ROM identity, byte order,
+units, owner, thread, frame or scene boundary, and failure behavior. State
+what would disprove the interpretation.
 
-If the original game behavior is not yet understood, prefer a probe that
-measures it. Do not add a native replacement that invents new game rules
-without recording that choice and asking the maintainer to approve it.
+If the observation is not confirmed, keep it in the issue and label it as a
+hypothesis. Do not turn it into a confident permanent comment.
 
-## Port hooks and guest memory
+## Guest-memory bridges
 
-Some current features write directly into guest RDRAM:
+Some current features write directly to guest RDRAM. Full-course geometry
+builds synthetic display lists. The widescreen HUD rewrites display-list
+commands and a matrix. Save-state loading restores guest memory and relinks
+some native thread references.
 
-- full-course geometry creates synthetic display lists and links them into
-  game-owned lists;
-- widescreen HUD code rewrites a display-list range and one matrix; and
-- save-state loading copies guest memory and repairs native thread references.
+These are fragile transitional bridges. They depend on this ROM's address
+layout, N64 byte order, bounds, thread timing, and renderer behavior. They are
+not the desired architecture for new features.
 
-These hooks are transitional and fragile. Their success depends on this ROM's
-addresses, byte order, memory layout, thread timing, and renderer behavior.
-They are not a model for new general APIs.
+Every new guest-memory access must document:
 
-Every new direct guest-memory access must state:
+- the address, width, units, and byte order;
+- the reading or writing thread;
+- the owner and lifetime of the data;
+- bounds and failure behavior;
+- a test or capture that could expose a bad assumption; and
+- the source-level or decompilation step that could remove the bridge.
 
-- the guest addresses and their meaning;
-- the thread that reads or writes them;
-- the MEM helper and endian assumption;
-- the bounds and lifetime assumption;
-- the failure behavior;
-- how a test can detect a bad assumption; and
-- the source-level or decompilation step that could remove the hook later.
-
-The desired direction is decompilation or readable source-level game code,
-proper source patches, stable symbols, and explicit code-mod and mod
-interfaces. Do not hide uncertainty by calling a memory write robust or
-permanent.
+The intended direction is decompiled or readable game code, stable symbols,
+explicit source patches, and a versioned code-mod or asset interface. Do not
+add a general guest-memory API to make one hook convenient.
 
 ## Dependency patches
 
-The submodules are pinned in the parent repository. A build script resets
-tracked submodule files before applying the patches. If you modify a
-submodule directly, your change must become a patch before it is shared.
+Read the [patch inventory](patches/README.md) before editing a dependency.
+The supported build scripts reset tracked submodule files and apply patches
+from the pinned commits.
 
-Suggested workflow:
+1. Start at the pinned dependency commit.
+2. Apply the existing patches in the documented order.
+3. Make the smallest dependency change and add a focused test when possible.
+4. Export the change as a numbered patch.
+5. Compare it with the dependency's current source.
+6. Update both build paths, the patch inventory, and the relevant test or
+   reference page in one pull request.
 
-1. start from the pinned submodule commit;
-2. apply the existing patches in the order in BUILDING.md;
-3. make the smallest dependency change;
-4. run the dependency and port tests that exercise it;
-5. export the diff as a new numbered patch;
-6. add the patch to both build scripts and BUILDING.md;
-7. explain why the patch is local and whether it should go upstream; and
-8. verify a clean checkout can apply all patches.
+Decide whether the change is game-specific, a temporary compatibility fix, or
+a candidate for the dependency's upstream project. A general upstream
+proposal belongs in that project's issue or pull request. The local patch
+inventory records only the build contract.
 
-Do not commit a dirty submodule as a substitute for a patch. Do not silently
-refresh a patch after an upstream change. Stop and record the context drift.
+If a patch no longer applies, stop and investigate dependency drift. Do not
+reset unrelated submodule work or silently refresh the patch.
 
 ## Renderer changes
 
-RT64 already owns normal display-list interpretation, aspect ratio,
-interpolation, extended GBI support, and texture replacement. The port owns
-the AeroGauge ROM integration and game-specific display-list behavior.
+RT64 owns normal display-list interpretation, presentation, aspect handling,
+interpolation, extended GBI commands, and texture replacement. The port owns
+the AeroGauge ROM integration, game-specific display-list behavior, and SDL
+or runtime wiring.
 
 Before changing RT64:
 
-1. check [the renderer reference](docs/reference/renderer.md);
-2. reproduce the behavior with the smallest display-list or math test;
-3. decide whether it is specific to AeroGauge or general to RT64;
-4. keep a game-specific fix in the port when possible; and
-5. prepare an upstream issue or patch when the fix is general.
+1. read the [renderer reference](docs/reference/renderer.md) and
+   [patch inventory](patches/README.md);
+2. reduce the failure to the smallest display-list, matrix, viewport, or
+   toolchain case;
+3. decide whether it is an AeroGauge rule or a general renderer behavior;
+4. keep a game-specific fix in the port; and
+5. prepare an upstream issue or patch when the behavior is general.
 
-A local patch must have an owner, a removal condition, and a test. If the
-upstream project accepts the fix, update the submodule pin and remove the
-local patch in a separate, reviewable change.
+The headless software renderer is a test instrument. It is not the normal
+player renderer.
 
-## Mod support
+## Tests, comments, and docs
 
-The current port has no stable general mod API. RT64 texture loading and
-dumping are useful developer features, but they are not a complete mod
-contract. Do not present a texture path or a guest-memory hook as a supported
-plugin system.
+Add the smallest regression test that can fail for the bug:
 
-The expected future path is a versioned mod boundary with explicit ownership
-of assets, code changes, configuration, load order, and failure behavior.
-Choosing that boundary is a project decision. A proposal should compare
-source patches, generated code mods, and runtime asset loading before code is
-added.
+- host test for pure math or classification;
+- synthetic RDRAM test for a guest-memory contract;
+- ROM-backed test for a translated function or display-list boundary;
+- bounded end-to-end test for renderer, audio, or device behavior; or
+- a scripted or manual acceptance check for a player workflow.
 
-## Tests and documentation
+Run the relevant checks and record skipped checks with their reason in the
+pull request. A screenshot is evidence, not a repeatable test.
 
-Add or update a regression test with the smallest useful scope. Run the
-relevant host tests, ROM-backed tests, or end-to-end checks. Record tests that
-could not run and why.
+Comments should explain purpose, ownership, invariants, address and endian
+assumptions, failure behavior, and why a workaround exists. Keep research
+chronology in the issue or pull request. Move only the lasting rule into
+source or documentation.
 
-If a change affects a user-visible setting, platform, command, save location,
-or generated file, update the matching document. If it exposes uncertainty,
-write an investigation or ADR instead of smoothing it over in prose.
+When documentation changes, run:
 
-Run the documentation check before opening a pull request:
-
-~~~bash
-python3 scripts/check_docs.py
+~~~text
+python -B scripts/check_docs.py
+git diff --check
 ~~~
 
 ## Pull requests
 
-Use the repository pull-request template. A useful pull request states:
+Use the repository pull-request template. State:
 
 - what changed and why;
-- the human decision or trade-off;
+- which seam and owner are affected;
 - the commit, ROM identity, OS, and renderer/backend used;
 - expected and actual behavior;
-- tests run and skipped;
+- commands run and checks skipped;
 - generated files and dependency patches;
-- documentation impact; and
-- known limitations and follow-up work.
+- documentation impact and known limits; and
+- the next useful step.
 
-Do not include private AI-session links, local machine paths, unexplained
-issue numbers, or claims about a run that you did not perform.
+Do not include private session links, machine-specific paths, ROM data,
+unexplained issue numbers, or claims about a run that did not happen.

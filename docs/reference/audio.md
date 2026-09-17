@@ -24,6 +24,13 @@ state must survive across submitted buffers. The audio module also has a
 headless virtual AI FIFO so a no-window test can exercise game-side audio
 backpressure without requiring an audio device.
 
+The ROM has separate paths for sequenced music and short sound clips. Both
+paths eventually submit M_AUDTASK work to the same generated aspMain output.
+The sequenced music loader waits for the message belonging to its own PI DMA
+request. Local patch 0012 preserves that message instead of posting a null
+completion value; without it, a song can remain waiting even though its ROM
+read finished.
+
 Normal player audio uses SDL on the supported Windows and Linux targets. An
 unavailable host device is a host setup problem; it does not prove that the
 generated audio task is wrong. Use the audio statistics and RMS probes in
@@ -45,9 +52,6 @@ The full prerequisites and exact commands are in
 [testing](../testing.md). Do not call a no-device headless run proof of
 speaker output.
 
-The historical buffering evidence and its falsifying checks are in the
-[audio investigation](../investigations/2026-09-14-audio.md).
-
 ## Controller Pak
 
 The current port exposes one virtual raw Controller Pak for Controller 1.
@@ -59,9 +63,8 @@ The port also supplies a small EEPROM device through the runtime. EEPROM is
 separate from the Controller Pak and must not be treated as the same save
 file.
 
-The original [Controller Pak research note](../notes/controller-accessories.md)
-contains the block and filesystem observations. It is historical evidence;
-the public configuration page is the user-facing contract.
+The [controllers and accessories reference](../controllers.md) describes the
+input, Controller Pak, EEPROM, and rumble boundaries.
 
 ## Haptics
 

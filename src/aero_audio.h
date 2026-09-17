@@ -22,9 +22,9 @@ namespace aero::audio {
 
 // Initialise the SDL2 audio backend. Safe to call once before recomp::start();
 // idempotent if called more than once. Opens the default audio device at the
-// requested sample rate (48 kHz is what ultramodern::init_audio asks for, per
-// ultramodern/src/ultrainit.cpp:28). The device stays paused until the runtime
-// has queued enough PCM to cover host resampling and playback callback timing.
+// requested sample rate (the current runtime requests 48 kHz). The device
+// stays paused until the runtime has queued enough PCM to cover host
+// resampling and playback callback timing.
 void init(uint32_t desired_sample_rate);
 
 // Populate the three ultramodern audio callbacks (queue_samples /
