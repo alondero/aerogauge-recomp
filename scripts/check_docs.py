@@ -14,11 +14,14 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 EXCLUDED: set[Path] = set()
-REQUIRED = [
+ROOT_MARKDOWN = [
     ROOT / "README.md",
     ROOT / "BUILDING.md",
     ROOT / "CONTRIBUTING.md",
     ROOT / "CLAUDE.md",
+    ROOT / ".github" / "pull_request_template.md",
+]
+REQUIRED = ROOT_MARKDOWN + [
     ROOT / "docs" / "index.md",
     ROOT / "docs" / "architecture.md",
     ROOT / "docs" / "testing.md",
@@ -34,7 +37,6 @@ REQUIRED = [
     ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "reverse_engineering.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.md",
-    ROOT / ".github" / "pull_request_template.md",
 ]
 
 LINK_RE = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
@@ -66,8 +68,7 @@ STANDALONE_TESTS = [
 
 def markdown_files() -> list[Path]:
     files = []
-    for path in [ROOT / "README.md", ROOT / "BUILDING.md", ROOT / "CONTRIBUTING.md",
-                 ROOT / "CLAUDE.md", ROOT / ".github" / "pull_request_template.md"]:
+    for path in ROOT_MARKDOWN:
         if path.is_file():
             files.append(path)
     for path in (ROOT / ".github").rglob("*.md"):
@@ -190,7 +191,9 @@ def main() -> int:
                     f"missing referenced script: {match.group(1)}"
                 )
 
-    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    cmake_files = [ROOT / "CMakeLists.txt"]
+    cmake_files.extend(sorted((ROOT / "cmake").rglob("*.cmake")))
+    cmake = "\n".join(path.read_text(encoding="utf-8") for path in cmake_files)
     testing = (ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
     ctest_names = re.findall(
         r"add_test\s*\(\s*NAME\s+([A-Za-z0-9_]+)", cmake, flags=re.IGNORECASE

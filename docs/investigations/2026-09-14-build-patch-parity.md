@@ -1,11 +1,23 @@
 # Build patch parity — 2026-09-14
 
+> Historical snapshot. This note records a static comparison from 2026-09-14;
+> its patch table is not the current patch manifest. Use [BUILDING](../../BUILDING.md)
+> and the host scripts for the current order.
+
+## Evidence metadata
+
+- ROM: not used.
+- Commit: not recorded in the original note.
+- Host: not recorded in the original note.
+- Command: static comparison of the two host scripts and their comments; the
+  exact command was not recorded.
+
 ## Observation
 
 The intended dependency patch set is described in [BUILDING](../../BUILDING.md)
 and in the two host scripts. The actual host arrays are different.
 
-The current files show:
+The files examined on 2026-09-14 showed:
 
 | Path | Observed list |
 | --- | --- |

@@ -8,7 +8,8 @@ name/vram/size, absolute addressing, no relocs.
 There is no checked-in disassembly for this ROM, so this script derives function
 boundaries from the ROM itself:
 
-  * Measured code extent (2026-07-10 density scan, scripts history): CPU text is
+  * Measured code extent during ROM analysis; see
+    docs/investigations/2026-09-17-generated-symbols.md: CPU text is
     contiguous at ROM 0x1000..~0x7F4C0. Every jal located inside that window targets
     inside it (zero out-of-window targets), after which instruction decoding turns to
     data/RSP-ucode noise. The tail (last ~0x100) is the CP0 exception handler.
@@ -38,7 +39,7 @@ FORCE_STUB = REPO / "force_stub.txt"
 
 ENTRY = 0x80000400           # ROM header bytes 0x08-0x0B
 SECTION_ROM = 0x1000
-CODE_ROM_END = 0x7F4C0       # end of contiguous CPU text (density scan; see docstring)
+CODE_ROM_END = 0x7F4C0       # end of contiguous CPU text (see investigation document)
 
 
 def rom_to_vram(off):
@@ -57,9 +58,10 @@ def vram_to_rom(v):
 #   * ignored_funcs       -> body skipped, call sites renamed `<name>_recomp`, WE must provide
 #                            the symbol in src/libultra_stubs.c.
 # Every entry must be verified from the ROM bytes before it lands here (CLAUDE.md: source is
-# ground truth) — record the evidence in the comment.
+# ground truth). The dated evidence summary is in
+# docs/investigations/2026-09-17-generated-symbols.md.
 LIBULTRA_NAMES = {
-    # __osInitialize_common (size 0x290, byte-verified 2026-07-11): stores __osFinalrom=1 to
+    # __osInitialize_common (size 0x290, byte-verified during ROM analysis): stores __osFinalrom=1 to
     # 0x801AC110, then jal 0x80078840 (__osGetSR) -> __osSetSR(sr|CU1 0x20000000) ->
     # __osSetFpcCsr(0x01000800) -> busy-probes PIF RAM 0x1FC007FC via __osSiRawReadIo /
     # __osSiDeviceBusy (raw SI_STATUS 0xA4800018 — the first boot-smoke MMIO fault) and writes
@@ -67,7 +69,7 @@ LIBULTRA_NAMES = {
     # reimplemented -> librecomp __osInitialize_common_recomp (= ultramodern
     # osInitialize()), collapsing the whole CP0+SI/PIF init subtree.
     0x80070290: "__osInitialize_common",
-    # Thread + message-queue kernel (all byte-verified 2026-07-11; all reimplemented -> librecomp
+    # Thread + message-queue kernel (all byte-verified during ROM analysis; all reimplemented -> librecomp
     # natives = ultramodern's native scheduler, replacing the ROM's cooperative run-queue whose
     # __osDispatchThread/eret CP0 tail can never run recompiled — the threads=0 boot stall).
     # Shared plumbing observed: __osDisableInt=0x80070860, __osRestoreInt=0x80070880,
@@ -122,7 +124,7 @@ LIBULTRA_NAMES = {
     0x8006FCF0: "osViGetNextFramebuffer",
     # osViBlack (0x70): next->state |= 0x20 (VI_STATE_BLACK) if a0 else &= ~0x20.
     0x8006CC60: "osViBlack",
-    # --- second batch (byte-verified 2026-07-11, first-fault: osCreatePiManager ->
+    # --- second ROM-analysis batch (first-fault: osCreatePiManager ->
     #     osGetThreadPri dereferencing __osRunningThread=0 -> SIGSEGV) ---
     # osGetThreadPri (0x10-ish leaf at the head of the derived span): if(a0==0)
     # a0=__osRunningThread(0x80094880); return a0->pri@+4. Native scheduler doesn't mirror the
@@ -161,7 +163,7 @@ LIBULTRA_NAMES = {
     0x80067F30: "osAiSetNextBuffer",
     # osAiGetLength (leaf): return AI_LEN @0xA4500004.
     0x80067FE0: "osAiGetLength",
-    # osCreateViManager (byte-verified 2026-07-11; the third boot first-fault): guard flag
+    # osCreateViManager (byte-verified during ROM analysis; the third boot first-fault): guard flag
     # @0x80093680; __osTimerServicesInit(0x80076D20); osCreateMesgQueue(0x801BC060, 5 deep);
     # osSetEventMesg registrations; jal __osViInit(0x80077120) — the ROM's VI-context init
     # whose MMIO tail (poll VI_CURRENT 0xA4400010, zero VI_CONTROL, __osViSwapContext
@@ -170,13 +172,13 @@ LIBULTRA_NAMES = {
     # hand-translated __osViInit_recomp is needed. VI globals for reference: __osViCurr=0x80094C50,
     # __osViNext=0x80094C54, contexts @0x80094BF0, modes PAL/MPAL/NTSC @0x80094CA0/4CF0/4D40.
     0x8006F7F0: "osCreateViManager",
-    # osSetTimer (byte-verified 2026-07-11; fourth boot first-fault): OSTimer fill — next/prev=0,
+    # osSetTimer (byte-verified during ROM analysis; fourth boot first-fault): OSTimer fill — next/prev=0,
     # interval@+8/+0xC (stack args 0x30/0x34), value@+0x10/+0x14 = countdown(a2:a3) or interval
     # if zero — then __osInsertTimer(0x80076F98), which walks __osTimerList@0x80094BE0. The list
     # head is 0 (its init lived in __osTimerServicesInit, collapsed by the native
     # osCreateViManager) -> recompiled __osInsertTimer faults. reimplemented -> librecomp native.
     0x80074160: "osSetTimer",
-    # RSP task interface (byte-verified 2026-07-11; fifth boot first-fault was
+    # RSP task interface (byte-verified during ROM analysis; fifth boot first-fault was
     # osSpTaskLoad -> __osSpSetStatus writing SP_STATUS 0xA4040010 raw). SP plumbing seen:
     # __osSpSetStatus=0x800786F0, __osSpGetStatus=0x80078350, __osSpSetPc=0x80078700 (SP_PC
     # 0xA4080000), __osSpRawStartDma=0x80078740 (SP_MEM/DRAM_ADDR + RD/WR_LEN),
@@ -197,7 +199,7 @@ LIBULTRA_NAMES = {
     # osDpSetNextBuffer (0xB0): __osDpDeviceBusy(0x80078800, DPC_STATUS 0xA410000C); xbus set +
     # poll; osVirtualToPhysical -> DPC_START(0xA4100000)/DPC_END(+4).
     0x800701C0: "osDpSetNextBuffer",
-    # osContInit (byte-verified 2026-07-11; sixth boot first-fault, via its __osSiRawStartDma
+    # osContInit (byte-verified during ROM analysis; sixth boot first-fault, via its __osSiRawStartDma
     # of the PIF status frame @0x801BAB90): init guard @0x80092E60; canonical 500ms PIF
     # power-up wait (osGetTime vs 0x0165A0BC = 23,437,500 ticks, osSetTimer + osRecvMesg for
     # the remainder); __osMaxControllers=4 @0x801BABD1; status-frame stage (0x8006B120) ->
@@ -205,7 +207,7 @@ LIBULTRA_NAMES = {
     # __osContLastCmd=0 @0x801BABD0; __osSiCreateAccessQueue (0x800740A0). reimplemented ->
     # ultramodern native (input callbacks), collapsing the whole PIF/joybus subtree.
     0x8006AEE0: "osContInit",
-    # osGetTime (byte-verified 2026-07-11): DisableInt; osGetCount(); 64-bit
+    # osGetTime (byte-verified during ROM analysis): DisableInt; osGetCount(); 64-bit
     # __osCurrentTime(0x801BD330/34) + (count - __osBaseCounter(0x801BD338)); RestoreInt.
     # NOTE: this retires the force_stub.txt entry for func_8006C800 — the recompiler's
     # `trunc.l.d` error came from a prologue-less float-conversion leaf at 0x8006C890 that the
@@ -214,7 +216,7 @@ LIBULTRA_NAMES = {
     # osPfsInitPak (0x8006B440) deliberately stays recompiled: its SDK
     # filesystem operates on the native block device below, not librecomp's
     # PFS_ERR_NOPACK stub. See docs/notes/controller-accessories.md.
-    # osContStartReadData (byte-verified 2026-07-11; eighth boot first-fault — the main game
+    # osContStartReadData (byte-verified during ROM analysis; eighth boot first-fault — the main game
     # loop 0x800658FC polls pads each frame): __osSiGetAccess(0x800740F0); if
     # __osContLastCmd(0x801BABD0)!=1 stage read frames via __osPackReadData(0x8006B354) + SI
     # write DMA @0x801BAB90 + osRecvMesg; SI read DMA; __osContLastCmd=1;
@@ -224,7 +226,7 @@ LIBULTRA_NAMES = {
     # __osMaxControllers(0x801BABD1) channels, error bits from rx byte -> errno, fills the
     # 6-byte-stride OSContPad array (button u16, stick s8 x2, errno).
     0x8006B2AC: "osContGetReadData",
-    # --- EEPROM family (byte-verified 2026-07-11; ninth first-fault, the first RT64 windowed
+    # --- EEPROM family (byte-verified during ROM analysis; ninth first-fault, the first RT64 windowed
     #     run: game save-load 0x80061D00 -> osEepromProbe -> __osEepStatus(0x800778B8) ->
     #     __osSiRawStartDma(0x80074240) -> __osSiDeviceBusy(0x8007AAA0) raw SI_STATUS read).
     #     All reimplemented -> librecomp eep.cpp natives backed by the real save file
@@ -254,7 +256,7 @@ LIBULTRA_NAMES = {
     # osSetTimer(0x80074160) with 0x89544 counts (~12 ms EEPROM write latency) + osRecvMesg
     # between blocks. Game callers 0x80061EAC..0x800624E0 (9 sites, the save writer).
     0x8006E200: "osEepromLongWrite",
-    # --- Rumble-motor family (byte-verified 2026-07-11, same raw-SI crash class; all
+    # --- Rumble-motor family (byte-verified during ROM analysis, same raw-SI crash class; all
     #     reimplemented -> ultramodern input.cpp natives, which self-guard on
     #     pfs->status & PFS_MOTOR_INITIALIZED and answer via the set_rumble callback) ---
     # osMotorInit (0x2E4, no jal callers -- reached indirectly): pfs->queue=a0@+4,
@@ -280,7 +282,7 @@ LIBULTRA_NAMES = {
 # these names are NOT in N64Recomp's built-in reimplemented/ignored/renamed sets
 # (symbol_lists.cpp), so the toml array is the only routing mechanism.
 NATIVE_NAMES = {
-    # Byte-verified 2026-09-12: status builds a per-channel Joybus query and
+    # Byte-verified during ROM analysis: status builds a per-channel Joybus query and
     # returns 1 for an empty socket; read/write stage commands 2/3, transfer
     # exactly 32 bytes, and use a2 as the block index (not a byte address).
     # Write's fifth argument protects ID blocks 1..6 unless force == 1.
@@ -289,7 +291,7 @@ NATIVE_NAMES = {
     0x80075290: "aero_pak_read",
     0x80077260: "aero_pak_write",
 
-    # guPerspectiveF (ROM 0x8006BA60, byte-verified 2026-07-11): jal 0x8006C330
+    # guPerspectiveF (ROM 0x8006BA60, byte-verified during ROM analysis): jal 0x8006C330
     # (guMtxIdentF), fovy cvt.d.s * double @0x80098D20 (== 3.1415926/180.0,
     # ROM-byte-exact), /2.0f, jal 0x8006AC80 (cosf) / 0x80066D50 (sinf) -> cot,
     # (n+f)/(n-f) & 2nf/(n-f) matrix terms, perspNorm `c.le.d 2.0` + `sh` store at
@@ -299,7 +301,7 @@ NATIVE_NAMES = {
     # to scale the far plane. The replacement remains ROM-specific and needs a
     # regression test for distant geometry.
     0x8006BA60: "guPerspectiveF",
-    # The two per-frame course-geometry registrars (byte-decoded 2026-07-16): both map
+    # The two per-frame course-geometry registrars (byte-decoded during ROM analysis): both map
     # craft section (u16 @ craft+4) -> zone via course-row byte map (row = 0x8008B290 +
     # 0x14*track byte 0x8013FF9B, map = row[0]), then walk the 3-entry zone-visibility
     # row (row[1], 3 bytes/zone) -- the hand-authored PVS behind the game's large-scale
@@ -506,15 +508,15 @@ BOOT_EXTRA = [0x80000400, 0x80000450, 0x800653F0]
 # error loop for these is `Failed to find function at 0x...` from librecomp's get_function()
 # — verify the address begins right after a function terminator in the ROM bytes, then add it.
 INDIRECT_STARTS = [
-    # 2026-07-11 boot smoke: indirect call after audio init; bytes at 0x80002028 are a
+    # Boot-smoke evidence: indirect call after audio init; bytes at 0x80002028 are a
     # prologue-less leaf starting right after the previous function's `jr $ra` + delay slot.
     0x80002028,
-    # 2026-07-11 windowed run: `Failed to find function at 0x8000DFD0` ~14 s in (game
+    # Windowed-run evidence: `Failed to find function at 0x8000DFD0` ~14 s in (game
     # advancing past the boot states). Verified head right after `jr $ra` + nop padding at
     # 0x8000DFBC; missed by the prologue scan because the `addiu $sp` sits at +8 (two
     # scheduling-hoisted loads precede it), and no jal targets it.
     0x8000DFD0,
-    # 2026-07-11 batch (earlier indirect-target scan, after the next fault moved to
+    # Indirect-target scan (after the next fault moved to
     # 0x80009D70): scanned the whole ROM DATA region for aligned words pointing into
     # .text, kept those that (a) are not already derived starts, (b) sit right after a
     # function terminator (jr + delay slot, or jr + nop padding), and (c) are NOT
@@ -528,7 +530,7 @@ INDIRECT_STARTS = [
     0x8000F920,
     0x8000FAFC,  # prologue-less arg-spill leaf
     0x8000FCD0,
-    # 2026-07-11 second batch (earlier load-address scan, after the next fault moved to
+    # Second indirect-target scan (after the next fault moved to
     # 0x80007BB0): same head + branch-reachability filters, but the pointer source is
     # lui/addiu (`la`) pairs in .text -- callbacks materialized in registers and stored
     # into runtime structs, invisible to both the jal scan and the data-word scan.

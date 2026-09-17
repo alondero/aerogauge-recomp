@@ -2,6 +2,8 @@
 
 What changed, and why?
 
+Affected seam and owner:
+
 ## Human decision
 
 What trade-off did the author choose? Which parts remain suggestions or

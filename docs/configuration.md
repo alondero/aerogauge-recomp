@@ -173,6 +173,112 @@ LAMBO_THREAD_TRACE and RT64_MATCH_DEBUG are dependency-patch diagnostics, not
 player settings. Their names are retained for compatibility with the local
 patches. They are off by default and may produce timing-sensitive logs.
 
+## Runtime variable contract
+
+The tables above are a quick effect index. This table records the contract for
+each variable named in this document. "Unset" means that the process does not
+have the variable. Read timing is from source inspection, not a fresh
+interactive run. Examples use POSIX shell syntax; in PowerShell set
+$env:NAME before running the executable.
+
+### Launch and player overrides
+
+| Variable | Scope and accepted form | Default and precedence | Read timing | Side effect and owner | Example |
+| --- | --- | --- | --- | --- | --- |
+| AERO_GRAPHICS_CONFIG | Launch or test; file path | Unset uses app data graphics.json; set replaces that path | Startup config load | Reads and may write the merged JSON; src/aero_config.cpp | AERO_GRAPHICS_CONFIG=tmp/graphics.json ./build/aerogauge_modern |
+| AERO_ENHANCEMENTS_CONFIG | Launch or test; file path | Unset uses app data enhancements.json; set replaces that path | Startup config load | Reads and may write the merged JSON; src/aero_config.cpp | AERO_ENHANCEMENTS_CONFIG=tmp/enhancements.json ./build/aerogauge_modern |
+| AERO_PAK_PATH | Launch; file path | Unset uses the per-user saves path; set selects the Controller Pak image | Startup | Selects or creates the save-file parent; src/main.cpp and src/aero_pak.cpp | AERO_PAK_PATH=tmp/test.mpk ./build/aerogauge_modern |
+| AERO_CONTROLLER_PAK | Launch; 0 or another value | Enabled when unset; exactly 0 disables it | Startup | Controls virtual Controller Pak presence; src/main.cpp and src/aero_pak.cpp | AERO_CONTROLLER_PAK=0 ./build/aerogauge_modern |
+| AERO_RUMBLE | Launch; 0 or another value | Enabled when unset; exactly 0 disables rumble | Startup | Controls the normal rumble callback; src/main.cpp | AERO_RUMBLE=0 ./build/aerogauge_modern |
+| AERO_RUMBLE_TURBO | Launch; 0 or another value | Enabled when unset; exactly 0 disables Turbo rumble | Startup | Controls Turbo-specific rumble; src/main.cpp | AERO_RUMBLE_TURBO=0 ./build/aerogauge_modern |
+| AERO_TEXTURE_PACK | Launch or test; directory or .rtz path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Supplies RT64 texture replacements and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_PACK=assets/textures ./build/aerogauge_modern |
+| AERO_TEXTURE_DUMP | Launch or test; directory path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Gives RT64 a texture dump destination and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_DUMP=tmp/textures ./build/aerogauge_modern |
+| AERO_FOG_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each fog-policy query | Changes the 3P/4P widescreen fog branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_FOG_MATCH_1P=0 ./build/aerogauge_modern |
+| AERO_SKY_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each sky-policy query | Changes the 3P/4P sky branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_SKY_MATCH_1P=0 ./build/aerogauge_modern |
+| AERO_DRAW_DISTANCE_SCALE | Launch or test; number | Unset uses JSON, 100 by default; set wins and is clamped | Each guPerspectiveF replacement call | Changes the far-plane calculation; src/aero_config.cpp and src/aero_draw_distance.cpp | AERO_DRAW_DISTANCE_SCALE=1 ./build/aerogauge_modern |
+| AERO_FULL_TRACK | Launch or test; 0 or 1 | Unset uses JSON, true by default; set wins | Each full-track policy query | Enables or disables all-course registration; src/aero_config.cpp and src/aero_full_track.cpp | AERO_FULL_TRACK=0 ./build/aerogauge_modern |
+| AERO_EASY_TURBO | Launch or test; 0 or 1 | Unset uses JSON, false by default; set wins | First semantic input query | Enables the alternate Turbo and Boost Start input path; src/aero_config.cpp and src/aero_turbo_boost.c | AERO_EASY_TURBO=1 ./build/aerogauge_modern |
+| AERO_HEADLESS | Test or investigation; use 1 or any present value | Unset uses the RT64 window path when available | Startup | Skips the window and selects the software renderer; src/aero_rt64.h and src/main.cpp | AERO_HEADLESS=1 ./build/aerogauge_modern |
+
+### Developer, headless, and crash controls
+
+These variables have no JSON setting. Unset means no request, no probe, or no
+extra output unless the row says otherwise.
+
+| Variable | Scope and accepted form | Default and precedence | Read timing | Side effect and owner | Example |
+| --- | --- | --- | --- | --- | --- |
+| AERO_WARP | Developer run; track or track:craft | Unset means no warp | First game tick that can consume it | Requests a race scene through the guest hook; src/aero_warp.c | AERO_WARP=3:2 ./build/aerogauge_modern |
+| AERO_WARP_AT | Headless test; vi:track[:craft] | Unset means no scheduled warp | First VI callback | Publishes one warp request at the selected VI; src/main.cpp | AERO_WARP_AT=300:3:2 ./build/aerogauge_modern |
+| AERO_STATE_FILE | Developer run; file path | Unset uses aero_savestate.astate in the working directory | When F7 or F8 is used | Selects the interactive save-state slot; src/aero_savestate.c | AERO_STATE_FILE=tmp/slot.astate ./build/aerogauge_modern |
+| AERO_STATE_SAVE | Headless test; file path | Unset means no automatic save | First save-state tick, then target scene | Writes one settled RDRAM snapshot; src/aero_savestate.c | AERO_STATE_SAVE=tmp/race.astate ./build/aerogauge_modern |
+| AERO_STATE_SAVE_SCENE | Headless test; integer | Unset uses scene 5 | First save-state tick | Selects the scene at which AERO_STATE_SAVE may run; src/aero_savestate.c | AERO_STATE_SAVE_SCENE=5 ./build/aerogauge_modern |
+| AERO_STATE_SAVE_DELAY | Headless test; integer VI ticks | Unset uses 0 | First save-state tick | Delays the automatic save after its scene gate; src/aero_savestate.c | AERO_STATE_SAVE_DELAY=30 ./build/aerogauge_modern |
+| AERO_STATE_LOAD | Headless test; file path | Unset means no automatic load | First save-state tick, then target scene | Restores one RDRAM snapshot; src/aero_savestate.c | AERO_STATE_LOAD=tmp/race.astate ./build/aerogauge_modern |
+| AERO_STATE_LOAD_SCENE | Headless test; integer | Unset uses scene 3 | First save-state tick | Selects the scene at which AERO_STATE_LOAD may run; src/aero_savestate.c | AERO_STATE_LOAD_SCENE=3 ./build/aerogauge_modern |
+| AERO_STATE_LOAD_DELAY | Headless test; integer VI ticks | Unset uses 0 | First save-state tick | Delays the automatic load after its scene gate; src/aero_savestate.c | AERO_STATE_LOAD_DELAY=30 ./build/aerogauge_modern |
+| AERO_MODERN_MAX_VIS | Headless test; positive integer | Unset uses 120 in headless mode and no cap in RT64 mode | Startup | Stops the boot harness after a VI budget; src/main.cpp | AERO_MODERN_MAX_VIS=120 ./build/aerogauge_modern |
+| AERO_MODERN_INPUT | Headless test; button hex[:stick x[:stick y]] | Unset adds no held input | Startup | ORs a held N64 input into every game read; src/main.cpp | AERO_MODERN_INPUT=1000 ./build/aerogauge_modern |
+| AERO_MODERN_INPUT_AFTER | Headless test; startvi:button hex:stick x:stick y | Unset makes no replacement | Startup, then selected VI | Replaces the held test input atomically at one VI; src/main.cpp | AERO_MODERN_INPUT_AFTER=300:0:53:0 ./build/aerogauge_modern |
+| AERO_INPUT_PULSE | Headless test; button hex:period:duty[:start vi[:count]] | Unset produces no pulses | Startup, then each VI | Generates repeatable menu button edges; src/main.cpp | AERO_INPUT_PULSE=1000:150:4:300:4 ./build/aerogauge_modern |
+| AERO_AUDIO_STATS | Audio investigation; any present value | Unset means no device statistics | Audio initialization | Logs device and queue counters; src/aero_audio.cpp | AERO_AUDIO_STATS=1 ./build/aerogauge_modern |
+| AERO_AUDIO_RMS | Audio investigation; any present value | Unset means no RMS output | First submitted PCM, then audio callbacks | Logs the RMS of submitted PCM; src/aero_audio.cpp | AERO_AUDIO_RMS=1 ./build/aerogauge_modern |
+| AERO_HARNESS_LOG | Timing investigation; use 1 | Unset or another value means off | First call to the shared helper | Enables low-rate thread and renderer logs; src/aero_config.cpp, src/main.cpp, and renderer files | AERO_HARNESS_LOG=1 ./build/aerogauge_modern |
+| AERO_FRAME_LOG | Timing investigation; file path | Unset means no frame log | Each request to open a frame log | Creates or truncates the named log and optional VI log; src/aero_config.cpp | AERO_FRAME_LOG=tmp/frame.log ./build/aerogauge_modern |
+| AERO_CRASH_SYMBOLS | Crash investigation; file or directory path | Unset searches the working directory and executable locations | Crash-handler startup | Adds a symbol-table search location; src/aero_crash.cpp | AERO_CRASH_SYMBOLS=aerogauge.syms.toml ./build/aerogauge_modern |
+| AERO_CRASH_TEST | Crash-test run; text or any present value | Unset means no injected crash | Startup | Schedules a deliberate crash and report; src/main.cpp and src/aero_crash.cpp | AERO_CRASH_TEST=smoke ./build/aerogauge_modern |
+| AERO_LIGHTING_SELFTEST | Host test; any present value | Unset runs the normal program | Before ROM loading | Runs the synthetic lighting test and exits; src/main.cpp and src/stub_renderer.cpp | AERO_LIGHTING_SELFTEST=1 ./build/aerogauge_modern |
+| LAMBO_THREAD_TRACE | Runtime-patch investigation; non-empty and not 0 | Unset or 0 means off | First patched scheduler check and thread starts | Logs native thread activity; local patch 0001 | LAMBO_THREAD_TRACE=1 ./build/aerogauge_modern |
+| RT64_MATCH_DEBUG | Renderer-patch investigation; integer 1 or 2 | Unset or 0 means off | First interpolation match call | Logs transform-match decisions; local patch 0006 | RT64_MATCH_DEBUG=1 ./build/aerogauge_modern |
+
+### Renderer and display-list probes
+
+The renderer probes are not player settings. Most are read once so a run is
+repeatable. They can write large files or mutate a display list used by the
+renderer; use them only with a saved investigation command.
+
+| Variable | Scope and accepted form | Default and precedence | Read timing | Side effect and owner | Example |
+| --- | --- | --- | --- | --- | --- |
+| AERO_WS_RETAG | Renderer investigation; 0 disables, another value enables | Enabled when unset | First HUD hook | Re-emits HUD rectangles with RT64 alignment commands; src/aero_hud_widescreen.c | AERO_WS_RETAG=0 ./build/aerogauge_modern |
+| AERO_WS_TRACE | Renderer investigation; 1 or 2 | Unset means off | First HUD trace call | Logs HUD gates and rectangle classes; src/aero_hud_widescreen.c | AERO_WS_TRACE=2 ./build/aerogauge_modern |
+| AERO_WS_NEEDLE_DX | Renderer investigation; number | Unset uses 53.333 pixels | Each shifted HUD frame | Changes the speedometer needle translation; src/aero_hud_widescreen.c | AERO_WS_NEEDLE_DX=53.333 ./build/aerogauge_modern |
+| AERO_WS_INTRO | Renderer investigation; 0 disables, another value enables | Enabled when unset | Each intro draw hook | Adds the widescreen intro rectangle path; src/aero_race_intro.c | AERO_WS_INTRO=0 ./build/aerogauge_modern |
+| AERO_FT_SECTIONS | Full-track investigation; 0 or another value | Enabled when unset; 0 selects the original section path | First section registration | Chooses section registration mode; src/aero_full_track.cpp | AERO_FT_SECTIONS=0 ./build/aerogauge_modern |
+| AERO_FT_OBJECTS | Full-track investigation; 0 or another value | Enabled when unset; 0 selects the original object path | First object registration | Chooses object registration mode; src/aero_full_track.cpp | AERO_FT_OBJECTS=0 ./build/aerogauge_modern |
+| AERO_FT_ZONE_MASK | Full-track investigation; hexadecimal mask | All zones when unset | First zone-mask query | Limits registered zones; src/aero_full_track.cpp | AERO_FT_ZONE_MASK=ff ./build/aerogauge_modern |
+| AERO_FT_TRACE | Full-track investigation; any present value | Unset means off | Each course rebuild | Logs course rebuild progress; src/aero_full_track.cpp | AERO_FT_TRACE=1 ./build/aerogauge_modern |
+| AERO_DL_SKIP_DL | RT64 investigation; comma-separated hexadecimal addresses | Unset means no rewrite | First RT64 display-list submission | Replaces matching G_DL commands with no-ops after the guest walk; src/rt64_renderer.cpp | AERO_DL_SKIP_DL=80012340 ./build/aerogauge_modern |
+| AERO_SWRENDER_NO_FOG | Software-renderer investigation; use 1 | Unset means fog is on | First software render | Omits fog from software captures; src/stub_renderer.cpp | AERO_SWRENDER_NO_FOG=1 AERO_HEADLESS=1 ./build/aerogauge_modern |
+| AERO_PROJ_PROBE | Software-renderer investigation; any present value | Unset means off | First software render | Logs projection observations; src/stub_renderer.cpp | AERO_PROJ_PROBE=1 AERO_HEADLESS=1 ./build/aerogauge_modern |
+| AERO_DL_INSPECT | Display-list investigation; any present value | Unset means off | First display-list submission | Writes one display-list summary when its state gate is reached; src/stub_renderer.cpp | AERO_DL_INSPECT=1 ./build/aerogauge_modern |
+| AERO_DL_INSPECT_STATE | Display-list investigation; integer | Unset uses state 8 | First inspection check | Sets the inspection threshold; src/stub_renderer.cpp | AERO_DL_INSPECT=1 AERO_DL_INSPECT_STATE=8 ./build/aerogauge_modern |
+| AERO_RACE_DL_DUMP | Display-list investigation; output base name | Unset means no dump | First display-list submission | Writes a text display-list walk and an 8 MiB RDRAM file when its gate fires; src/stub_renderer.cpp | AERO_RACE_DL_DUMP=tmp/race ./build/aerogauge_modern |
+| AERO_DL_DUMP_AT | Display-list investigation; send_dl count | Unset leaves the state gate unchanged | First display-list submission when a race dump is configured | Provides a frame-count trigger for AERO_RACE_DL_DUMP; src/stub_renderer.cpp | AERO_RACE_DL_DUMP=tmp/race AERO_DL_DUMP_AT=2500 ./build/aerogauge_modern |
+| AERO_DL_GEOMSET | Display-list investigation; positive integer stride | Unset means off | First display-list submission | Logs sampled display-list geometry sets; src/stub_renderer.cpp | AERO_DL_GEOMSET=30 ./build/aerogauge_modern |
+| AERO_MENU_DL_TRACE | Menu investigation; any present value | Unset means off | First display-list submission | Logs menu sprite command counts; src/stub_renderer.cpp | AERO_MENU_DL_TRACE=1 ./build/aerogauge_modern |
+| AERO_MENU_DL_DUMP | Menu investigation; screen number | Unset means no dump | First display-list submission | Writes one menu display-list walk and RDRAM file; src/stub_renderer.cpp | AERO_MENU_DL_DUMP=4 ./build/aerogauge_modern |
+| AERO_DL_RENDER_STATE | Software-renderer investigation; integer | Unset uses state 8 | Each capture check | Selects the software capture threshold; src/stub_renderer.cpp | AERO_DL_RENDER_STATE=8 AERO_HEADLESS=1 ./build/aerogauge_modern |
+| AERO_DL_RENDER_OUT | Software-renderer investigation; output base name | Unset uses dl_render_state8.bmp | When a capture is written | Selects the BMP output name; src/stub_renderer.cpp | AERO_DL_RENDER_OUT=tmp/frame.bmp AERO_HEADLESS=1 ./build/aerogauge_modern |
+| AERO_DL_RENDER_EVERY | Software-renderer investigation; positive integer | Unset or 0 captures only once | First display-list submission, then every stride | Requests numbered follow-up BMP captures; src/stub_renderer.cpp | AERO_DL_RENDER_EVERY=30 AERO_HEADLESS=1 ./build/aerogauge_modern |
+
+## Build-only and compile-time names
+
+These names affect tool discovery or compilation. They are not settings that
+players should put in JSON or expect to work after the program starts.
+
+| Name | Scope and accepted form | Default and precedence | Read timing | Effect and owner | Example |
+| --- | --- | --- | --- | --- | --- |
+| AERO_MINGW_BIN | Windows build script; directory path | Unset leaves MinGW lookup to PATH | Before compiler checks | Prepends the supplied directory to PATH; build.ps1 | $env:AERO_MINGW_BIN='path/to/mingw/bin'; .\build.ps1 |
+| AERO_PYTHON_SCRIPTS | Windows build script; directory path | Unset searches the local Python installation, then PATH | Before CMake checks | Prepends Python's Scripts directory; build.ps1 | $env:AERO_PYTHON_SCRIPTS='path/to/python/Scripts'; .\build.ps1 |
+| ROM_FILENAME | Build and CI; ROM file name | Defaults to AeroGauge (USA).z64; CI supplies the same name to both scripts | Before the ROM check | Selects the input file; build scripts and build-release.yml | ROM_FILENAME='AeroGauge (USA).z64' ./build.sh |
+| Python3_EXECUTABLE | CMake configure; interpreter path | Unset searches standard interpreter names | Configure time | Selects the Python used by ROM-backed helper generation; CMakeLists.txt | cmake -S . -B build -DPython3_EXECUTABLE=python3 |
+| CMAKE_BUILD_TYPE | CMake configure; build type | Release in the host scripts; a direct configure may choose another type | Configure time | Selects compiler optimization and debug settings; CMake | cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug |
+| RT64_STATIC | Internal CMake value; boolean | Set true by CMakeLists.txt | Configure time | Selects static RT64 linkage; CMakeLists.txt | cmake -S . -B build -DRT64_STATIC=TRUE |
+| RT64_SDL_WINDOW_VULKAN | Internal CMake value; boolean | Set for non-Windows targets | Configure time | Selects the SDL/Vulkan window path; CMakeLists.txt | cmake -S . -B build -DRT64_SDL_WINDOW_VULKAN=TRUE |
+| SDL_MAIN_HANDLED | Frontend test compile definition; no user value | Set only for the Windows frontend test | Compile time | Prevents SDL from supplying a second main entry point; cmake/Frontend.cmake | cmake -S . -B build |
+| NOMINMAX | Frontend test compile definition; no user value | Set only for the Windows frontend test | Compile time | Prevents Windows headers from defining min and max macros; cmake/Frontend.cmake | cmake -S . -B build |
+| _WIN32 and __linux__ | Compiler platform macros; compiler-defined | Set by the compiler for the target platform | Compile time | Select platform window, audio, and crash paths; source files | cmake -S . -B build |
+| AERO_CRASH_WIN32 and AERO_CRASH_POSIX | Internal source macros; no user value | Defined by aero_crash.cpp from the platform | Compile time | Selects the crash-report implementation; src/aero_crash.cpp | cmake -S . -B build |
+
 ## File errors and live writes
 
 If a JSON file is missing, the port writes a complete file using defaults. If

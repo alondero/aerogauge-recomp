@@ -37,6 +37,7 @@ The current CMake file registers these tests:
 | race_intro | Host | RT64 headers from the initialized submodule |
 | full_track_policy | Host | No ROM |
 | turbo_boost_gate | Host | No ROM |
+| frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | live_config_updates | Host | Runtime headers; no ROM |
 | user_data_dir | Host | No ROM |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |

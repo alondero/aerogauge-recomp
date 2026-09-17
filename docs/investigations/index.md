@@ -26,6 +26,8 @@ runtime boundary.
 - [Settings frontend review](2026-09-17-settings-frontend-review.md) records
   the post-merge frontend boundary, earlier targeted test evidence, and the
   checks that remain open.
+- [Generated symbol inputs](2026-09-17-generated-symbols.md) records the
+  historical ROM evidence behind the hand-maintained symbol generator.
 
 The earlier [documentation audit](../documentation-audit.md) and
 [working notes](../notes/) remain available. They contain useful historical

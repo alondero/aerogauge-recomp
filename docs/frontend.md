@@ -16,9 +16,9 @@ Open the menu with **Escape**, **F10**, or controller **Back**. It can open whil
 the game is fullscreen. Use the mouse, keyboard, or controller D-pad. The page
 shows the active button prompts.
 
-While the menu has focus, the port gives the menu the gameplay input snapshot.
-The race is not paused. Hotplug events continue to be handled. Closing the menu
-returns input to the game.
+While the menu has focus, the port clears the gameplay input snapshot and
+queues the raw SDL events for RecompFrontend. The race is not paused. Hotplug
+events continue to be handled. Closing the menu returns input to the game.
 
 The shared frontend has these pages:
 

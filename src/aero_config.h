@@ -59,9 +59,9 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
 // (empty = feature off), overridable by env var for headless capture/testing:
 //   texture_pack  / AERO_TEXTURE_PACK  -- directory or .rtz to auto-load at startup.
 //   texture_dump  / AERO_TEXTURE_DUMP  -- directory RT64 writes every used texture to
-//                                          (raw TMEM/RDRAM dumps; decode with
-//                                          tools/decode_dump.py). Enables headless dump
-//                                          without the F1 developer overlay.
+//                                          (raw TMEM/RDRAM dumps for offline analysis).
+//                                          Enables headless dump without the F1 developer
+//                                          overlay.
 std::string texture_pack_path();
 std::string texture_dump_dir();
 void set_texture_pack_path(std::string path);
