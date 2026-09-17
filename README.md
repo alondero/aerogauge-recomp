@@ -73,11 +73,16 @@ Controller 1 has a virtual **Controller Pak** by default. Use AeroGauge's own
 Controller Pak / Time Attack ghost save and load options; notes survive closing
 and restarting the port. Cartridge progress and settings continue to use EEPROM.
 
-Both live in the application's `saves` folder:
+Saves, `graphics.json`, `enhancements.json`, and renderer logs all live in one
+per-user folder (`AeroGaugeRecomp`). The `saves` subfolder holds cartridge and
+Controller Pak images:
 
 - Windows: `%LOCALAPPDATA%\AeroGaugeRecomp\saves`
 - Linux: `$XDG_CONFIG_HOME/AeroGaugeRecomp/saves`, or `~/.config/AeroGaugeRecomp/saves`
 - Portable mode (`portable.txt` in the working directory): `./saves`
+
+An empty leftover `%LOCALAPPDATA%\aerogauge-recomp` (or `~/.config/.aerogauge-recomp`)
+from earlier builds can be deleted; the port no longer writes there.
 
 `aerogauge.us.mpk` is the 32 KiB Controller Pak image; `aerogauge.us.bin` is the
 512-byte EEPROM save. Back up both to keep ghosts and cartridge progress.

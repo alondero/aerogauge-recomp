@@ -16,7 +16,9 @@
 namespace aero {
 namespace config {
 
-// Per-user persistent config directory (created on demand):
+// Per-user persistent data directory (created on demand). Same folder as
+// RT64 logs — see aero_paths.h. portable.txt in the working directory keeps
+// everything local.
 //   Windows: %LOCALAPPDATA%\AeroGaugeRecomp
 //   else:    $XDG_CONFIG_HOME/AeroGaugeRecomp (or ~/.config/AeroGaugeRecomp)
 std::filesystem::path app_config_dir();
