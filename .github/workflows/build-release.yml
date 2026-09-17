@@ -85,6 +85,7 @@ jobs:
         # 0006, 0008, 0009, 0010, 0011) idempotently.
         run: |
           git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/RecompFrontend checkout -- .
           git -C lib/rt64 checkout -- .
           git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 
@@ -107,6 +108,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           cp build/aerogauge_modern dist/
+          cp -r build/assets dist/
           # Symbol table: probed next to the exe at runtime so field crash
           # dumps show function names, not raw N64 PCs.
           cp aerogauge.syms.toml dist/
@@ -189,6 +191,7 @@ jobs:
         run: |
           git config --global core.autocrlf false
           git -C lib/N64ModernRuntime checkout -- .
+          git -C lib/RecompFrontend checkout -- .
           git -C lib/rt64 checkout -- .
           git -C lib/rt64/src/contrib/plume checkout -- .
 
@@ -216,11 +219,11 @@ jobs:
           # Fail the build loudly if any required file is absent instead of
           # shipping a broken zip. aerogauge.syms.toml is shipped so field crash
           # reports resolve guest PCs to function names.
-          # NOTE: AeroGauge's local build/ does not produce freetype.dll or an
-          # assets/ directory (unlike Lambo) — only ship what the build produces.
           $payload = @(
             'build\aerogauge_modern.exe',
             'build\SDL2.dll',
+            'build\freetype.dll',
+            'build\assets',
             'build\dxcompiler.dll',
             'build\dxil.dll',
             'aerogauge.syms.toml'

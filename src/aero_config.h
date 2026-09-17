@@ -47,6 +47,14 @@ struct WindowSize { int width; int height; };
 WindowSize window_size();
 void set_window_size(WindowSize size);
 
+// Apply graphics, window-size, and texture-path changes together. This updates
+// the live renderer and writes graphics.json once for one menu Apply action.
+void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
+                             WindowSize size,
+                             std::string texture_pack,
+                             std::string texture_dump,
+                             bool apply_live = true);
+
 // RT64 texture-replacement paths (issue #9). Both are extra graphics.json string keys
 // (empty = feature off), overridable by env var for headless capture/testing:
 //   texture_pack  / AERO_TEXTURE_PACK  -- directory or .rtz to auto-load at startup.

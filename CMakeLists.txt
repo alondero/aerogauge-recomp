@@ -143,7 +143,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
         src/aero_config.cpp    # persistent graphics.json -> ultramodern GraphicsConfig
-        src/aero_menu.cpp      # native Win32 menu bar; live configuration actions + persistence
+        src/aero_menu.cpp      # portable RecompFrontend overlay and SDL input capture
         src/aero_crash.cpp     # native crash backtrace: Win32 EXCEPTION_POINTERS +
                                # POSIX sigaction handler printing KSEG0/RDRAM offset + a 32-entry
                                # function-lookup trace ring. No deps beyond libc + DbgHelp (Win) /
@@ -335,6 +335,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
     # RT64 renderer (default presenter; see the RT64 block above).
     target_sources(aerogauge_modern PRIVATE src/rt64_renderer.cpp)
+    include(cmake/Frontend.cmake)
     # rt64's include_directories() are directory-scoped and do not propagate;
     # mirror Zelda64Recomp's include list for the game target.
     set(RT64_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64)
@@ -371,9 +372,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             COMMENT "Embedding DPI-awareness manifest (windres)")
         target_sources(aerogauge_modern PRIVATE ${AERO_MANIFEST_OBJ})
 
-        # Native menu pickers use the shell folder and common file dialogs for
-        # texture-pack/dump paths.
-        target_link_libraries(aerogauge_modern PRIVATE shell32 ole32 comdlg32)
+        # RecompFrontend resolves the per-user configuration directory.
+        target_link_libraries(aerogauge_modern PRIVATE shell32)
         # Native crash backtrace: CaptureStackBackTrace lives in dbghelp.dll.
         # MinGW64 ships the import lib (libdbghelp.a) so an explicit
         # target_link_libraries entry is enough; we don't ship the DLL — the

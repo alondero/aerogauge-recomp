@@ -14,11 +14,13 @@
 #   3. Submodule init (recursive; core.longpaths isn't needed on Linux).
 #   4. Defensive submodule reset before patching (half-applied patches from a
 #      prior run would otherwise break the next apply with "patch failed: ...").
-#   5. Apply submodule patches (Linux: 0001, 0007, 0012, 0006, 0008, 0009 — no MinGW/D3D12
-#      fixes needed; no plume patch). 0007 adds the save-state thread-context
+#   5. Apply submodule patches (runtime 0001, 0007, 0012, 0014, 0015, 0017;
+#      frontend 0016; RT64 0006, 0008, 0009, 0010, 0011). Linux needs no MinGW/D3D12
+#      patches. 0007 adds the save-state thread-context
 #      registry; without it, (save-state module, when ported) fails to link with
 #      "undefined reference to ultramodern_relink_thread_contexts".
 #      --ignore-whitespace is a belt-and-suspenders guard for any CRLF drift.
+#      The PATCHES array below is the canonical order shared by the build guides.
 #   6. First CMake configure — the initial one runs before N64Recomp/
 #      RSPRecomp generate sources. The CMakeLists uses if(EXISTS) on the
 #      ROM-derived files so the first configure can succeed without them.
@@ -105,10 +107,11 @@ git submodule update --init --recursive
 # --- 5. Defensive submodule reset (mirrors CI) ------------------------------
 log "[2/5] Resetting submodules to clean state before patching..."
 git -C lib/N64ModernRuntime checkout -- .
+git -C lib/RecompFrontend checkout -- .
 git -C lib/rt64 checkout -- .
 git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 
-# --- 6. Apply submodule patches (Linux: 0001, 0007, 0012, 0006, 0008, 0009) ----------------
+# --- 6. Apply submodule patches in canonical order (runtime, frontend, RT64) ----------------
 # Mirrors CI's Linux job exactly (workflow lines 93-95). 0001 then 0007 both
 # patch N64ModernRuntime with disjoint hunks (verified to apply sequentially
 # on the pinned commit). 0007 adds the save-state thread-context registry +
@@ -121,6 +124,9 @@ PATCHES=(
     "lib/N64ModernRuntime:0007-ultramodern-savestate-thread-context-relink.patch"
     "lib/N64ModernRuntime:0012-librecomp-pi-dma-completion-osiomesg.patch"
     "lib/N64ModernRuntime:0014-librecomp-flush-eeprom-on-exit.patch"
+    "lib/N64ModernRuntime:0015-runtime-host-config-storage.patch"
+    "lib/N64ModernRuntime:0017-runtime-game-presentation.patch"
+    "lib/RecompFrontend:0016-recompfrontend-integration.patch"
     "lib/rt64:0006-rt64-interp-angular-velocity-matching.patch"
     "lib/rt64:0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
     "lib/rt64:0009-rt64-widescreen-split-subviewport.patch"

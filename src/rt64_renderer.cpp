@@ -310,6 +310,9 @@ public:
         app->updateEnhancementConfig();
     }
 
+    // The port starts gameplay directly; no launcher workload is needed.
+    void send_dummy_workload(uint32_t) override {}
+
     // Frame-pacing probe (PERMANENT harness instrumentation, same class as pace_probe):
     // AERO_FRAME_LOG=<path> logs gfx-thread anomalies -- gaps between update_screen calls
     // (the present cadence) and slow send_dl/update_screen bodies -- with ms timestamps.

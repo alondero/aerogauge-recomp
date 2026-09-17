@@ -3,7 +3,7 @@
 // Schema and behaviour mirror Zelda64Recomp's src/game/config.cpp graphics.json
 // (same key names, same per-key fall-back-to-default on missing/corrupt values,
 // and a "portable.txt in the LAUNCH directory -> keep config there" escape hatch),
-// minus the RmlUi menu: this port's UI is the JSON file itself plus hotkeys.
+// RecompFrontend's RmlUi menu queues changes to this main-thread persistence layer.
 #include "aero_config.h"
 
 #include <atomic>
@@ -64,9 +64,9 @@ std::atomic_bool g_full_track{true};
 // handling, so it is explicitly opt-in and defaults to the original game.
 std::atomic_bool g_easy_turbo_boost{false};
 
-// The native menu runs on the main SDL thread. Retaining a local snapshot means
-// it never has to read ultramodern's reference-returning getter while RT64 is
-// applying a setting on another thread.
+// The menu queues config operations onto the main SDL thread. This snapshot
+// avoids reading ultramodern's reference-returning getter while RT64 applies a
+// setting on another thread.
 ultramodern::renderer::GraphicsConfig g_current_graphics{};
 
 float clamp_draw_distance(float v) {
@@ -377,6 +377,52 @@ void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply
     if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
     if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
     if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
+    if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
+    save_graphics_updates(updates);
+}
+
+void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
+                             WindowSize size,
+                             std::string texture_pack,
+                             std::string texture_dump,
+                             bool apply_live) {
+    const auto before = g_current_graphics;
+    g_current_graphics = cfg;
+
+    nlohmann::json updates = nlohmann::json::object();
+    if (before.res_option != cfg.res_option) updates["res_option"] = cfg.res_option;
+    if (before.wm_option != cfg.wm_option) updates["wm_option"] = cfg.wm_option;
+    if (before.hr_option != cfg.hr_option) updates["hr_option"] = cfg.hr_option;
+    if (before.api_option != cfg.api_option) updates["api_option"] = cfg.api_option;
+    if (before.ar_option != cfg.ar_option) updates["ar_option"] = cfg.ar_option;
+    if (before.msaa_option != cfg.msaa_option) updates["msaa_option"] = cfg.msaa_option;
+    if (before.rr_option != cfg.rr_option) updates["rr_option"] = cfg.rr_option;
+    if (before.hpfb_option != cfg.hpfb_option) updates["hpfb_option"] = cfg.hpfb_option;
+    if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
+    if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
+    if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
+
+    const auto clamped_size = clamp_window_size(size);
+    {
+        std::lock_guard<std::mutex> lock(g_texture_mutex);
+        if (g_window_size.width != clamped_size.width)
+            updates["window_width"] = clamped_size.width;
+        if (g_window_size.height != clamped_size.height)
+            updates["window_height"] = clamped_size.height;
+        g_window_size = clamped_size;
+
+        // Environment overrides are read-only in the menu and must not be
+        // copied into the user's JSON file by an Apply action.
+        if (!std::getenv("AERO_TEXTURE_PACK") && g_texture_pack != texture_pack) {
+            g_texture_pack = std::move(texture_pack);
+            updates["texture_pack"] = g_texture_pack;
+        }
+        if (!std::getenv("AERO_TEXTURE_DUMP") && g_texture_dump != texture_dump) {
+            g_texture_dump = std::move(texture_dump);
+            updates["texture_dump"] = g_texture_dump;
+        }
+    }
+
     if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
     save_graphics_updates(updates);
 }
