@@ -81,9 +81,6 @@ Controller Pak images:
 - Linux: `$XDG_CONFIG_HOME/AeroGaugeRecomp/saves`, or `~/.config/AeroGaugeRecomp/saves`
 - Portable mode (`portable.txt` in the working directory): `./saves`
 
-An empty leftover `%LOCALAPPDATA%\aerogauge-recomp` (or `~/.config/.aerogauge-recomp`)
-from earlier builds can be deleted; the port no longer writes there.
-
 `aerogauge.us.mpk` is the 32 KiB Controller Pak image; `aerogauge.us.bin` is the
 512-byte EEPROM save. Back up both to keep ghosts and cartridge progress.
 A missing Pak starts formatted; existing images are never silently replaced on a
