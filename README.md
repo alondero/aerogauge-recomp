@@ -5,6 +5,9 @@ It runs your own copy of the game in a native window.
 
 This branch includes an in-game settings screen. It is still being checked.
 The whole game, audio, and visual enhancements need more testing.
+The details below describe the current main branch. A release archive can
+predate this branch, so check its release notes before expecting the settings
+screen or other newly merged features.
 
 ## Supported computers
 
