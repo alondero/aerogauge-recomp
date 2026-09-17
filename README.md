@@ -86,8 +86,9 @@ The program stores its files in these locations:
 The contents of `portable.txt` do not matter. Its presence selects portable
 mode.
 
-`graphics.json` stores display settings. `enhancements.json` stores the
-gameplay assist setting. Game saves are in the `saves` subfolder. Back up
+`graphics.json` stores display settings, including draw distance and
+full-course geometry. `enhancements.json` stores the Easy Turbo + Boost
+Start assist setting. Game saves are in the `saves` subfolder. Back up
 that folder before testing a new build.
 
 ## Known limitations

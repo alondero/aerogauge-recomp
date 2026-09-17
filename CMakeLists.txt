@@ -48,11 +48,11 @@ if(WIN32)
     set(SDL2_INCLUDE_DIRS ${SDL2_WIN32_DEPS}/include)
     set(SDL2_LIBRARIES SDL2 SDL2main)
     link_directories(${SDL2_WIN32_DEPS}/lib/x64)
-    # MinGW's bundled d3d12.h is years behind the D3D12 SDK: plume needs
-    # D3D12_HEAP_TYPE_GPU_UPLOAD and D3D12MemAlloc needs <dxguids.h> (its own
-    # MinGW support path. Microsoft's DirectX-Headers package is
-    # the official fix and supports MinGW; put its d3d12.h AHEAD of the MinGW
-    # system header and link the GUID definitions library everywhere.
+    # MinGW's bundled d3d12.h is years behind the D3D12 SDK. Plume needs
+    # D3D12_HEAP_TYPE_GPU_UPLOAD, and D3D12MemAlloc needs <dxguids.h>.
+    # Microsoft's DirectX-Headers package is the official fix and supports
+    # MinGW; put its d3d12.h AHEAD of the MinGW system header and link the GUID
+    # definitions library everywhere.
     include(FetchContent)
     FetchContent_Declare(DirectX-Headers
         GIT_REPOSITORY https://github.com/microsoft/DirectX-Headers

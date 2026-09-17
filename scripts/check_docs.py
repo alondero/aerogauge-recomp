@@ -54,6 +54,7 @@ PLACEHOLDER_URL_RE = re.compile(
     r"(?i)https?://(?:example\.(?:com|org|net)|localhost(?:[:/)]|$)|"
     r"github\.com/\.\.\.)"
 )
+PATCH_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 STANDALONE_TESTS = [
     "tests/test_aspect_overscan.cpp",
@@ -74,6 +75,9 @@ def markdown_files() -> list[Path]:
     for path in (ROOT / ".github").rglob("*.md"):
         files.append(path)
     for path in (ROOT / "docs").rglob("*.md"):
+        if path not in EXCLUDED:
+            files.append(path)
+    for path in (ROOT / "assets").rglob("*.md"):
         if path not in EXCLUDED:
             files.append(path)
     return sorted(set(files))
@@ -125,6 +129,63 @@ def heading_anchors(text: str) -> set[str]:
         anchors.add(slug if index == 0 else f"{slug}-{index}")
     anchors.update(re.findall(r"(?:id|name)=[\"']([^\"']+)[\"']", text, flags=re.IGNORECASE))
     return anchors
+
+
+def check_patch_hunks() -> list[str]:
+    errors: list[str] = []
+    for path in sorted((ROOT / "patches").glob("*.patch")):
+        current: tuple[int, int, int, int, int] | None = None
+
+        def finish_hunk() -> None:
+            if current is None:
+                return
+            line_number_, expected_old, expected_new, actual_old, actual_new = current
+            if (actual_old, actual_new) != (expected_old, expected_new):
+                errors.append(
+                    f"{path.relative_to(ROOT)}:{line_number_}: patch hunk counts "
+                    f"expect old {expected_old}/new {expected_new}, "
+                    f"counted old {actual_old}/new {actual_new}"
+                )
+
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            match = PATCH_HUNK_RE.match(line)
+            if match:
+                finish_hunk()
+                current = (
+                    number,
+                    int(match.group(2) or "1"),
+                    int(match.group(4) or "1"),
+                    0,
+                    0,
+                )
+                continue
+            if line.startswith("diff --git "):
+                finish_hunk()
+                current = None
+                continue
+            if current is None or line == r"\ No newline at end of file":
+                continue
+            line_number_, expected_old, expected_new, actual_old, actual_new = current
+            if line.startswith(" "):
+                actual_old += 1
+                actual_new += 1
+            elif line.startswith("+"):
+                actual_new += 1
+            elif line.startswith("-"):
+                actual_old += 1
+            else:
+                errors.append(
+                    f"{path.relative_to(ROOT)}:{number}: invalid line inside patch hunk"
+                )
+            current = (
+                line_number_,
+                expected_old,
+                expected_new,
+                actual_old,
+                actual_new,
+            )
+        finish_hunk()
+    return errors
 
 
 def main() -> int:
@@ -206,6 +267,8 @@ def main() -> int:
         if Path(test_path).name not in testing:
             errors.append(f"docs/testing.md does not document standalone test: {test_path}")
 
+    errors.extend(check_patch_hunks())
+
     if errors:
         print("Documentation check failed:")
         for error in errors:
@@ -215,6 +278,10 @@ def main() -> int:
     print(f"Documentation check passed ({len(files)} Markdown files; no ROM required).")
     print(f"Checked {len(ctest_names)} CTest names against docs/testing.md.")
     print(f"Checked {len(STANDALONE_TESTS)} standalone test references against docs/testing.md.")
+    print(
+        f"Checked {len(list((ROOT / 'patches').glob('*.patch')))} patch files for "
+        "matching hunk counts."
+    )
     return 0
 
 

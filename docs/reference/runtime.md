@@ -3,7 +3,7 @@
 The executable links the translated game against
 [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime). The parent
 repository pins the runtime gitlink at
-[ae1ffbb](https://github.com/N64Recomp/N64ModernRuntime/tree/ae1ffbb909d9f93c88c41830deb539f7feef5ed2).
+[cdf5abb](https://github.com/N64Recomp/N64ModernRuntime/tree/cdf5abbd5026fef5c364c676e4667c45e42b6863).
 The source submodule may be empty until a developer runs the recursive
 submodule command in [BUILDING](../../BUILDING.md).
 

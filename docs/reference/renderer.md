@@ -2,7 +2,7 @@
 
 The normal player renderer is
 [RT64](https://github.com/rt64/rt64), pinned by this repository at
-[f0728a2](https://github.com/rt64/rt64/tree/f0728a2520d5aa735886240de3fee75cc805f6d2).
+[f0728a2](https://github.com/rt64/rt64/tree/f0728a2520d5aa735886240de3fee75cc805f6d6).
 The current worktree does not have the submodule contents initialized, so
 the audit below uses the public RT64 documentation and the port's checked-in
 patches. Before removing a patch, compare it with the exact pinned source.
