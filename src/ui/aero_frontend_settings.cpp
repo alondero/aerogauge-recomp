@@ -20,6 +20,9 @@ void sync(Config& page, const char* id, ConfigValueVariant value) {
     if (page.requires_confirmation) page.apply_option_value(id);
 }
 
+// RecompFrontend owns the temporary page values. The port owns the persistent
+// JSON files and the live settings snapshot, so opening or refreshing a page
+// copies from the port instead of making the frontend a second storage owner.
 void seed_graphics() {
     auto& page = recompui::config::get_graphics_config();
     seeded = aero::config::current_graphics();
@@ -60,6 +63,8 @@ void save_graphics() {
                                       int(std::get<double>(page.get_option_value("window_height")))};
     const auto pack = std::get<std::string>(page.get_option_value("texture_pack"));
     const auto dump = std::get<std::string>(page.get_option_value("texture_dump"));
+    // The callback may run while the frontend render lock is held. Capture the
+    // proposed values and let aero_menu::update apply them on the SDL thread.
     enqueue([edited, before = seeded, size, old_size = seeded_size, pack, dump] {
         auto cfg = aero::config::current_graphics();
         // Merge only edited fields: F11 may have changed the window mode since
@@ -69,6 +74,9 @@ void save_graphics() {
         MERGE(ar_option); MERGE(msaa_option); MERGE(rr_option); MERGE(hpfb_option);
         MERGE(ds_option); MERGE(rr_manual_value); MERGE(developer_mode);
 #undef MERGE
+        // JSON I/O and SDL window calls are main-thread operations. The current
+        // lock also means a blocking action can delay rendering; see the
+        // settings frontend ADR before changing this boundary.
         aero::config::apply_graphics_settings(cfg, size, pack, dump);
         const bool resized = size.width != old_size.width || size.height != old_size.height;
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();

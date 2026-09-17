@@ -1,16 +1,10 @@
 #ifndef AERO_RT64_H
 #define AERO_RT64_H
 
-// RT64 renderer for the pivot runtime — the DEFAULT presenter (#58, flipped 2026-07-02
-// after RT64 present was confirmed on-screen and the VI mode converged to ares).
-//
-// RT64 is a hard BUILD dependency (recomp/lib/rt64 submodule, always compiled in) but
-// not a hard RUNTIME dependency: AERO_HEADLESS=1 — a PERMANENT harness knob, same
-// class as AERO_MODERN_MAX_VIS, not an A/B lever — skips the window and RT64 entirely
-// and uses the headless swrender. swrender stays as the MEASUREMENT INSTRUMENT: it
-// rasterises into the N64-resolution RDRAM framebuffer that the port-vs-ares harness
-// byte-compares, which RT64's native-resolution swapchain output can never be. RT64
-// setup failure (no Vulkan device, no display) also falls back to headless swrender.
+// RT64 is the normal presenter for the runtime. It is a build dependency, but the
+// process can run without a window when AERO_HEADLESS=1. That mode uses the software
+// renderer and is intended for deterministic framebuffer tests and diagnostics.
+// If RT64 cannot create a window or graphics device, the caller uses the same fallback.
 
 #include <memory>
 

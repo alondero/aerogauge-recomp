@@ -1,4 +1,12 @@
-# Widescreen 1P HUD pinning (issue #1)
+# Widescreen 1P HUD pinning (historical research)
+> This is a historical working note. It preserves measurements and captures
+> from the feature's development. The current contract is in
+> [the renderer reference](../reference/renderer.md), and new captures should
+> follow [the debugging guide](../debugging.md).
+>
+> Some original captures used local helper files that are not tracked in this
+> repository. They are not required for the current build or test workflow.
+> Do not treat a missing local helper as a reproducible project command.
 
 Under RT64 `ar_option: Expand`, untagged 2D is rendered centred in the 4:3 region, so the
 1P race HUD's edge-anchored elements float inboard of the widescreen edges. The fix tags
@@ -8,9 +16,9 @@ rects aren't clipped at the 4:3 edge), injected as N64Recomp `[[patches.hook]]` 
 bracket is a no-op there — no config gate needed. The pure classification/scaling math
 lives in `src/aero_hud_widescreen.h` with `tests/test_hud_shift_scale.c`.
 
-## How the HUD is drawn (live-derived; see the `.claude/hud-*.gdb` harnesses)
+## How the HUD is drawn (live-derived; see the tracked source and host tests)
 
-AeroGauge does NOT use static per-element draw calls like the Lamborghini port. The 2D
+AeroGauge does NOT use static per-element draw calls like some comparison ports. The 2D
 master dispatcher **`func_80022408`** walks object lists and calls each object's draw handler
 **indirectly** (`jalr` through a per-object function pointer at `obj+0x104` and `obj+0x34`).
 So there is no static per-element call site to bracket — the element identity lives in the
@@ -35,7 +43,7 @@ handler function and the per-object data.
 Low-level texrect emitter for all: `func_80019D0C`. The centred DAMAGE bar `func_8003A190`
 is off both handler paths and is not drawn in the plain canyon race (never bracketed).
 
-## Shipped (issue #1, first increment): speedometer RIGHT pin
+## First implementation: speedometer RIGHT pin
 
 Historical: the first increment bracketed `func_80018CF0` (small and speedo-exclusive, one
 call/frame) with a dedicated hook pair at `0x80018CF0`/`0x80018D5C`. That bracket was
@@ -56,7 +64,7 @@ Capture recipe (windowed, this machine): set `hr_option` in
 wait ~40 s for the steady race HUD, PrintWindow-grab the "AeroGauge" window (flag 2 =
 PW_RENDERFULLCONTENT captures the D3D12 swapchain). 4:3 and 21:9 remain a human spot-check.
 
-## Shipped (issue #1, second increment): speedometer NEEDLE pin (2026-07-12)
+## Second increment: speedometer NEEDLE pin (2026-07-12)
 
 The first increment moved ONLY the cyan dial-ring texrect (`func_80018CF0`, DL slot
 `0x18C440`, decode `(247,172)-(300,224)`), leaving the orange needle and the "0" MPH digit
@@ -73,7 +81,8 @@ behind (user-reported "split speedo"). The needle is now pinned too; live-derive
   transform walker `func_800226AC` (build mtx via `func_80024370` concat + `func_8006C230`
   store to obj+0x9C, push `G_MTX`, recurse obj+0xA0/0xA4), reached `func_8001E8D8 ->
   func_80022408 -> func_800222C0 -> func_800226AC(recursive)`. So the shift is NOT a
-  dedicated-handler bracket like the dial ring; it mirrors Lamborghini's `patch_load_mtx_dx`.
+  dedicated-handler bracket like the dial ring; it uses the same kind of matrix-boundary
+  reasoning documented in the renderer investigation.
 - **Implementation** (`src/aero_hud_widescreen.c`, hooks in `scripts/gen_syms_toml.py`
   PATCH_BLOCKS): a matched pair brackets the whole 2D dispatcher `func_80022408` (not
   recursive, same holder `0x8016C508` buffer) — entry `before_vram=0x80022408`
@@ -81,7 +90,7 @@ behind (user-reported "split speedo"). The needle is now pinned too; live-derive
   (`aero_ws_needle_shift`, after every child handler appended, before the register restores)
   walks `[start,end)`, finds the needle MTX by the `0x800995C0` key, and adds `dx` to its
   matrix translate.x (element 12 = byte 24 int / byte 24+0x20 frac, s15.16 — identical layout
-  to Lamborghini's guMtxL; MEM_H/MEM_HU handle the endian + KSEG masking).
+  to the original game's matrix layout; MEM_H/MEM_HU handle the endian + KSEG masking).
 - **Matrix unit = one 320-space pixel; the shift is ANALYTIC, not calibrated** (corrected
   2026-07-16 — the original hand calibration of `41` was systematically short and left the
   needle ~45 px inboard of the pinned dial, user-reported). Live-logging the modelview at
@@ -100,12 +109,16 @@ is the retained follow-up):
 |---|---|
 | ![needle before](../hud-widescreen-1p-needle-before-16x9.png) | ![needle after](../hud-widescreen-1p-needle-after-16x9.png) |
 
-Windowed capture recipe for recalibration: `scratchpad/capture.ps1 <out.png> <dx> [waitSec]`
-(recreate on demand — launches windowed `AERO_WARP=1:1`, waits for the steady HUD, PrintWindow
-flag 2 grabs the swapchain). Attribution harness: `.claude/needle-watch.gdb` (watches the
-needle modelview `0x80185970` write). `hr_option: Original` = unshifted reference.
+The original recalibration used local capture and debugger helpers that are not
+tracked here. To make a new capture, use the reproducible commands in
+[debugging](../debugging.md), record the exact trigger, and use a tracked
+test or debugger script for any claim that should become a project rule.
+The old capture used a local window launcher and debugger watch that are not
+tracked here. Use the reproducible commands in the debugging guide and
+record the exact trigger with a tracked test or debugger script.
+The Original HUD ratio mode is the unshifted reference.
 
-## Shipped (issue #1, third increment): whole-frame per-texrect retag pass (2026-07-16)
+## Third increment: whole-frame per-texrect retag pass (2026-07-16)
 
 The remaining rect elements ("0" MPH digit, TEMP, GLPS, lap times, top row, …) all flow
 through MIXED handlers — `func_80018EA0` draws TEMP (right) **and** GLPS (left) inside one
@@ -160,7 +173,7 @@ image edges preserving each element's NATIVE margin (timer's rightmost rect is n
 the window and are intentional); the needle/digit offsets relative to the dial match the
 Original layout within 3 px; `Original` re-measures pixel-identical to pre-change.
 
-## Shipped (issue #1, fourth increment): pin through the pre-race countdown (2026-07-16)
+## Fourth increment: pin through the pre-race countdown (2026-07-16)
 
 User report: during the READY/SET countdown the HUD sat 4:3-centred and visibly snapped
 to the widescreen edges at GO. Cause: the original gate required phase `0x8013FF88` in

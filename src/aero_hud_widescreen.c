@@ -1,27 +1,17 @@
-// Per-element widescreen HUD pinning (issue #1, RT64 extended GBI).
+// Widescreen HUD adaptation for this ROM.
 //
-// Under `ar_option: Expand` RT64 renders untagged 2D centred in the 4:3 region, so the
-// 1P race HUD's edge-anchored elements float inboard of the widescreen edges. Peer ports
-// bracket each element's draw call with gEXSetRectAlign, but AeroGauge has no static
-// per-element draw calls to bracket: the 2D dispatcher func_80022408 walks object lists
-// and calls per-object handlers indirectly, and those handlers mix LEFT and RIGHT
-// elements inside one call (func_80018EA0 draws TEMP right + GLPS left), so no call
-// boundary separates them. Instead the whole dispatcher is bracketed (entry latches the
-// DL write cursor, the epilogue hook post-processes what the frame actually emitted):
-//   1. texrects are re-emitted with RT64 rect-align + wide-scissor brackets inserted
-//      around runs of same-anchor rects. Central message draw ranges retain their
-//      original alignment; other rects classify by coordinates (aero_hud_widescreen.h,
-//      measured thresholds from the mode-4 race capture); and
-//   2. the speedometer needle -- matrix-rotated 3D geometry a rect-align cannot carry --
-//      gets its modelview translate.x shifted to track the pinned dial ring.
-// At 4:3 / non-Expand RT64 leaves tagged rects put and the needle scale is 0, so the
-// whole pass degenerates to a byte-identical re-emit -- no config gate needed.
+// The game thread builds the 2D display list through indirect object handlers.
+// This module brackets that dispatcher, reads the current cursor holder through
+// N64Recomp memory helpers, and re-emits a bounded range with RT64 extended
+// GBI alignment commands. The same pass identifies the speedometer needle by
+// its static mesh target and adjusts its modelview translation.
 //
-// Cursor convention (live-derived): AeroGauge's DL builder holds the write cursor in a
-// fixed global at 0x8016C508 (cursor = MEM_W(0, holder)); every 2D helper reads it,
-// stores a command, and advances it by 8. The DL is double-buffered (the cursor
-// alternates between two RDRAM buffers frame to frame), so the holder -- never an
-// absolute DL address -- is the only stable handle.
+// The cursor holder at 0x8016C508 is the stable handle; the display-list
+// buffer changes between frames. All guest words and matrix fields must use
+// MEM helpers because the buffer has N64 byte order. Invalid ranges, raw
+// 3D commands, and unsafe branch shapes make the pass skip or preserve the
+// original stream. The coordinate thresholds are evidence for this ROM, not
+// a general RT64 rule. See docs/reference/renderer.md and docs/notes/.
 
 #include "recomp.h"
 #include "rt64_extended_gbi.h"
@@ -76,7 +66,8 @@ static void push_wide_scissor_at(uint8_t* rdram, gpr* cur) {
 // A pin bracket = align to the anchored origin + a wide scissor so the moved rects are
 // not clipped at the 4:3 edge. LEFT keeps original coordinates measured from the true
 // left edge; RIGHT rebases them to the right edge (movedFromOrigin adds the full image
-// width, so the original 320-wide space is subtracted back out -- peer-standard offset).
+// width, so the original 320-wide space is subtracted back out for the
+// right-origin coordinate system.
 #define AERO_WS_BRACKET_OPEN_CMDS  6
 #define AERO_WS_BRACKET_CLOSE_CMDS 4
 
@@ -99,12 +90,12 @@ static void bracket_close_at(uint8_t* rdram, gpr* cur) {
 // --- speedometer needle (RIGHT-anchored geometry) ---------------------------------------
 // The dial ring is a texrect the retag pass pins; the orange needle is a single
 // matrix-rotated TRIANGLE, so RT64 leaves it centred and it detaches from the pinned ring
-// (issue #1 "split speedo"). There is no dedicated handler to bracket: the needle is one
+// The needle is separate from the dial's texrect. There is no dedicated handler to bracket:
 // node of the generic recursive scene-graph walker func_800226AC, reached func_8001E8D8
-// -> func_80022408 -> func_800222C0 -> func_800226AC. So we mirror the Lamborghini port's
-// patch_load_mtx_dx: walk the DL the dispatcher emitted, find the needle's G_MTX, and add
+// -> func_80022408 -> func_800222C0 -> func_800226AC. Walk the emitted range, find the
+// needle's G_MTX, and add
 // dx to its translate.x (element 12 = byte 24 int / byte 24+0x20 frac, s15.16 -- identical
-// layout to Lamborghini's guMtxL). RT64 moves the ring by extAspectPercentage, so the
+// layout to the game's matrix format). RT64 moves the ring by extAspectPercentage, so the
 // needle shift scales off the SAME effective rect aspect (aero_ws_get_hud_rect_aspect_bits)
 // -> 0 at 4:3/Original, so the walk is a no-op there (no config gate needed).
 //
@@ -121,8 +112,8 @@ static void bracket_close_at(uint8_t* rdram, gpr* cur) {
 // confirmed the ratio (a 41-unit shift moved the needle 158 px while the rect-aligned
 // dial travelled 203 px; 41/53.3 == 158/205). So the needle must travel exactly the
 // rects' 16:9 travel in the same space: 320 * (16/9 / (4/3) - 1) / 2 = 53.33 px. (The
-// original hand calibration of 41 was systematically short -- the "split speedo" the
-// user reported.) AERO_WS_NEEDLE_DX overrides it for recalibration.
+// original hand calibration of 41 was systematically short. AERO_WS_NEEDLE_DX
+// overrides it for recalibration.
 #define AERO_WS_NEEDLE_DX 53.333f
 
 // Bridge from rt64_renderer.cpp: the effective rect-pin aspect as raw float bits (a

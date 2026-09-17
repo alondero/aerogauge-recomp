@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 # AeroGauge: Recompiled — a static-recompilation PC port built on
 # N64ModernRuntime (ultramodern + librecomp) with the RT64 renderer.
-# Stack cloned from the Automobili Lamborghini port (the proven template).
+# Generated ROM code and hand-written port code are built as separate targets.
 #
 # See BUILDING.md for full instructions. In short, from the repo root:
 #
@@ -31,9 +31,9 @@ set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
 
 # --- RT64 renderer (default presenter; hard build dependency) ---
 # lib/rt64 is a pinned git submodule; RT64 is always compiled in and is the
-# default presenter at runtime (AERO_HEADLESS=1 is the harness knob that keeps the
-# headless swrender, the RDRAM-framebuffer measurement instrument for the
-# port-vs-ares harness). Wiring mirrors Zelda64Recomp's CMakeLists.txt.
+# default presenter at runtime (AERO_HEADLESS=1 selects the headless software
+# renderer used by framebuffer tests). The target setup follows RT64's public
+# CMake interface and this repository's generated-code boundary.
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/CMakeLists.txt)
     message(FATAL_ERROR "lib/rt64 submodule is missing. Initialise it first:\n"
         "  git submodule update --init --recursive")
@@ -50,7 +50,7 @@ if(WIN32)
     link_directories(${SDL2_WIN32_DEPS}/lib/x64)
     # MinGW's bundled d3d12.h is years behind the D3D12 SDK: plume needs
     # D3D12_HEAP_TYPE_GPU_UPLOAD and D3D12MemAlloc needs <dxguids.h> (its own
-    # MinGW support path, D3D12MA #71). Microsoft's DirectX-Headers package is
+    # MinGW support path. Microsoft's DirectX-Headers package is
     # the official fix and supports MinGW; put its d3d12.h AHEAD of the MinGW
     # system header and link the GUID definitions library everywhere.
     include(FetchContent)
@@ -70,7 +70,7 @@ else()
     set(NFD_PORTAL ON CACHE BOOL "" FORCE)
 endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
-# Generated shader headers land in the rt64 binary dir (Zelda64Recomp does the same).
+# RT64 generates shader headers in its binary directory.
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 if(WIN32)
     # GUID definitions for GCC's __uuidof emulation (see the DirectX-Headers
@@ -153,12 +153,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                     # routed via `[patches] ignored` in aerogauge.us.toml
         src/aero_full_track.cpp     # native course-geometry registrars: full-track rendering
                                     # (large-scale pop-in fix); same `ignored` routing
-        src/aero_warp.c        # developer warp menu (#3): F1-F6 / AERO_WARP race warp;
+        src/aero_warp.c        # developer warp menu: F1-F6 / AERO_WARP race warp;
                                # tick hooked at func_80015FD0 via [[patches.hook]]
-        src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning (#1): whole-frame texrect
+        src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning: whole-frame texrect
                                    # retag pass + needle matrix shift, hooked around the
                                    # 2D dispatcher func_80022408 via [[patches.hook]]
-        src/aero_savestate.c   # developer save-state (#17): F7/F8 / AERO_STATE_LOAD RDRAM
+        src/aero_savestate.c   # developer save-state: F7/F8 / AERO_STATE_LOAD RDRAM
                                # snapshot; tick hooked one instruction into func_80015C8C
         src/aero_turbo_boost.c # accelerator-only Boost Start + button-operated race Turbo;
                                # hooked after P1's configured controls are mapped
@@ -343,7 +343,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_sources(aerogauge_modern PRIVATE src/rt64_renderer.cpp)
     include(cmake/Frontend.cmake)
     # rt64's include_directories() are directory-scoped and do not propagate;
-    # mirror Zelda64Recomp's include list for the game target.
+    # RT64's include directories are directory-scoped, so repeat the list for
+    # the game target.
     set(RT64_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64)
     target_include_directories(aerogauge_modern PRIVATE
         ${RT64_DIR}/include

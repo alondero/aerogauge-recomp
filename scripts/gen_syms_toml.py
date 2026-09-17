@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Generate the runtime-addressed whole-ROM syms.toml + us.toml for AeroGauge (USA).
 
-Model: same ROM+syms N64Recomp mode as the Automobili Lamborghini port this stack was
-cloned from (the drmario64 template model) — ONE contiguous .text section at
-rom=0x1000 / vram=0x80000400 (the ROM-header entrypoint), functions listed with
+Model: the ROM+symbols mode supported by N64Recomp — ONE contiguous .text section
+at rom=0x1000 / vram=0x80000400 (the ROM-header entrypoint), functions listed with
 name/vram/size, absolute addressing, no relocs.
 
-Unlike the Lamborghini port there is NO pre-existing splat disassembly to source
-function boundaries from, so this script derives them from the ROM itself:
+There is no checked-in disassembly for this ROM, so this script derives function
+boundaries from the ROM itself:
 
   * Measured code extent (2026-07-10 density scan, scripts history): CPU text is
     contiguous at ROM 0x1000..~0x7F4C0. Every jal located inside that window targets
@@ -20,8 +19,7 @@ function boundaries from, so this script derives them from the ROM itself:
     Sizes span to the next start (oversize is harmless; branches stay internal).
   * PRE-STUBS: functions containing CP0/cache instructions (the libultra kernel layer
     ultramodern replaces wholesale) and functions whose branches escape their derived
-    range (mis-split shared-tail code — the Lamborghini SPLIT_MERGES class, to be
-    grown case-by-case as the port needs them) are emitted as `stubs` so the whole-ROM
+    range (mis-split shared-tail code) are emitted as `stubs` so the whole-ROM
     recompile succeeds. force_stub.txt adds hand-curated entries on top (one name per
     line, '#' comments) — the iteration loop for recompiler errors.
 
@@ -51,7 +49,8 @@ def vram_to_rom(v):
     return SECTION_ROM + (v - ENTRY)
 
 
-# Canonical libultra names, keyed by vram (the Lamborghini port's LIBULTRA_NAMES mechanism).
+# Canonical libultra names, keyed by VRAM. These names tell N64Recomp which SDK
+# functions should use runtime replacements or local stubs.
 # Naming a function canonically makes N64Recomp route it away from recompilation
 # (lib/N64ModernRuntime/N64Recomp/src/symbol_lists.cpp):
 #   * reimplemented_funcs -> call sites renamed `<name>_recomp`, librecomp provides the native.
@@ -65,8 +64,8 @@ LIBULTRA_NAMES = {
     # __osSetFpcCsr(0x01000800) -> busy-probes PIF RAM 0x1FC007FC via __osSiRawReadIo /
     # __osSiDeviceBusy (raw SI_STATUS 0xA4800018 — the first boot-smoke MMIO fault) and writes
     # the PIF terminate-boot byte (|8) via __osSiRawWriteIo. Identical shape and size to the
-    # Lamborghini port's func_80073B40. reimplemented -> librecomp __osInitialize_common_recomp
-    # (= ultramodern osInitialize()), collapsing the whole CP0+SI/PIF init subtree.
+    # reimplemented -> librecomp __osInitialize_common_recomp (= ultramodern
+    # osInitialize()), collapsing the whole CP0+SI/PIF init subtree.
     0x80070290: "__osInitialize_common",
     # Thread + message-queue kernel (all byte-verified 2026-07-11; all reimplemented -> librecomp
     # natives = ultramodern's native scheduler, replacing the ROM's cooperative run-queue whose
@@ -127,7 +126,7 @@ LIBULTRA_NAMES = {
     #     osGetThreadPri dereferencing __osRunningThread=0 -> SIGSEGV) ---
     # osGetThreadPri (0x10-ish leaf at the head of the derived span): if(a0==0)
     # a0=__osRunningThread(0x80094880); return a0->pri@+4. Native scheduler doesn't mirror the
-    # running thread in RDRAM -> recompiled body faults (same as Lambo's func_8007E550).
+    # running thread in RDRAM -> recompiled body faults.
     0x80077FA0: "osGetThreadPri",
     # osCreatePiManager (0x180): guard flag __osPiDevMgr@0x80094840; two osCreateMesgQueue
     # (0x801BD2D0/D2E8); __osPiCreateAccessQueue(0x80078C40); osSetEventMesg; osGetThreadPri(0);
@@ -167,8 +166,8 @@ LIBULTRA_NAMES = {
     # osSetEventMesg registrations; jal __osViInit(0x80077120) — the ROM's VI-context init
     # whose MMIO tail (poll VI_CURRENT 0xA4400010, zero VI_CONTROL, __osViSwapContext
     # 0x80077FD0) faults recompiled. __osViInit's ONLY caller is this function (verified in
-    # RecompiledFuncs), so routing the manager natively collapses it — no Lambo-style
-    # hand-translated __osViInit_recomp needed. VI globals for reference: __osViCurr=0x80094C50,
+    # RecompiledFuncs), so routing the manager natively collapses it; no separate
+    # hand-translated __osViInit_recomp is needed. VI globals for reference: __osViCurr=0x80094C50,
     # __osViNext=0x80094C54, contexts @0x80094BF0, modes PAL/MPAL/NTSC @0x80094CA0/4CF0/4D40.
     0x8006F7F0: "osCreateViManager",
     # osSetTimer (byte-verified 2026-07-11; fourth boot first-fault): OSTimer fill — next/prev=0,
@@ -297,7 +296,8 @@ NATIVE_NAMES = {
     # 0x8006BBB4..0x8006BC88. ALL 11 call sites pass far=500.0 (0x43FA immediates
     # at 9 scene setups; camera structs +0x10 at 0x8001F59C/0x80020748) -- the
     # game's entire draw-distance limit. Replaced by src/aero_draw_distance.cpp
-    # to scale the far plane (issue: pop-in).
+    # to scale the far plane. The replacement remains ROM-specific and needs a
+    # regression test for distant geometry.
     0x8006BA60: "guPerspectiveF",
     # The two per-frame course-geometry registrars (byte-decoded 2026-07-16): both map
     # craft section (u16 @ craft+4) -> zone via course-row byte map (row = 0x8008B290 +
@@ -313,10 +313,10 @@ NATIVE_NAMES = {
 }
 
 # Hand-authored [[patches.hook]] / [[patches.instruction]] blocks appended verbatim to the
-# generated aerogauge.us.toml. The generator must carry them (Lambo lesson: blocks edited
-# straight into the toml were silently dropped by the next regen).
+# generated aerogauge.us.toml. Keep the source blocks here: edits made only in the
+# generated TOML disappear on the next regeneration.
 PATCH_BLOCKS = """
-# Developer warp menu (issue #3, src/aero_warp.c). Hooked at the entry of the top-level
+# Developer warp menu hook (src/aero_warp.c; see docs/reference/runtime.md). Hooked at the entry of the top-level
 # per-frame scene driver func_80015C8C (called every frame from the main game thread's
 # loop func_800658FC): it copies the scene request 0x8013FF84 into the current scene
 # 0x8013FF80 and jump-tables (0x800969C0, 10 scenes) to the active scene's runner. The
@@ -329,7 +329,7 @@ func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
 
-# Developer save-state (issue #17, src/aero_savestate.c). Same per-frame scene driver as
+# Developer save-state hook (src/aero_savestate.c; see docs/reference/runtime.md). Same per-frame scene driver as
 # the warp (it runs every frame in every scene), one instruction past the warp hook:
 # N64Recomp rejects two hooks on the exact same vram, and 0x80015C90 is still the
 # frame-boundary entry. Snapshots/restores rdram[0..8MiB) on an F7/F8 or AERO_STATE_LOAD
@@ -339,7 +339,7 @@ func = "func_80015C8C"
 before_vram = 0x80015C90
 text = "extern void aero_savestate_tick(uint8_t*, recomp_context*); aero_savestate_tick(rdram, ctx);"
 
-# Widescreen 1P-HUD pinning (issue #1, src/aero_hud_widescreen.c). AeroGauge's HUD has no
+# Widescreen 1P-HUD pinning (src/aero_hud_widescreen.c; see docs/reference/renderer.md). AeroGauge's HUD has no
 # static per-element draw calls to bracket: the 2D dispatcher func_80022408 walks object
 # lists and calls per-object handlers indirectly, and those handlers mix LEFT and RIGHT
 # elements inside a single call (func_80018EA0 draws TEMP right + GLPS left), so no call
@@ -514,7 +514,7 @@ INDIRECT_STARTS = [
     # 0x8000DFBC; missed by the prologue scan because the `addiu $sp` sits at +8 (two
     # scheduling-hoisted loads precede it), and no jal targets it.
     0x8000DFD0,
-    # 2026-07-11 batch (scratchpad indirect_scan.py, after the next fault moved to
+    # 2026-07-11 batch (earlier indirect-target scan, after the next fault moved to
     # 0x80009D70): scanned the whole ROM DATA region for aligned words pointing into
     # .text, kept those that (a) are not already derived starts, (b) sit right after a
     # function terminator (jr + delay slot, or jr + nop padding), and (c) are NOT
@@ -528,7 +528,7 @@ INDIRECT_STARTS = [
     0x8000F920,
     0x8000FAFC,  # prologue-less arg-spill leaf
     0x8000FCD0,
-    # 2026-07-11 second batch (scratchpad la_scan.py, after the next fault moved to
+    # 2026-07-11 second batch (earlier load-address scan, after the next fault moved to
     # 0x80007BB0): same head + branch-reachability filters, but the pointer source is
     # lui/addiu (`la`) pairs in .text -- callbacks materialized in registers and stored
     # into runtime structs, invisible to both the jal scan and the data-word scan.
@@ -623,8 +623,8 @@ def main():
                    - set(LIBULTRA_NAMES.values()) - set(NATIVE_NAMES.values()))
 
     # --- emit syms.toml -----------------------------------------------------------
-    # encoding pinned: Windows text-mode default is cp1252, which mangles em-dashes in
-    # comments into bytes N64Recomp's toml parser rejects (Lambo PR#48 lesson).
+    # encoding pinned: Windows text-mode default is cp1252, which can mangle non-ASCII
+    # comments into bytes N64Recomp's TOML parser rejects.
     with OUT_SYMS.open("w", newline="\n", encoding="utf-8") as f:
         f.write("# Autogenerated by scripts/gen_syms_toml.py -- DO NOT EDIT BY HAND.\n")
         f.write("# Runtime-addressed whole-ROM symbols for ultramodern/librecomp.\n")

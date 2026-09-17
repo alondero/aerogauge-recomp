@@ -2,9 +2,9 @@
 // (it defines section_table[] / overlay_sections_by_index[] as file-local
 // statics, so they can't be referenced from anywhere else).
 //
-// Issue #13: also feed each section's FuncEntry pointers to the crash module
-// before the librecomp registration, so the native-PC -> N64-vram map is
-// ready by the time the game thread starts running recompiled functions.
+// Feed each section's FuncEntry pointers to the crash module before librecomp
+// registration, so the native-PC to N64-VRAM map is ready before the game thread
+// starts running recompiled functions.
 
 #include "recomp_overlays.inl"
 

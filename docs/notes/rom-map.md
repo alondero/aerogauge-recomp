@@ -1,4 +1,4 @@
-# AeroGauge derived ROM/RAM map
+# AeroGauge derived ROM/RAM map (historical research)
 
 Consolidated reference of every game-internal address, table, and protocol this
 project has derived so far. Each block names how it was derived; per CLAUDE.md,
@@ -33,14 +33,14 @@ Derived by finding the ROM string `ROUND  RANK  POINT` at ROM `0x97A4C`
 | Entrypoint / vram base | `0x80000400` (rom = vram − 0x80000400 + 0x1000) |
 | CPU .text | ROM `0x1000..0x7F4C0`, contiguous; tail ~0x100 = CP0 exception handler |
 | Boot | entry trampoline clears DMA table, `jr $t2` → `0x800653F0` (boot body) |
-| aspMain audio ucode | ROM `0x7F330` (0xE1C), byte-identical to Lamborghini's SDK mixer; ucode_data ROM `0xC8610`; rspboot `0x7CA00` |
+| aspMain audio ucode | ROM `0x7F330` (0xE1C), the SDK mixer used by the current audio input; ucode_data ROM `0xC8610`; rspboot `0x7CA00` |
 | ROM identity | code NAGE, 8 MiB, XXH3-64 `0x89ea0690f3e22201`, internal name "AEROGAUGE" |
 | Track names | ROM `0x960A0`: CANYON RUSH, BIKINI ISLAND, CHINATOWN, NEO ARENA, CHINATOWN JAM, NEO SPEED WAY (2/4 share geometry) |
 | Ghost/record blobs | ROM `0x48e7f0..0x49fad0` (replay input streams, NOT music) |
 | Sequenced-music bank/samples | bank "B1" ROM `0x49fad0`, samples `0x4a30f0+`; songs at `0x596000..0x5A0400` |
 | Stream/stinger clips | 43 short ADPCM clips ROM `0x5a2840..0x64a8c0`; config header `0x5a0490`; ROM is 0xFF-padding after `0x64a8c0` |
 
-## Scene manager (top-level game state) — live-derived 2026-07-12 (warp PR #4; header comment in `src/aero_warp.c` is authoritative)
+## Scene manager (top-level game state) - live-derived 2026-07-12 (the header comment in src/aero_warp.c is authoritative)
 
 | Address | Meaning |
 |---|---|
@@ -78,7 +78,7 @@ Derived by finding the ROM string `ROUND  RANK  POINT` at ROM `0x97A4C`
 | +0x0C u8 | =6 menu-entry byte |
 | +0x1A u8 | block-inited flag |
 
-### Race status / clock / exit detection — derived 2026-07-17 (save-state #17)
+### Race status / clock / exit detection — derived 2026-07-17 (save-state timing study)
 
 Race-global block base `0x8013FC88`:
 
@@ -172,7 +172,7 @@ both boosts. The
 setting is disabled by default and persisted in `enhancements.json` (or overridden at
 process start with `AERO_EASY_TURBO=1`); it is deliberately not part of `graphics.json`.
 
-## Music / audio — SOLVED 2026-07-16 (PR #11); all verified live in the port
+## Music / audio - derived 2026-07-16; historical validation notes follow
 
 Two engines; confusing them wasted sessions:
 
@@ -220,7 +220,7 @@ playback starts and rebuffer counts for full-game verification (no periodic logs
 - Master 2D dispatcher `func_80022408` (once/frame, from func_8001E8D8) walks object
   lists, calls handlers **indirectly** (`jalr obj+0x104`, `jalr obj+0x34` at 0x80022644 —
   one call per GROUP of elements, 4/frame).
-- **No global DL cursor** (key difference from Lamborghini): dispatchers keep the cursor
+- **No global DL cursor**: dispatchers keep the cursor
   in their stack frame and pass a POINTER TO THE CURSOR-HOLDER in `$a0`; in steady race
   the holder is the fixed global `0x8016C508` (`cursor = MEM_W(0, holder)`). The DL is
   double-buffered (`0x8018xxxx` / `0x80173xxx`) — never hardcode DL addresses.
@@ -229,7 +229,7 @@ playback starts and rebuffer counts for full-game verification (no periodic logs
   texrect emitter `func_80019D0C`; DAMAGE `func_8003A190`. Literal-texrect emitters:
   `func_8002F994`, `func_8003B398`, `func_80049E34`.
 
-## Course zone/visibility model — derived 2026-07-16 (full-track PR #10; `src/aero_full_track.cpp`)
+## Course zone/visibility model - derived 2026-07-16 (src/aero_full_track.cpp)
 
 - Course row `0x8008B290 + 0x14*track` (track byte `0x8013FF9B`): word[0]
   section→zone byte map (u16 craft+4 section index), word[1] zone-visibility 3
@@ -352,8 +352,9 @@ disables the change. 4:3/non-Expand output follows the original drawing path.
 | pfs/status buffer; __osPiDevMgr flag | `0x801BD350`; `0x80094840` |
 | __osTimerList; __osCurrentTime; __osBaseCounter; osClockRate | `0x80094BE0`; `0x801BD330`; `0x801BD338`; `0x80094828` |
 
-Note: AeroGauge game code never touches the private VI globals — the native VI manager
-owns the swap path outright (Lambo's promote_vi_context bridge was retired).
+Note: AeroGauge game code never touches the runtime's private VI state. The
+native VI manager owns the swap path outright; the older comparison-port bridge
+is not part of this repository.
 
 Do NOT add to INDIRECT_STARTS: `0x800708A0/0x800708B0` ($k0 exception-handler entries),
 `0x8007BED0` (exception vector blob, memcpy source only).

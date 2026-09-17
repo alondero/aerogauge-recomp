@@ -33,6 +33,20 @@
 // The off path is a faithful transcription of the original 3-zone window,
 // A/B-verifiable with the AERO_DL_GEOMSET probe (stub_renderer.cpp).
 #include <cstdint>
+// ROM-specific course visibility replacement.
+//
+// The original game registers only the current three-zone PVS window. This
+// module can enumerate the course tables and register more geometry so long
+// distance views do not pop in. The game thread owns the lists; this module
+// writes guest RDRAM through N64Recomp memory helpers and calls the game's
+// own node-registration functions.
+//
+// Full-track mode is transitional infrastructure. It depends on this ROM's
+// course tables, node arenas, allocator ceiling, byte order, and display-list
+// lifetime. A failed derivation must leave the original PVS path in place.
+// A future decompilation or named code-mod seam should replace this memory
+// surgery. See docs/reference/rom.md and docs/architecture.md.
+
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -94,8 +108,9 @@ enum class SectionFilter : uint8_t {
     PvsGatedOnly,
 };
 
-// Debug bisection knobs (scaffolding — see https://github.com/... issue TBD when
-// filed; remove once the per-zone regression check ships). Unset = feature default:
+// Debug bisection knobs. They are kept for repeatable renderer investigations;
+// remove them only after per-zone regression coverage replaces their purpose.
+// Unset = feature default:
 //   AERO_FT_SECTIONS=0 / AERO_FT_OBJECTS=0  -> windowed path for that registrar only
 //   AERO_FT_ZONE_MASK=<hex u64>             -> full-track includes only zones whose
 //                                              bit is set (sections AND objects)

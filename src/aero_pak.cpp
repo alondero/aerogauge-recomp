@@ -39,8 +39,10 @@ bool guest_range_valid(uint32_t base, uint32_t offset, size_t size) {
            static_cast<uint64_t>(base) + offset + size <= RdramEnd;
 }
 
-// Same SDK-compatible one-bank layout as Automobili Lamborghini's pak formatter:
-// four redundant ID blocks, two inode tables, 123 free pages and 16 empty notes.
+// Format one SDK-compatible one-bank image: four redundant ID blocks, two
+// inode tables, 123 free pages, and 16 empty notes. The layout is derived
+// from this ROM's recompiled PFS calls; it is a raw image, not an emulator
+// container format.
 void format() {
     image.fill(0);
     for (unsigned block : {1u, 3u, 4u, 6u}) {

@@ -1,5 +1,5 @@
 // Spec for the developer warp menu's gating + forged-store logic (src/aero_warp.c,
-// issue #3) against a synthetic RDRAM. Pins:
+// against synthetic RDRAM. Pins:
 //   1. A request published from any thread holds (no stores) while the race-param
 //      block is uninitialized, while a scene transition is in flight, and while the
 //      current scene is younger than the stability window.
@@ -107,7 +107,7 @@ int main(void) {
     CHECK(r32(0x8013FF44u) == 0, "course table cleared");
     CHECK(r32(0x8013FF88u) == 6, "phase = fresh entry");
     CHECK(r8(0x8013FF95u) == 0, "hotkey default keeps craft byte");
-    // Loader preload (issue #7 — race-BGM fix): the warp forges the course
+    // Loader preload: the warp forges the course
     // group byte before the loader sees it. tracks 0-3 → group 1 (music ids
     // 1-4); tracks 4-5 → group 2 (music ids 5-6). The stub records what the
     // loader saw so the contract is pinned in the test.

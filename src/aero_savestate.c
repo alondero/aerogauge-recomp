@@ -1,49 +1,20 @@
-// Developer save-state (issue #17; ported from the Lamborghini repo's #22): snapshot the
-// guest's RAM at a frame boundary and restore it later, so a hand-found moment (e.g. a craft
-// parked where a rendering bug reproduces) can be returned to deterministically --
-// interactively (F7 save / F8 load) or headless (AERO_STATE_LOAD=<file>) so an autonomous
-// debugging agent can re-reach the spot with no human at the wheel.
+// Developer save-state experiment.
 //
-// What is captured: the low 8 MiB of RDRAM (rdram[0 .. 0x800000)), which is the entire
-// guest-addressable N64 RAM -- every object table, the camera, the craft transforms, the
-// scene-manager words all live here. The extended region above 8 MiB (librecomp's PI handles
-// at 0x80800000, the mod heap) is boot-static setup, identical every run, so it is neither
-// saved nor restored. A raw memcpy preserves RDRAM's byte-swizzle (MEM_B's ^3), so save and
-// restore are symmetric with no un-swizzle.
+// Ownership: the SDL/main thread publishes an atomic F7/F8 request. The game
+// thread consumes it at the per-frame scene-driver hook and copies the low
+// 8 MiB guest RDRAM. N64Recomp memory layout and byte order are preserved by
+// the raw byte copy; no host pointer is serialized.
 //
-// Why this is a frame-boundary operation, not a true resumable save-state: each guest
-// OSThread is a real native std::thread with its CPU register file (recomp_context) on a
-// native C stack that cannot be serialised. So we snapshot/restore ONLY RDRAM, and do it at
-// the entry of the per-frame scene driver (func_80015C8C, one instruction past the warp
-// hook) -- the point where the game is about to read the scene words and rebuild the frame
-// from RAM. Restoring RDRAM there and letting the driver run rebuilds the frame from the
-// restored world. This works because N64 games keep persistent state in RAM and derive
-// transient CPU/RSP state each frame; it is a debug tool, not a play-anywhere quicksave.
+// This is not a resumable native save. Guest OSThread register files, native
+// stacks, RT64 state, audio state, and in-flight background work remain in the
+// current process. Loading therefore requires a settled scene and can still
+// race native readers. A missing or invalid file is rejected before RDRAM is
+// changed. The feature is for repeatable debugging, not player quicksaves.
 //
-// A load overwrites the scene words (0x8013FF80..) too, so a snapshot taken mid-race is
-// self-contained: loading it even from the title screen drops straight into that race.
-//
-// USAGE
-//   Interactive: F7 saves the current RAM to the slot file, F8 restores it.
-//   Headless:    AERO_STATE_SAVE=<file> auto-captures a spot (scene/delay gated);
-//                AERO_STATE_LOAD=<file> auto-loads on a cold boot -> lands on the spot.
-//   AERO_STATE_FILE overrides the F7/F8 slot path (default aero_savestate.astate).
-//
-// RELIABILITY / THE ONE RULE: SETTLE BEFORE YOU SAVE.
-//   Only guest RAM is captured; each guest thread also has native execution state (registers,
-//   native call stack) that CANNOT be snapshotted. The main game thread is safe because this
-//   hook pins it at a fixed frame boundary, but a background loader mid-DMA is not -- if a
-//   snapshot is taken WHILE course/craft data is still streaming in, restoring RAM under
-//   that thread leaves it mid-job with mismatched native state, which crashes or freezes on
-//   load (non-deterministically). The tick therefore fires every trigger only from a SETTLED
-//   frame (scene == request, stable 30+ ticks, race phase 3 -- see the guard in the tick);
-//   on top of that, still prefer to save from a quiet spot. The same limit means the native
-//   RT64 / VI / audio threads keep reading RDRAM during the copy; a settled restore has been
-//   stable in the Lamborghini port, a mid-scene load can momentarily race those readers.
-//
-// Threading mirrors src/aero_warp.c: the SDL main thread only flips an atomic request bit
-// (F7/F8 edge-detected in main.cpp's input_sample); the actual RAM copy happens on the game
-// thread inside aero_savestate_tick, at the frame-boundary hook.
+// F7/F8 use the local slot path. AERO_STATE_SAVE and AERO_STATE_LOAD provide
+// one-shot headless operations; AERO_STATE_FILE overrides the interactive
+// slot. The full safety contract is in docs/debugging.md and
+// docs/reference/runtime.md.
 
 #include <stdatomic.h>
 #include <stdint.h>
@@ -61,9 +32,10 @@
 // context and the scheduler would fault on it -- another reason to snapshot settled scenes.
 extern void ultramodern_relink_thread_contexts(uint8_t* rdram);
 
-// ultramodern's native osGetTime (lib/N64ModernRuntime/ultramodern/src/timer.cpp): the
-// 64-bit monotonic clock the recompiled game samples. Its epoch is per-process, which is
-// why RAM-resident osGetTime anchors need rebasing on load (see os_time in the header).
+// The runtime's native osGetTime is a 64-bit monotonic clock with a
+// process-local epoch. RAM-resident samples therefore need rebasing on load;
+// the current anchor and its evidence are recorded in
+// docs/investigations/2026-09-14-savestate.md.
 extern uint64_t osGetTime(void);
 
 #define SCENE_CUR   0x8013FF80u       // u32 current scene (see src/aero_warp.c; race = 5)
@@ -71,22 +43,18 @@ extern uint64_t osGetTime(void);
 #define SCENE_PHASE 0x8013FF88u       // u32 scene-local phase; race walks 1->2 (loading) -> 3 (running)
 #define RDRAM_SNAP_SIZE 0x800000u     // low 8 MiB = guest-addressable N64 RAM
 
-// osGetTime anchors stored in guest RAM (64-bit, hi word first). The race timekeeper
-// func_8001D7F0 samples osGetTime() every frame, accumulates the race clock from the
-// per-frame delta `now - *anchor`, and rewrites the anchor with `now`; the clock feeds the
-// time-over deadline check (0x801402C4, func_8001D660). osGetTime's epoch is process-local,
-// so a restored snapshot's anchor makes the first post-restore delta garbage -- measured:
-// one giant clock jump, and every restored race requested exit phase 6 (time-over) within
-// 2 frames. do_load rebases each anchor by (load-process now - save-process now), so the
-// first post-restore delta is an ordinary frame time and the saved race clock carries on
-// exactly. Add any newly-discovered RAM-resident osGetTime anchor to this list.
+// osGetTime anchors stored in guest RAM (64-bit, high word first). The race
+// timekeeper uses the per-frame delta to advance the race clock, so do_load
+// rebases each known anchor by the save/load process-epoch difference. Add any
+// newly discovered RAM-resident anchor to this list; see the dated investigation
+// for the original failure evidence.
 static const uint32_t k_ostime_anchors[] = {
     0x8016C4F0u,                      // race timekeeper's last-frame sample (func_8001D7F0, pair 0x8016C4F0/F4)
 };
 
-// On-disk header (32 bytes). Written/read host-endian: a save-state is a local debug
-// artifact, not a portable format. Magic+version+size are validated before any RAM is
-// touched, so a truncated or foreign file is rejected rather than corrupting the game.
+// On-disk header (32 bytes). It is host-endian and intentionally local to a
+// debug build. Magic, version, and size are validated before any RDRAM is
+// touched, so a truncated or unrelated file cannot corrupt the guest image.
 #define STATE_MAGIC "AEROSTAT"
 #define STATE_VERSION 2u
 typedef struct {
@@ -220,8 +188,7 @@ static void do_load(uint8_t* rdram, const char* path) {
 // runs on the game thread at the next frame boundary. Acknowledge the keypress IMMEDIATELY
 // on stderr: the settled gate in the tick can legitimately hold a request for many seconds
 // (results screen / countdown / scene transition are never "settled"), and without this
-// line a held request is indistinguishable from a dead hotkey (the "F7 did nothing" report,
-// 2026-07-17 -- the tick side was verified working; only the feedback was missing).
+// line a held request is indistinguishable from a dead hotkey.
 void aero_savestate_request_save(void) {
     atomic_fetch_or_explicit(&g_req, REQ_SAVE, memory_order_relaxed);
     fprintf(stderr, "[savestate] F7: save requested (slot %s); fires at the next settled frame\n",

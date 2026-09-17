@@ -5,8 +5,8 @@ only `__osPfsGetStatus`, `__osContRamRead` and `__osContRamWrite`, using the
 generator's `NATIVE_NAMES` routing. Removing `osPfsInitPak` from `LIBULTRA_NAMES`
 is essential: librecomp's implementation always returns `PFS_ERR_NOPACK`.
 
-The single controller-0 image is 32 KiB, with the same SDK-compatible fresh ID
-blocks and inode layout as Automobili Lamborghini. Every successful block write
+The single controller-0 image is 32 KiB, with an SDK-compatible fresh ID
+block and inode layout. Every successful block write
 publishes a complete image through a temporary file and atomic replacement.
 This costs disk I/O during saves but gives the guest synchronous error reporting
 and keeps saves safe across the port's deliberate `_Exit`. Failed publication

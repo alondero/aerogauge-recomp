@@ -1,78 +1,120 @@
-Native PC port of AeroGauge (N64, USA) via *static recompilation* (N64Recomp → C, run on
-`ultramodern`+`librecomp`, rendered with RT64). Stack cloned from the proven
-[Automobili Lamborghini port](F:/src/automobililamborghini-recomp) — same submodule pins,
-same patches, same runtime glue; consult that repo's docs/history when a mechanism here
-is unclear.
+# Working notes for coding assistants
 
-## Mental model
+This file gives an assistant the minimum project context. It is not a
+replacement for human review. A human maintainer is the project authority.
+AI-generated explanations, measurements, and trade-offs are suggestions until
+they are checked against the ROM, source, tests, or a reproducible run.
 
-- **Name-routed static recompilation.** N64Recomp translates ROM functions to C by *name*.
-  `ultramodern`+`librecomp` provide the libultra/OS layer — there is NO hand-rolled HLE and
-  NO CP0/IRQ kernel emulation to maintain. RT64 is the renderer.
-- **No splat project exists for AeroGauge.** `scripts/gen_syms_toml.py` derives function
-  boundaries straight from the ROM (jal-target + prologue scan) and auto-stubs CP0/cache
-  and branch-outside functions. `force_stub.txt` adds hand-curated stubs on top (the
-  recompiler-error iteration loop). The porting loop is: run → it crashes/stalls in some
-  primitive → identify it (libultra vs game code), route it natively or fix its boundaries.
-- **ROM facts:** entrypoint 0x80000400 (same ROM↔RAM math as Lamborghini:
-  rom = vram - 0x80000400 + 0x1000). CPU .text is contiguous at ROM 0x1000..0x7F4C0.
-  Boot: the entry trampoline clears the DMA table then `jr $t2` → 0x800653F0 (boot body).
-  Game code NAGE, 8 MiB, XXH3-64 0x89ea0690f3e22201.
-- **`RecompiledFuncs/` and `src/aspMain.cpp` are ROM-derived and git-ignored** — regenerated
-  by BUILDING.md step 3. Never commit them. (`aspMain.us.toml` is derived: the audio ucode is at
-  ROM 0x7F330, byte-identical to the Lamborghini port's SDK mixer blob; RSPRecomp'd `aspMain`
-  runs the M_AUDTASK path — see `src/main.cpp`.)
-- **Lamborghini carry-overs deliberately disabled, marked `TODO(aerogauge)` in src/:**
-  promote_vi_context (private VI-manager globals), state/menu/pace probes (state-machine
-  globals), the SI controller-read bridge + __osViInit (libultra_stubs.c). Each needs its
-  AeroGauge address/function derived before re-enabling. `lambo_thread_trace_dump` keeps its
-  name — it lives inside runtime patch 0001.
+Start with:
 
-## Non-negotiable engineering principles
+1. [the documentation map](docs/index.md);
+2. [the architecture](docs/architecture.md);
+3. [the contributor workflow](CONTRIBUTING.md); and
+4. [the relevant reference or investigation](docs/reference/).
 
-- **Source is ground truth; session notes are corruptible history.** Before reasoning about
-  any function, read its actual body (disassemble the ROM bytes).
-- **Recompilation, not game design — NEVER invent mechanics.** No invented timeouts, counter
-  seeds, transition values, or idle durations. If behaviour is missing, translate what the ROM
-  actually does. A hand-rolled shortcut is *scaffolding*: name it as such, pair it with a
-  tracker entry, remove it when the real code lands.
-- **Measure before architecture.** measurement → data → decode → fix.
-- **Verify empirically, not by name.** Prove it with a breakpoint, watchpoint, or grep for
-  the actual primitive constants.
-- **Ship code, not notes.** Land the smallest real increment each session.
+## Current branch
 
-## Skills, tools & derived knowledge (check these BEFORE re-deriving anything)
+The current main line includes the whole-ROM static recompile,
+N64ModernRuntime, RT64 as the normal renderer, and the shared RecompFrontend
+settings screen. Windows and Linux are the supported build paths. macOS is not
+supported by this branch.
 
-- **`docs/notes/rom-map.md`** — every derived game address/table/protocol (scene manager,
-  race params, music, HUD dispatch, course zones, libultra globals). Add new derivations there.
-- **`tools/rom/`** — static ROM analysis one-liners: `disasm.py` (annotated function
-  disassembly), `callers.py` (jal-graph), `find_refs.py` (who reads/writes a global).
-- **`tools/trace_analyst.py`** — summarize any large port log; never page raw logs into context.
-- **`.claude/skills/`** — rom-analysis, native-patching (the 4 patch mechanisms + build-flow
-  gotcha), ares-debugger, port-debugging (AERO_* probe catalogue), build-and-verify,
-  session-management. Invoke the matching skill instead of working from first principles.
-- A PreToolUse hook blocks edits to generated files (`aerogauge.*.toml`, `RecompiledFuncs/`,
-  `src/aspMain.cpp`) — edit `scripts/gen_syms_toml.py` and regenerate instead.
+The accepted ROM is the 8 MiB USA dump with XXH3-64 value
+89ea0690f3e22201. The ROM is user-owned data. Do not commit it, screenshots
+containing it, or save files.
 
-## Debugging
+## Source and generated boundaries
 
-- **ares is reference.** Use an ares live-debug setup for any live-ROM work (read/write
-  RDRAM, "who writes X" watchpoints). VI base = `0xA4400010`; ares RDRAM is big-endian.
-- **Live-debug the port** with native gdb on `build/aerogauge_modern`. Count breakpoint
-  hits with `ignore N <big>` + `info breakpoints`, NOT printf-in-commands.
-- **Success metric = port-vs-ares convergence**, not screenshot diffs.
+- RecompiledFuncs/ is generated by N64Recomp from the ROM. Do not edit it.
+- src/aspMain.cpp is generated by RSPRecomp from the ROM. Do not edit it.
+- aerogauge.syms.toml and aerogauge.us.toml are generated inputs that are
+  committed after review.
+- force_stub.txt is a hand-maintained list of functions that the recompiler
+  must stub.
+- src/ contains hand-written port code and native hook implementations.
+- patches/ contains diffs against the pinned dependency commits. Do not edit a
+  dependency submodule in place and leave the result unexported.
 
-## Toolchain gotchas
+The generated function names come from ROM evidence. The symbol generator
+uses discovered calls and IDO-style prologues to propose function boundaries.
+It is a useful bootstrap, not proof that a function boundary or behavior is
+correct. Record a surprising boundary in an investigation and add a focused
+test before relying on it.
 
-- **MinGW `bin` must be on PATH** or `gcc.exe` silently exits 1 (can't find its own DLLs).
-- A `cc` shim may sit ahead of gcc in PATH on this box — pin `-DCMAKE_C_COMPILER`/`CXX_COMPILER`
-  explicitly when configuring, or `project()` fails with "C compiler is broken".
-- If a rebuild links stale recompiled code, delete stale archives under `build/` named
-  `libRecompiledFuncs.a`.
+## Runtime model
 
-## Test discipline
+The recompiled game runs as guest code over a host runtime:
 
-Gate on what changed. Recompilation-config / runtime-glue changes → build + boot smoke.
+- the game and port hooks read and write guest RDRAM through the N64Recomp
+  memory helpers;
+- ultramodern provides native threads, message queues, VI timing, input, audio
+  callbacks, and RSP task dispatch;
+- librecomp connects generated functions to ROM reads and save storage;
+- RT64 consumes the game's display lists on the graphics thread; and
+- SDL owns the host window, event pump, controller snapshot, and rumble calls.
 
-## Tracker
-Use Github Issues
+Make thread ownership explicit in every change. SDL calls belong on the main
+thread. Guest game hooks run on the game thread at the hook's documented
+boundary. RT64 reads guest display-list data on its graphics path. The VI
+callback owns timing observations. See the thread table in
+docs/architecture.md.
+
+## Port hooks and long-term direction
+
+Several features currently manipulate guest memory directly. Full-course
+geometry builds synthetic display lists in a reserved RDRAM region. The
+widescreen HUD pass rewrites display-list commands and a matrix. Save-state
+restoration copies the low 8 MiB of RDRAM. These are fragile transitional
+bridges. They are not the desired long-term architecture.
+
+The preferred direction is:
+
+1. verify a behavior from ROM evidence and a reproducible run;
+2. give the relevant functions and data stable names;
+3. replace the narrow hook with decompiled or source-level game code;
+4. use explicit source patches and stable symbols for changed behavior; and
+5. expose future mods through a versioned host or code-mod interface, not
+   arbitrary guest-memory writes.
+
+Do not call a workaround permanent because it works once. State the evidence,
+failure modes, and remaining decision in an investigation, issue, or ADR.
+
+## Renderer rules
+
+RT64 already supplies the normal renderer, widescreen, interpolation, extended
+GBI commands, and texture replacement facilities. Project-specific behavior
+must stay clearly marked in the renderer reference:
+docs/reference/renderer.md.
+
+If a change fixes a general RT64 behavior, first decide whether it is:
+
+- a project-specific game quirk;
+- a small temporary compatibility patch; or
+- a general upstream fix.
+
+The last category should be proposed upstream after a focused test and a
+clear explanation of compatibility. Do not quietly grow the local RT64 fork.
+
+## Build and test
+
+Use build.ps1 on Windows and build.sh on Linux. Both scripts reset tracked
+submodule files before applying patches. Build and test instructions are in
+BUILDING.md and docs/testing.md.
+
+At minimum, run the documentation checker and the relevant host tests for a
+documentation-only change. ROM-backed tests need the accepted ROM and
+generated output. Window, RT64, audio-device, and debugger tests have extra
+host requirements; a skipped test is evidence about the environment, not a
+pass about the missing behavior.
+
+## Documentation and comments
+
+Use short sentences. Define a technical term the first time it matters to a
+new reader. Keep stable facts in docs/reference. Put dated experiments,
+hypotheses, measurements, and failed ideas in docs/investigations. Use
+docs/decisions for choices with a lasting trade-off.
+
+Source comments should explain purpose, ownership, invariants, address and
+endian assumptions, failure behavior, and the reason for a workaround. Avoid
+chronological research logs, private links, machine-specific paths, and
+unexplained issue numbers.

@@ -1,144 +1,248 @@
-# Building
+# Building from source
 
-The build has two stages: **(1)** recompile the game code from your ROM into C, then
-**(2)** compile everything with CMake. All commands run from the repository root.
+This page is for developers. Players should download a package from the
+[releases page](https://github.com/alondero/aerogauge-recomp/releases).
 
-The scripted equivalents of everything below: `.\build.ps1` (Windows) / `./build.sh` (Linux).
+A source build needs:
+
+1. the files in this repository; and
+2. your own dump of the supported USA ROM.
+
+The ROM is read while building and again when the program starts. It is never
+committed or included in a release package.
+
+## Supported build targets
+
+| Host | Compiler | Renderer path | Status |
+| --- | --- | --- | --- |
+| 64-bit Windows | MinGW-w64 GCC and G++ | RT64 with Direct3D 12 | Supported |
+| 64-bit Linux | GCC and G++ | RT64 with Vulkan | Supported |
+| macOS | - | - | Not supported by this branch |
+
+The source tree does not provide the macOS window and input wiring. An upstream
+renderer backend does not change that port status.
 
 ## Prerequisites
 
-- **Git**, **CMake ≥ 3.20**, and **Python 3**.
-- A C/C++ toolchain:
-  - **Linux:** `gcc`/`g++` (C17 / C++20), plus SDL2 development files,
-    `libfreetype-dev`, Vulkan headers/loader, and the usual desktop build dependencies.
-  - **Windows:** **MinGW-w64 GCC** (MSVC is *not* required). RT64 uses its Direct3D 12
-    backend. The MinGW `bin` directory must be on `PATH`, or `gcc.exe` fails to load its
-    own DLLs.
-- A network connection at configure time (CMake fetches `DirectX-Headers` on Windows).
-- **Your own ROM:** `AeroGauge (USA).z64`, placed in the repository root.
-  Only the USA release is currently supported (XXH3-64 `0x89ea0690f3e22201`).
+All platforms need:
 
-## 1. Clone with submodules
+- Git with recursive submodule support.
+- CMake 3.20 or newer.
+- Python 3.
+- Ninja.
+- A C17/C++20 compiler.
 
-```bash
-git clone --recurse-submodules <this-repo>
+Linux also needs SDL2 development files, Vulkan headers and loader, FreeType
+development files, and the desktop development files required by SDL2 and RT64.
+On Debian or Ubuntu, the release workflow uses:
+
+~~~bash
+sudo apt-get install -y --no-install-recommends   build-essential cmake ninja-build python3 pkg-config   libsdl2-dev libvulkan-dev libfreetype-dev   libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev   libdbus-1-dev
+~~~
+
+Windows needs MinGW-w64 GCC, CMake, and Ninja. Put the MinGW `bin` directory
+on `PATH` so GCC can find its own runtime DLLs. CMake downloads
+DirectX-Headers while configuring the Windows renderer, so the first configure
+needs network access.
+
+On Windows, long paths in the RT64 submodule may need the Git long-path
+setting:
+
+~~~powershell
+git config --global core.longpaths true
+~~~
+
+The Windows script also accepts:
+
+~~~powershell
+$env:AERO_MINGW_BIN = '<your MinGW bin directory>'
+~~~
+
+Use `AERO_PYTHON_SCRIPTS` if CMake was installed by Python and its scripts
+directory is not discoverable. These variables affect the build script only.
+They are not game settings.
+
+## ROM
+
+Use the USA dump named `AeroGauge (USA).z64`. The accepted file is 8 MiB and
+has XXH3-64 value `0x89ea0690f3e22201`. The
+[ROM reference](docs/reference/rom.md) explains how this value was measured.
+
+The scripts use this filename by default. The Windows script accepts another
+file with `-RomPath`. The Linux script accepts another filename through
+`ROM_FILENAME`. The recompiler TOML still contains the default filename, so
+update that input before using a non-default name for regeneration.
+
+## Recommended build
+
+Clone the repository with its submodules, or initialise them in an existing
+checkout:
+
+~~~bash
+git clone --recurse-submodules https://github.com/alondero/aerogauge-recomp.git
 cd aerogauge-recomp
-# If you already cloned without --recurse-submodules:
-git submodule update --init --recursive
-```
+~~~
 
-On Windows, enable long paths for the RT64 submodule's deep test files:
+Run the script for the host:
 
-```bash
-git -c core.longpaths=true submodule update --init --recursive
-```
+~~~powershell
+.\build.ps1
+~~~
 
-## 2. Apply the dependency patches
+~~~bash
+./build.sh
+~~~
 
-The port needs small compatibility patches in the submodule working trees.
-The submodules use fixed upstream commits. The patches add the runtime, save-state,
-frame-interpolation, widescreen, and platform fixes used by this port.
-The shared settings screen follows the Automobili Lamborghini integration. Its config
-API needs the newer pinned N64ModernRuntime revision. Patch 0017 keeps AeroGauge's
-existing early-presentation behavior after that update.
+Use `-Clean` on Windows or `--clean` on Linux for a clean build. The clean
+option removes only `build/`.
 
-```bash
-# ultramodern / librecomp runtime (all platforms):
-git -C lib/N64ModernRuntime apply ../../patches/0001-ultramodern-runtime-scheduler-audio-vi.patch
-git -C lib/N64ModernRuntime apply ../../patches/0007-ultramodern-savestate-thread-context-relink.patch
-git -C lib/N64ModernRuntime apply ../../patches/0012-librecomp-pi-dma-completion-osiomesg.patch
-# Windows / MinGW only (apply here, after 0012):
-git -C lib/N64ModernRuntime apply "$(pwd)/patches/0013-ultramodern-sp-task-synchronous-failsoft.patch"
-git -C lib/N64ModernRuntime apply ../../patches/0014-librecomp-flush-eeprom-on-exit.patch
-git -C lib/N64ModernRuntime apply ../../patches/0015-runtime-host-config-storage.patch
-git -C lib/N64ModernRuntime apply ../../patches/0017-runtime-game-presentation.patch
+Both scripts:
 
-# RecompFrontend / RmlUi settings (all platforms):
-git -C lib/RecompFrontend apply ../../patches/0016-recompfrontend-integration.patch
+1. check the host tools and ROM;
+2. initialise the submodules;
+3. reset tracked submodule files and apply this repository's patches;
+4. configure CMake once to build N64Recomp and RSPRecomp;
+5. generate the ROM-derived CPU and audio code;
+6. configure CMake again so the generated files are included; and
+7. build `aerogauge_modern`.
 
-# RT64 renderer — all platforms:
-git -C lib/rt64 apply "$(pwd)/patches/0006-rt64-interp-angular-velocity-matching.patch"
-git -C lib/rt64 apply "$(pwd)/patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
-git -C lib/rt64 apply "$(pwd)/patches/0009-rt64-widescreen-split-subviewport.patch"
-git -C lib/rt64 apply "$(pwd)/patches/0010-rt64-viewproj-decompose-axis-aligned-pivot.patch"
-git -C lib/rt64 apply "$(pwd)/patches/0011-rt64-aspect-adjust-overscan-inset-viewport.patch"
+The reset in step 3 is important. Do not keep unexported changes in a submodule
+when running a build. Export a dependency change as a patch first; see
+[Contributing](CONTRIBUTING.md).
 
-# RT64 renderer — Windows / MinGW only (absolute paths avoid depth confusion):
-git -C lib/rt64 apply "$(pwd)/patches/0005-rt64-mingw-gcc-compat.patch"
-git -C lib/rt64/src/contrib/plume apply "$(pwd)/patches/0004-plume-d3d12-mingw-com-abi-struct-return.patch"
-```
+The output program is `build\aerogauge_modern.exe` on Windows and
+`build/aerogauge_modern` on Linux.
 
-## 3. Recompile the game code from your ROM
+## Dependency patches
 
-This reads your ROM and generates `RecompiledFuncs/` (git-ignored). First build the
-N64Recomp CLI (bundled in the runtime submodule), then run it against the config:
+The patch files are the source of truth for local dependency changes. The
+scripts apply them in this order:
 
-```bash
-# Regenerate the symbol map + config (optional; committed copies are provided):
-python3 scripts/gen_syms_toml.py
+| Patch | Dependency | Host | Purpose |
+| --- | --- | --- | --- |
+| 0001 | N64ModernRuntime | Windows and Linux | Scheduler, audio, and VI timing hooks |
+| 0007 | N64ModernRuntime | Windows and Linux | Save-state thread-context relinking |
+| 0012 | N64ModernRuntime | Windows and Linux | PI DMA completion messages |
+| 0013 | N64ModernRuntime | Windows | Synchronous non-graphics RSP handling and fail-soft behavior |
+| 0014 | N64ModernRuntime | Windows and Linux | EEPROM flush at process exit |
+| 0015 | N64ModernRuntime | Windows and Linux | Port-owned JSON storage callbacks |
+| 0017 | N64ModernRuntime | Windows and Linux | Direct-game presentation after runtime update |
+| 0016 | RecompFrontend | Windows and Linux | SDL, assets, settings, and frontend portability |
+| 0006 | RT64 | Windows and Linux | Frame-interpolation angular velocity matching |
+| 0008 | RT64 | Windows and Linux | Skybox backdrop handling |
+| 0009 | RT64 | Windows and Linux | Split-screen widescreen viewport tags |
+| 0010 | RT64 | Windows and Linux | View/projection decomposition for HUD work |
+| 0011 | RT64 | Windows and Linux | Effective-aspect and overscan viewport handling |
+| 0005 | RT64 | Windows | MinGW compiler compatibility |
+| 0004 | RT64 Plume | Windows | MinGW Direct3D 12 ABI compatibility |
 
-# Build the recompiler CLIs, then recompile the game code:
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+The Linux script does not use the Windows-only patches 0013, 0005, or 0004.
+If a patch no longer applies to its pinned commit, stop and refresh the patch
+with evidence. Do not edit a patched submodule and leave the change unexported.
+The renderer ownership boundary is in
+[the renderer reference](docs/reference/renderer.md).
+
+## Generated files
+
+| Path | Owner | Commit it? |
+| --- | --- | --- |
+| `aerogauge.syms.toml` | `scripts/gen_syms_toml.py` | Yes, after reviewing ROM evidence |
+| `aerogauge.us.toml` | `scripts/gen_syms_toml.py` plus generated hook blocks | Yes |
+| `aspMain.us.toml` | Hand-maintained RSPRecomp input | Yes |
+| `RecompiledFuncs/` | N64Recomp | No; ignored and regenerated from the ROM |
+| `src/aspMain.cpp` | RSPRecomp | No; ignored and regenerated from the ROM |
+| `build/` | CMake and Ninja | No |
+
+Edit `scripts/gen_syms_toml.py` when changing the automatic symbol scan or the
+hook blocks. Do not edit `RecompiledFuncs/` or `src/aspMain.cpp` by hand. The
+runtime and generated-code boundary is described in
+[Architecture](docs/architecture.md).
+
+## Manual stages
+
+The scripts are the supported path. Use these stages when investigating a build.
+
+### Build the recompiler tools
+
+From the repository root, after submodules and patches are ready:
+
+~~~bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target N64RecompCLI RSPRecomp
+~~~
+
+If ROM evidence, the symbol map, or the stub policy changed, regenerate the
+tracked automatic inputs first:
+
+~~~bash
+python3 scripts/gen_syms_toml.py
+~~~
+
+Review the generated diff before running the recompiler.
+
+### Generate the ROM-derived files
+
+Run from the repository root:
+
+~~~bash
 ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.us.toml
-```
+~~~
 
-The recompiler reads `rom_file_path` from the `.toml` (defaults to
-`AeroGauge (USA).z64` in the repo root). This produces the git-ignored, ROM-derived
-translation `RecompiledFuncs/` — never committed to the repository.
+On Windows, use the `.exe` files in the same directory. The first command
+writes `RecompiledFuncs/`. The second writes `src/aspMain.cpp`:
 
-The RSP audio microcode is recompiled the same way. AeroGauge's aspMain ucode lives at
-ROM `0x7F330` (`aspMain.us.toml`); RSPRecomp translates it into the git-ignored
-`src/aspMain.cpp`, which the M_AUDTASK path in `src/main.cpp` runs to synthesise real PCM:
-
-```bash
-cmake --build build --target RSPRecomp
+~~~bash
 ./build/lib/N64ModernRuntime/librecomp/N64Recomp/RSPRecomp aspMain.us.toml
-```
+~~~
 
-> `build.ps1` / `build.sh` run both recompiler steps automatically (RSPRecomp is gated on
-> `aspMain.us.toml` being present).
+### Configure again and build the port
 
-## 4. Build the port
+The second configure is required because the generated files did not exist at
+the first configure:
 
-### Linux
+~~~bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target aerogauge_modern
+~~~
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-cmake --build build --target aerogauge_modern -j
-```
+The post-build step copies `assets/frontend/` and the RmlUi fonts beside the
+executable. Windows also needs `freetype.dll`.
 
-### Windows (MinGW GCC)
+## Run a source build
 
-```bash
-export PATH="/c/ProgramData/mingw64/mingw64/bin:$PATH"   # adjust to your MinGW path
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=gcc.exe '-DCMAKE_CXX_COMPILER=g++.exe'
-cmake --build build --target aerogauge_modern -j
-```
+Run from the repository root so the default ROM filename resolves:
 
-## 5. Run
+~~~powershell
+.\build\aerogauge_modern.exe
+~~~
 
-Run from the repository root so the ROM path resolves:
-
-```bash
+~~~bash
 ./build/aerogauge_modern
-```
+~~~
 
-`AERO_HEADLESS=1` skips the window/RT64 and runs the headless software-render probe
-(120-VI boot smoke, prints a `[probe] boot summary;` line).
+For a ROM-backed headless smoke run:
 
-## Notes
+~~~bash
+AERO_HEADLESS=1 AERO_MODERN_MAX_VIS=120 ./build/aerogauge_modern
+~~~
 
-- `lib/N64ModernRuntime`'s root CMake deliberately omits RT64; it is pulled in only by
-  this project's `CMakeLists.txt`.
-- Keep the generated `build/assets/` directory beside the executable when copying
-  the port. Windows also needs `freetype.dll`, next to the existing SDL2/DXC DLLs.
-- The settings screen and its config ownership are described in
-  [docs/frontend.md](docs/frontend.md).
-- `RecompiledFuncs/` is regenerated from your ROM and is never committed. Re-run step 3
-  after changing the symbol map, `force_stub.txt`, or the config.
-- `force_stub.txt` is the recompiler-error iteration loop: when N64Recomp fails on a
-  function (unhandled instruction, mis-derived boundary), add the name there, re-run
-  `gen_syms_toml.py`, and re-run the recompiler.
+The headless path avoids the window and normal graphics device. It is a test
+path, not the normal player path. See [Testing](docs/testing.md) for skip
+conditions.
+
+## Common build failures
+
+- **Submodule missing:** run `git submodule update --init --recursive`.
+- **Patch does not apply:** check for submodule drift and refresh the patch; do
+  not force it.
+- **CMake cannot find SDL2 or Vulkan:** install the host development packages.
+- **CMake cannot find DirectX-Headers:** configure Windows with network access.
+- **The executable links without generated functions:** run both recompiler
+  commands, then configure CMake a second time.
+- **The game cannot find the ROM:** check the filename, path, size, and ROM
+  identity.
+- **A stale static library is linked:** use the clean option. Do not remove
+  source or generated directories by hand.
+
+Use [Testing](docs/testing.md) after a successful build and
+[Debugging](docs/debugging.md) for a reproducible investigation.

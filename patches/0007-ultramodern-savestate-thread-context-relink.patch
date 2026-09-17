@@ -15,7 +15,7 @@ index b758ce5..72d7e62 100644
  
  #include "ultramodern/threads.hpp"
  
-+// Save-state support (Lamborghini issue #22): OSThread.context is the one NATIVE pointer
++// Save-state support: OSThread.context is the one NATIVE pointer
 +// stored in guest RDRAM (a UltraThreadContext* -- see ultra64.h). A wholesale RDRAM restore
 +// from another process clobbers it with a dangling address, so we keep a native registry of
 +// every live thread's (guest OSThread address -> context) and expose a relink pass that
@@ -34,7 +34,7 @@ index b758ce5..72d7e62 100644
 +    g_thread_ctx_registry.erase((int32_t)t_);
 +}
 +
-+// Called by the save-state loader (src/lambo_savestate.c) AFTER it memcpys a snapshot over
++// Called by the port save-state loader AFTER it memcpys a snapshot over
 +// RDRAM, to repair the native context pointers the copy overwrote. Only meaningful when the
 +// loading process already recreated the same thread set (warp-first workflow); threads it has
 +// no live context for are simply left as-is.
@@ -53,7 +53,7 @@ index b758ce5..72d7e62 100644
      // so mark this thread as destroyed and run the next queued thread.
      if (self->context == thread_context) {
          self->context = nullptr;
-+        unregister_thread_context(self_);   // save-state (#22): drop its context from the registry
++        unregister_thread_context(self_);   // save-state: drop its context from the registry
          run_next_thread(PASS_RDRAM1);
      }
  
@@ -61,7 +61,7 @@ index b758ce5..72d7e62 100644
      // Pass the context as an argument to the thread function to ensure that it can't get cleared before the thread captures its value.
      UltraThreadContext* context = new UltraThreadContext{};
      t->context = context;
-+    register_thread_context(t_, context);   // save-state (#22): track native context by guest addr
++    register_thread_context(t_, context);   // save-state: track native context by guest address
      context->host_thread = std::thread{_thread_func, PASS_RDRAM t_, entrypoint, arg, t->context};
  
      // Wait until the thread is initialized to indicate that it's ready to be started.
@@ -69,7 +69,7 @@ index b758ce5..72d7e62 100644
      if (cur_context != nullptr) {
          // Mark the target thread as destroyed and resume it. When it starts it'll check this and terminate itself instead of resuming.
          t->context = nullptr;
-+        unregister_thread_context(t_);   // save-state (#22): drop its context from the registry
++        unregister_thread_context(t_);   // save-state: drop its context from the registry
          cur_context->running.signal();
      }
  }

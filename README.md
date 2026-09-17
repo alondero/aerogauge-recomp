@@ -1,131 +1,107 @@
 # AeroGauge: Recompiled
 
-![AeroGauge: Recompiled running on PC](docs/aerogaugerecomp.jfif)
+AeroGauge: Recompiled is a PC version of the Nintendo 64 racing game AeroGauge.
+It runs your own copy of the game in a native window.
 
-A native PC port of **AeroGauge** (Nintendo 64, USA) built with
-[N64Recomp](https://github.com/N64Recomp/N64Recomp) static recompilation, running on the
-[N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) (`ultramodern` +
-`librecomp`) with the [RT64](https://github.com/rt64/rt64) renderer.
+This branch includes an in-game settings screen. It is still being checked.
+The whole game, audio, and visual enhancements need more testing.
 
-**Status: renders and plays.** The whole-ROM recompile, libultra routing, RT64
-rendering (widescreen + display-rate interpolation), input, and native configuration
-menu are live; races render and run. Audio ucode and HUD polish are in progress. See
-the issue tracker for the porting roadmap.
+## Supported computers
 
-## What you need
+Release targets are:
 
-- Your **own legally dumped ROM**: `AeroGauge (USA).z64` (8 MiB, big-endian,
-  XXH3-64 `0x89ea0690f3e22201`), placed in the repository root. This repository
-  contains **no game assets** and never will.
+- Windows 10 or later, 64-bit, with Direct3D 12 support.
+- Linux, 64-bit, with Vulkan support.
 
-## Building
+macOS is not a supported target in this branch. A build that compiles on
+another system is not proof that the game runs there.
 
-See [BUILDING.md](BUILDING.md), or just run the end-to-end script:
+## Run a release
 
-```powershell
-.\build.ps1        # Windows (MinGW GCC + Ninja)
-```
+1. Download the archive for your system from
+   [GitHub Releases](https://github.com/alondero/aerogauge-recomp/releases).
+2. Extract it to a folder.
+3. Put your legally dumped USA ROM in that folder. Name it
+   `AeroGauge (USA).z64`.
+4. Start `aerogauge_modern.exe` on Windows or `aerogauge_modern` on Linux.
 
-```bash
-./build.sh         # Linux
-```
+The archive contains the program and its support files. It does not contain the
+game ROM. Other ROM releases are not supported.
 
-Then run from the repo root:
+## Build from source
 
-```
-./build/aerogauge_modern
-```
+Building from source is a developer task and requires a matching ROM. See
+[BUILDING.md](BUILDING.md) for the tools and complete commands.
 
-## In-game configuration (Windows and Linux)
+## Controls
 
-Press **Escape**, **F10**, or controller **Back/Select** to open the settings screen,
-including in fullscreen. Use the mouse, keyboard, or controller D-pad to move around
-(A accepts, B goes back, X applies, and the shoulder buttons switch tabs). The screen
-uses the game input while it is open, but the race keeps running.
-Graphics changes use **Apply** or **Discard**. Enhancement changes save immediately.
-Rendering, widescreen, draw distance, full course geometry, and window size changes
-apply in-game and are saved to `graphics.json`. The graphics API, developer overlay,
-and texture pack/dump paths are saved for the next launch. Texture paths can be
-typed or pasted into the screen. Settings set by environment variables are disabled.
-**Enhancements > Full course geometry** is experimental (higher CPU/GPU cost, possible
-visual regressions) and defaults on; uncheck it to restore the original 3-zone
-visibility window.
-Press **F11** (or Alt+Enter) to switch fullscreen.
+These are the default port bindings:
 
-Enable **Enhancements > Easy Turbo + Boost Start** for simplified boosts:
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Confirm / accelerate | X | A |
+| Cancel / brake | C | B |
+| Steer | Arrow keys or W/A/S/D | Left stick |
+| Drift | Z | Left trigger |
+| Pause / advance | Enter | Start |
+| L button | Q | Left shoulder |
+| R button | E or R | Right shoulder or right trigger |
+| C buttons | I/J/K/L | X/Y/right stick |
 
-- At the start, hold accelerator for the existing automatic Boost Start.
-- During a race (player 1 only), press the dedicated **Turbo** button: **R** on
-  keyboard (or **E**), **right trigger** (or **right shoulder**) on gamepad.
-  Drift keeps its own button (default **Z** on keyboard / **left trigger** on
-  gamepad), so drifting still works while Turbo is enabled. Turbo is fixed to
-  the physical R button and ignores the in-game control mapping: if you assign
-  an action to R, pressing it will also trigger Turbo.
-- Release and press again for another boost. Holding the button does not repeat
-  boosts, and pressing during an active boost does not extend or queue one.
-  The normal craft-specific boost duration, heat buildup and overheating still apply.
+The port exposes one physical controller as Controller 1. The gamepad uses the
+standard SDL game-controller mapping.
 
-This option is off by default, saved in `enhancements.json`; disabling it turns
-off the launch assist and race Turbo. Ordinary drift and boost mechanics are
-unaffected either way.
+## Settings
 
-## Saves and controller feedback
+Open the settings screen with **Escape**, **F10**, or controller **Back**.
+This also works in fullscreen. Use the mouse, keyboard, or controller D-pad.
+The screen shows the active button prompts.
 
-Controller 1 has a virtual **Controller Pak** by default. Use AeroGauge's own
-Controller Pak / Time Attack ghost save and load options; notes survive closing
-and restarting the port. Cartridge progress and settings continue to use EEPROM.
+The **Graphics** page controls resolution, widescreen display, HUD placement,
+presentation rate, anti-aliasing, window mode and size, and texture paths.
+Press **Apply** to keep graphics changes. Press **Discard** to cancel them.
 
-Saves, `graphics.json`, `enhancements.json`, and renderer logs all live in one
-per-user folder (`AeroGaugeRecomp`). The `saves` subfolder holds cartridge and
-Controller Pak images:
+The **Enhancements** page controls draw distance, full-course geometry, and
+Easy Turbo + Boost Start. These changes are saved as soon as they are made.
+Full-course geometry is experimental and can cost performance or show visual
+errors. Easy Turbo changes the driving controls; it is off by default.
 
-- Windows: `%LOCALAPPDATA%\AeroGaugeRecomp\saves`
-- Linux: `$XDG_CONFIG_HOME/AeroGaugeRecomp/saves`, or `~/.config/AeroGaugeRecomp/saves`
-- Portable mode (`portable.txt` in the working directory): `./saves`
+The settings screen does not change the game's normal control bindings. F11 and
+Alt+Enter switch fullscreen. Graphics API and texture-path changes take effect
+after a restart.
 
-`aerogauge.us.mpk` is the 32 KiB Controller Pak image; `aerogauge.us.bin` is the
-512-byte EEPROM save. Back up both to keep ghosts and cartridge progress.
-A missing Pak starts formatted; existing images are never silently replaced on a
-load error. Only raw 32 KiB MPK images are supported.
+## Saves and files
 
-A rumble-capable SDL gamepad receives **impact and turbo feedback** during P1
-races, alongside Controller Pak saving. Impacts give a stronger short pulse;
-turbo gives a lighter vibration while active. Feedback stops on pause and expires
-if gameplay stops updating. This is a port enhancement driven by the original
-race physics; the ROM's unused D-pad motor test is not a race rumble implementation.
+The program stores its files in these locations:
 
-Optional launch overrides:
+- Windows: `%LOCALAPPDATA%\AeroGaugeRecomp\`
+- Linux: `$XDG_CONFIG_HOME/AeroGaugeRecomp`, or
+  `~/.config/AeroGaugeRecomp`
+- Portable mode: the folder from which you run the program, when that folder
+  contains a file named `portable.txt`
 
-- `AERO_RUMBLE=0`: disable vibration.
-- `AERO_RUMBLE_TURBO=0`: impacts only.
-- `AERO_PAK_PATH=<path>`: use another raw MPK image.
-- `AERO_CONTROLLER_PAK=0`: disable the virtual Controller Pak.
+The contents of `portable.txt` do not matter. Its presence selects portable
+mode.
 
-## Developer warp menu
+`graphics.json` stores display settings. `enhancements.json` stores the
+gameplay assist setting. Game saves are in the `saves` subfolder. Back up
+that folder before testing a new build.
 
-Jump straight into a 1-player race on any track without driving the menus
-(issue #3; the launch path is the ROM's own — see `src/aero_warp.c`):
+## Known limitations
 
-- **F1–F6** — warp to that track any time after boot, including mid-race
-  (the current race exits through the game's own teardown first).
-- **`AERO_WARP=track[:craft]`** (track 1–6, craft 1–10) — one-shot warp at boot,
-  for scripted/headless runs.
-- **`AERO_WARP_AT=vi:track[:craft]`** — scripted warp at a given VI (harness runs).
+- The USA release is the only supported ROM.
+- The settings screen has only Graphics and Enhancements pages. It does not
+  provide a new control-binding page.
+- Full-course geometry is experimental.
+- Texture packs and texture dumps are developer features. They are not a
+  general mod system.
+- Platform, graphics-driver, and physical-controller coverage is incomplete.
+- The settings screen is not shown by headless test runs.
 
-Tracks: 1 CANYON RUSH, 2 BIKINI ISLAND, 3 CHINATOWN, 4 NEO ARENA,
-5 CHINATOWN JAM, 6 NEO SPEED WAY.
-
-## How it works
-
-1. `scripts/gen_syms_toml.py` scans the ROM for function boundaries (jal targets +
-   IDO stack-frame prologues) and emits `aerogauge.syms.toml` + `aerogauge.us.toml`.
-2. The bundled N64Recomp CLI translates every function to C (`RecompiledFuncs/`,
-   git-ignored — regenerated from *your* ROM).
-3. The C is compiled and linked against `librecomp`/`ultramodern`, which replace the
-   N64's OS kernel with native threads, and RT64, which renders the game's display
-   lists at native resolution.
+See [docs/index.md](docs/index.md) for developer documentation, test commands,
+configuration details, and the current evidence record.
 
 ## License
 
-Project code is licensed per [LICENSE](LICENSE). Submodules and the game itself carry
-their own licenses/ownership; you must supply your own ROM.
+Project code is licensed under [LICENSE](LICENSE). The game and dependency
+submodules have their own licenses. You must provide your own ROM.

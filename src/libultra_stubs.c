@@ -1,5 +1,5 @@
-// Hand-provided no-op symbols for this ROM's libultra CP0/kernel helpers that the pivot routes
-// AWAY from recompilation (epic #54, phase 3). These functions are named canonically in
+// Hand-provided no-op symbols for this ROM's libultra CP0/kernel helpers that the port routes
+// away from recompilation. These functions are named canonically in
 // recomp/gen_syms_toml.py (LIBULTRA_NAMES) so N64Recomp marks them `ignored` (symbol_lists.cpp)
 // and emits no body.
 //
@@ -12,7 +12,7 @@
 // REPLACES the CP0/interrupt kernel with native threads, so writing N64 Status bits is correctly a
 // no-op (this is exactly why librecomp's cop0_status_write aborts on non-FR Status writes). FR-mode
 // float addressing is set up by the runtime itself, so dropping the write is safe -- matches how
-// drmario64/Zelda64Recomp leave __osSetSR in ignored_funcs.
+// Other N64Recomp ports use the same ignored-function pattern for this helper.
 
 #include "recomp.h"
 #include <stdio.h>
@@ -25,9 +25,9 @@ void __osSetSR_recomp(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
 }
 
-// TODO(aerogauge): the Lamborghini port carried a hand-translated __osViInit_recomp here
-// (that ROM's private VI-manager globals). AeroGauge's VI init has not been mapped yet;
-// re-derive it from this ROM's bytes before routing __osViInit to `ignored`.
+// TODO(aerogauge): map this ROM's __osViInit before routing it to `ignored`. The
+// native VI manager currently replaces the surrounding setup, but the direct ROM
+// helper has not been independently verified.
 
 // Controller Pak block I/O now lives in aero_pak.cpp. The ROM's SDK filesystem
 // remains recompiled; ordinary controller reads use ultramodern input callbacks.

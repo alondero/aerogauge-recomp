@@ -1,4 +1,4 @@
-// Standalone spec for the widescreen HUD-geometry shift scale (issue #1).
+// Standalone specification for the widescreen HUD-geometry shift scale.
 //
 // The scale is pure float math (no game/RDRAM/RT64 state), so it is unit-testable in
 // isolation — compile and run directly with the host compiler, no ROM build needed:
@@ -100,7 +100,7 @@ int main(void) {
     // ticker sweep (step 0, moving rects, must NOT pin), READY banner (step 1, no HUD),
     // then the full HUD at final steady positions from step 2 (the frame the step flips)
     // until GO flips phase to 3. Pinning must cover the step >= 2 window or the HUD
-    // visibly snaps to widescreen at race start (issue #1 follow-up).
+    // visibly snaps to widescreen at race start.
     assert(!aero_ws_hud_gate(4, 3, 0)); // menus never pin, whatever the phase word says
     assert(!aero_ws_hud_gate(5, 6, 0)); // race scene, fresh-entry phase
     assert(!aero_ws_hud_gate(5, 1, 0)); // entry transition

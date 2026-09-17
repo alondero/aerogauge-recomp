@@ -1,9 +1,8 @@
 // Persistent graphics configuration (see aero_config.h).
 //
-// Schema and behaviour mirror Zelda64Recomp's src/game/config.cpp graphics.json
-// (same key names, same per-key fall-back-to-default on missing/corrupt values,
-// and a "portable.txt in the LAUNCH directory -> keep config there" escape hatch),
-// RecompFrontend's RmlUi menu queues changes to this main-thread persistence layer.
+// This module owns the two on-disk JSON files. It publishes a main-thread
+// snapshot for the RecompFrontend settings page. Missing keys use defaults;
+// malformed files remain in place so the original text can be recovered.
 #include "aero_config.h"
 #include "aero_paths.h"
 
@@ -28,19 +27,19 @@ constexpr int kDefaultWindowHeight = 900;
 
 aero::config::WindowSize g_window_size{kDefaultWindowWidth, kDefaultWindowHeight};
 
-// RT64 texture-replacement paths (issue #9), persisted as extra graphics.json string
-// keys alongside the GraphicsConfig fields (like the window size). Empty = feature off.
+// RT64 texture-replacement paths, persisted as extra graphics.json string keys
+// alongside the GraphicsConfig fields (like the window size). Empty = feature off.
 std::string g_texture_pack;
 std::string g_texture_dump;
 std::mutex g_texture_mutex;
 
-// Widen the dense 3P/4P split-screen fog to the open 1P window/colour (issue #83).
-// Enhancement default-on, consistent with the widescreen wave; 1P/2P are unaffected
-// regardless (the rewrite self-gates on player count).
+// Widen the dense 3P/4P split-screen fog to the 1P window and colour.
+// The enhancement defaults on, but the rewrite self-gates on player count so
+// 1P and 2P are unaffected.
 std::atomic_bool g_widescreen_fog_match{true};
 
-// Draw the sky panorama in 3P/4P split screen like 1P/2P (issue #84). Same
-// enhancement family as the fog match; 1P/2P take the sky path natively anyway.
+// Draw the sky panorama in 3P/4P split screen like 1P/2P. The 1P and 2P
+// paths already take this route, so the change only affects split-screen.
 std::atomic_bool g_widescreen_sky_match{true};
 
 // Far-clip-plane multiplier applied in the native guPerspectiveF (the game's
@@ -291,11 +290,10 @@ std::filesystem::path app_config_dir() {
 }
 
 ultramodern::renderer::GraphicsConfig default_graphics_config() {
-    // Zelda64Recomp's shipped defaults (config.cpp:26-35), which are the
-    // enhancement goals of issue wave 1: window-scaled internal resolution,
-    // widescreen Expand with the HUD clamped to 16:9, and RT64 frame
-    // interpolation up to the display refresh rate (game logic stays at its
-    // native 30Hz tick either way -- ultramodern's VI clock is fixed).
+    // These are the port's current display defaults: window-scaled internal
+    // resolution, widescreen Expand with the HUD clamped to 16:9, and RT64
+    // frame interpolation up to the display refresh rate. Game logic stays at
+    // its native 30 Hz tick; interpolation does not add game updates.
     ultramodern::renderer::GraphicsConfig cfg{};
     cfg.res_option = ultramodern::renderer::Resolution::Auto;
     cfg.wm_option = ultramodern::renderer::WindowMode::Windowed;
@@ -311,10 +309,11 @@ ultramodern::renderer::GraphicsConfig default_graphics_config() {
     return cfg;
 }
 
-// (issue #67 carry-over) The widescreen-HUD rect-pin scaling (see aero_hud_widescreen.h)
-// tracks runtime window resizes and the hr_option clamp via aero_ws_hud_effective_rect_aspect,
-// so it needs no config-time gate. The constants remain unverified for AeroGauge's HUD;
-// TODO(aerogauge): re-measure once the HUD renders.
+// The widescreen-HUD rect-pin scaling (see aero_hud_widescreen.h) tracks
+// runtime window resizes and the hr_option clamp through
+// aero_ws_hud_effective_rect_aspect, so it needs no config-time gate. The
+// constants remain unverified for this game's HUD; re-measure them when a
+// capture shows that the current gate is wrong.
 
 ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     ultramodern::renderer::GraphicsConfig cfg = default_graphics_config();

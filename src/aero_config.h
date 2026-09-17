@@ -1,10 +1,8 @@
-// Persistent user-facing graphics configuration (#1/#2 enhancement wave).
+// Persistent user-facing graphics configuration.
 //
-// Same model as Zelda64Recomp: ultramodern owns the GraphicsConfig struct and the
-// renderer reacts to set_graphics_config(); the PORT owns persistence. We persist a
-// graphics.json in a per-user config directory using the NLOHMANN_JSON_SERIALIZE_ENUM
-// mappings ultramodern ships in ultramodern/config.hpp, so the on-disk vocabulary
-// ("Expand", "Display", "MSAA4X", ...) matches the peer ports.
+// ultramodern owns the GraphicsConfig struct and the renderer reacts to
+// set_graphics_config(); this port owns persistence. graphics.json uses the
+// enum names declared by ultramodern/config.hpp.
 #ifndef AERO_CONFIG_H
 #define AERO_CONFIG_H
 
@@ -57,7 +55,7 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
                              std::string texture_dump,
                              bool apply_live = true);
 
-// RT64 texture-replacement paths (issue #9). Both are extra graphics.json string keys
+// RT64 texture-replacement paths. Both are extra graphics.json string keys
 // (empty = feature off), overridable by env var for headless capture/testing:
 //   texture_pack  / AERO_TEXTURE_PACK  -- directory or .rtz to auto-load at startup.
 //   texture_dump  / AERO_TEXTURE_DUMP  -- directory RT64 writes every used texture to
@@ -69,13 +67,13 @@ std::string texture_dump_dir();
 void set_texture_pack_path(std::string path);
 void set_texture_dump_dir(std::string path);
 
-// Widen the dense 3P/4P split-screen fog to the 1P window/colour (issue #83).
+// Widen the dense 3P/4P split-screen fog to the 1P window/colour.
 // graphics.json key "widescreen_fog_match" (default true), overridable by
 // AERO_FOG_MATCH_1P=1/0. The rewrite still self-gates on player count >= 3.
 bool widescreen_fog_match();
 void set_widescreen_fog_match(bool enabled);
 
-// Draw the sky panorama in 3P/4P split screen like 1P/2P (issue #84).
+// Draw the sky panorama in 3P/4P split screen like 1P/2P.
 // graphics.json key "widescreen_sky_match" (default true), overridable by
 // AERO_SKY_MATCH_1P=1/0. Only flips a branch that 1P/2P already take.
 bool widescreen_sky_match();

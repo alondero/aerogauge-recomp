@@ -1,4 +1,4 @@
-# Regression test for the developer save-state round trip (#17, src/aero_savestate.c).
+# Regression test for the developer save-state round trip (src/aero_savestate.c).
 #
 # Two headless runs. Run 1 warps into a race and auto-saves once the race is SETTLED
 # (scene==request stable, race phase 3 -- the gate in aero_savestate_tick). Run 2 warps

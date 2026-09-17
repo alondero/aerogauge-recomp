@@ -1,4 +1,9 @@
-// Issue #13 / A14 — peer-port cite CV:LoD src/main/main.cpp:2870-2955 @ 180fd01.
+// Native crash reporting for the translated game.
+//
+// The handler is a last-resort diagnostic boundary. It reports the native
+// fault, maps a generated native PC back to a guest address when symbols are
+// available, and prints the recent trace ring. It must not allocate complex
+// runtime state or attempt to resume a crashed game thread.
 
 #ifndef AERO_CRASH_H
 #define AERO_CRASH_H
