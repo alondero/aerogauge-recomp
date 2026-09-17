@@ -308,6 +308,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/thirdparty
     )
     add_test(NAME live_config_updates COMMAND test_live_config)
+
+    # Single per-user data folder: graphics.json, saves, and RT64 logs.
+    add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
+    target_include_directories(test_user_data_dir PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME user_data_dir COMMAND test_user_data_dir)
     if(WIN32)
         # Full-game audio regression for the aspMain "Unhandled jump target" crash
         # (2026-07-17): 60 s headless warp race with music; pre-fix this crashed on the

@@ -5,6 +5,7 @@
 // and a "portable.txt in the LAUNCH directory -> keep config there" escape hatch),
 // RecompFrontend's RmlUi menu queues changes to this main-thread persistence layer.
 #include "aero_config.h"
+#include "aero_paths.h"
 
 #include <atomic>
 #include <cstdio>
@@ -17,7 +18,6 @@
 
 namespace {
 
-constexpr const char* kAppFolderName = "AeroGaugeRecomp";
 constexpr const char* kGraphicsFile = "graphics.json";
 constexpr const char* kEnhancementsFile = "enhancements.json";
 
@@ -287,24 +287,7 @@ namespace aero {
 namespace config {
 
 std::filesystem::path app_config_dir() {
-    // Portable mode: a portable.txt in the working directory keeps everything local.
-    std::error_code ec;
-    if (std::filesystem::exists("portable.txt", ec)) {
-        return std::filesystem::current_path();
-    }
-#if defined(_WIN32)
-    if (const char* localappdata = std::getenv("LOCALAPPDATA")) {
-        return std::filesystem::path{localappdata} / kAppFolderName;
-    }
-#else
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
-        return std::filesystem::path{xdg} / kAppFolderName;
-    }
-    if (const char* home = std::getenv("HOME")) {
-        return std::filesystem::path{home} / ".config" / kAppFolderName;
-    }
-#endif
-    return std::filesystem::current_path();
+    return aero::paths::app_data_dir();
 }
 
 ultramodern::renderer::GraphicsConfig default_graphics_config() {

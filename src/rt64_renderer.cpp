@@ -28,6 +28,7 @@
 #include "aero_rt64.h"
 #include "aero_config.h"
 #include "aero_hud_widescreen.h"
+#include "aero_paths.h"
 
 
 namespace {
@@ -219,7 +220,13 @@ public:
         appCore.VI_Y_SCALE_REG = &vi_regs->VI_Y_SCALE_REG;
 
         RT64::ApplicationConfiguration appConfig;
-        appConfig.appId = "aerogauge-recomp";
+        // Share AeroGaugeRecomp with graphics.json / saves. RT64's default
+        // detectDataPath(appId) would create a second folder (Windows:
+        // %LOCALAPPDATA%\aerogauge-recomp; Linux: ~/.config/.aerogauge-recomp).
+        const auto storage = aero::paths::renderer_storage();
+        appConfig.appId = storage.app_id;
+        appConfig.detectDataPath = storage.detect_data_path;
+        appConfig.dataPath = storage.data_path;
         appConfig.useConfigurationFile = false;
 
         app = std::make_unique<RT64::Application>(appCore, appConfig);
