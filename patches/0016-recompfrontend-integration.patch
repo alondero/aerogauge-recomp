@@ -76,11 +76,6 @@ index 4fdf81f..ff84e45 100644
 -            // {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X"},
 +            {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X", "8X"},
          };
-@@ -231,3 +233,3 @@ namespace recompui {
-                 false,
--                true
-+                false
-             );
 @@ -349,3 +351,3 @@ namespace recompui {
                  ultramodern::renderer::GraphicsApi::Auto,
 -                true

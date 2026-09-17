@@ -5,12 +5,24 @@ Automobili Lamborghini port. It is drawn by RT64, so it works on Windows and Lin
 RecompFrontend is pinned to `b1a1477`. N64ModernRuntime is pinned to `cdf5abb` for
 the configuration API. Fonts and other menu files are in `assets/frontend`.
 
-The screen has two pages:
+The screen has three pages:
 
 - **Graphics:** resolution, supersampling, aspect ratio, HUD position, refresh rate,
-  manual FPS, MSAA, precision, window mode and size, graphics API, developer mode,
+  manual FPS, MSAA, precision, window mode, window size presets, graphics API,
   and texture pack/dump paths.
-- **Enhancements:** draw distance, full-course geometry, and Easy Turbo/Boost Start.
+- **Enhancements:** draw distance (unlimited or a multiplier), full-course geometry,
+  and Easy Turbo/Boost Start.
+- **Debug:** the RT64 developer overlay (moved off Graphics; takes effect after a
+  restart).
+
+The window size is a preset picker (640x360 through 3840x2160, 16:10 and 4:3
+favourites included) applied immediately on selection; a window size typed
+directly into graphics.json shows as Custom. Draw distance offers an explicit
+Unlimited choice that maps to the internal 0 sentinel (no far clipping plane);
+when it is off, the far-plane multiplier slider applies. The Easy Turbo entry
+describes both triggers: hold Accelerate through the countdown for the Boost
+Start, and press the dedicated Turbo button (R or E on keyboard, right trigger
+or right shoulder on gamepad) during player-1 races.
 
 Fog and sky settings from the Lamborghini port are not shown because AeroGauge does
 not use them. Input bindings also stay in the existing game controls; the menu does
