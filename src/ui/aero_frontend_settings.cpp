@@ -75,8 +75,8 @@ void save_graphics() {
         MERGE(ds_option); MERGE(rr_manual_value); MERGE(developer_mode);
 #undef MERGE
         // JSON I/O and SDL window calls are main-thread operations. The current
-        // lock also means a blocking action can delay rendering; see the
-        // settings frontend ADR before changing this boundary.
+        // lock also means a blocking action can delay rendering; see docs/frontend.md
+        // (## Ownership and threads) before changing this boundary.
         aero::config::apply_graphics_settings(cfg, size, pack, dump);
         const bool resized = size.width != old_size.width || size.height != old_size.height;
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();

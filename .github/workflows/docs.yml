@@ -36,7 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Check documentation
         run: python3 scripts/check_docs.py
-      - name: Check whitespace
-        run: git diff --check
+      - name: Check whitespace (pull request)
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${{ github.base_ref }}..HEAD"
+      - name: Check whitespace (push)
+        if: github.event_name != 'pull_request'
+        run: git diff --check "HEAD~1..HEAD"

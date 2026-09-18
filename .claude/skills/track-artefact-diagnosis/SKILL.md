@@ -14,7 +14,7 @@ verified cases before adding a shared authoring rule.
 ## When NOT to use this
 
 - HUD-only artefacts (cursor, needle, dial ring) → use the widescreen recipe in
-  `docs/debugging.md`.
+  `docs/reference/renderer.md` (## HUD hook contract).
 - Audio glitches or frame-pacing issues → `port-debugging` skill (`AUDIO_RMS`,
   `AERO_FRAME_LOG`).
 - Renderer/cmd-stream mismatches inside an already-correctly-routed DL → read

@@ -36,7 +36,7 @@ ignored = [
     "guPerspectiveF",
 ]
 
-# Developer warp menu (src/aero_warp.c; see docs/reference/runtime.md). Hooked at the entry of the top-level
+# Developer warp menu hook (src/aero_warp.c; see docs/reference/runtime.md). Hooked at the entry of the top-level
 # per-frame scene driver func_80015C8C (called every frame from the main game thread's
 # loop func_800658FC): it copies the scene request 0x8013FF84 into the current scene
 # 0x8013FF80 and jump-tables (0x800969C0, 10 scenes) to the active scene's runner. The
@@ -49,7 +49,7 @@ func = "func_80015C8C"
 before_vram = 0x80015C8C
 text = "extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);"
 
-# Developer save-state (src/aero_savestate.c; see docs/reference/runtime.md). Same per-frame scene driver as
+# Developer save-state hook (src/aero_savestate.c; see docs/reference/runtime.md). Same per-frame scene driver as
 # the warp (it runs every frame in every scene), one instruction past the warp hook:
 # N64Recomp rejects two hooks on the exact same vram, and 0x80015C90 is still the
 # frame-boundary entry. Snapshots/restores rdram[0..8MiB) on an F7/F8 or AERO_STATE_LOAD
@@ -191,8 +191,10 @@ text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdra
 # Accelerator-only Boost Start + button-operated race Turbo (src/aero_turbo_boost.c).
 # Hooked in the real P1 vehicle-input callback immediately after func_8005C9E4
 # maps the configured physical buttons/stick into semantic car controls at +0x40.
-# This preserves custom bindings; the ROM retains boost physics and heat handling.
-# Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=0.
+# Boost Start reads those semantic controls; race Turbo reads the raw N64 R button
+# from the P1 pad block, so the drift action is never consumed. This preserves
+# custom bindings; the ROM retains boost physics and heat handling.
+# Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=1.
 [[patches.hook]]
 func = "func_8005C750"
 before_vram = 0x8005C7A8

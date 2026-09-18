@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.20)
 #
 #   # 1. Recompile the game code from YOUR ROM (produces RecompiledFuncs/):
 #   python3 scripts/gen_syms_toml.py
-#   ./lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.us.toml
+#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.us.toml
 #
 #   # 2. Configure + build (Linux example; MinGW/Windows details in BUILDING.md):
 #   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
