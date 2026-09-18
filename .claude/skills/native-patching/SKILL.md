@@ -40,7 +40,7 @@ also enforces this). `func = "func_X"`, `text = "native_name"`, at entry or a
 `before_vram` epilogue site.
 
 Hook-native conventions proven here: read the DL cursor via the holder pointer
-in `ctx->r4` (AeroGauge has no global cursor — see rom-map.md); gate on
+in `ctx->r4` (AeroGauge has no global cursor; see `docs/reference/rom.md`); gate on
 scene/phase globals, never on frame counts; give every behavioral hook an
 `AERO_*` env kill-switch; read game state INSIDE the hook (offline RDRAM dumps
 race the next frame's rebuild).

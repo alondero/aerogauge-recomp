@@ -1,8 +1,8 @@
 """Token-efficient summary of a large port log: first crash, repetition, markers.
 
-Adapted from automobililamborghini-recomp/tools/trace_analyst.py for this
-port's log vocabulary. Read the summary, THEN read only the pinpointed raw
-lines -- never page a multi-thousand-line log into an agent context.
+The output format is local to this port's log vocabulary. Read the summary,
+then read only the pinpointed raw lines -- never page a multi-thousand-line log
+into a developer or agent context.
 
 Usage: python tools/trace_analyst.py <log_file> [pattern]
        optional extra regex is counted + sampled (first/last 3 hits).

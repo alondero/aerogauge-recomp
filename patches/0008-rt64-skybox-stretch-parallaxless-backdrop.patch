@@ -15,7 +15,7 @@ index e842dcc..4efac76 100644
                  }
              }
   
-+            // Skybox / at-infinity backdrop stretch (Automobili Lamborghini issue #3 follow-up):
++            // Skybox / at-infinity backdrop stretch for a no-translation view:
 +            // a perspective scene rendered from a camera with zero view-space translation is a
 +            // rotation-only backdrop with no parallax (the game's sky billboard). Hor+-widening
 +            // its FOV (the default aspect adjust below) shrinks a FINITE backdrop away from the

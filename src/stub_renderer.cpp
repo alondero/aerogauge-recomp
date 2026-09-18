@@ -1,10 +1,16 @@
-// Headless stub renderer for the first-VI boot probe (#57).
+// Headless software renderer and capture instrument.
 //
-// ultramodern requires a non-null `renderer::create_render_context` callback,
-// but reaching the first VI retrace needs no actual rendering (the VI timer is
-// a wall-clock thread, and the per-frame ScreenUpdateAction queue is unbounded
-// and non-blocking). So we hand back a RendererContext whose every method is a
-// no-op. RT64 replaces this in phase #58.
+// AERO_HEADLESS selects this context so boot, game logic, display-list
+// production, audio backpressure, and framebuffer measurements can run
+// without a window or graphics device. The context receives the game's real
+// task and guest RDRAM. It rasterizes or inspects them locally; it does not
+// own game state or replace RT64 for normal player runs.
+//
+// The renderer thread owns send_dl. g_aero_rdram is published for the VI
+// callback because the runtime otherwise keeps the guest pointer private.
+// Probe gates are quiet by default and must fail closed when a display-list
+// range, guest pointer, or unmapped game-state trigger is unsafe. See
+// docs/debugging.md and docs/reference/renderer.md.
 
 #include <cstdio>
 #include <cstdlib>
@@ -16,22 +22,18 @@
 
 #include "ultramodern/renderer_context.hpp"
 
-#include "aero_rt64.h" // RT64 default presenter (#58); AERO_HEADLESS=1 keeps swrender
-#include "aero_config.h" // aero::config::harness_log() — same periodic-log gate as src/rt64_renderer.cpp
+#include "aero_rt64.h" // RT64 is the normal presenter; AERO_HEADLESS keeps swrender
+#include "aero_config.h" // shared harness-log gate
 
-// Set by create_render_context so the game-specific VI retrace hook (vi_cb in main.cpp)
-// can reach RDRAM. ultramodern's events thread owns the only rdram pointer otherwise.
+// Set by create_render_context so the VI callback can inspect the guest image.
+// This pointer is valid only while the renderer context exists.
 uint8_t* g_aero_rdram = nullptr;
-// (Lamborghini fog-match hook dropped from the base stack.)
 
-// TODO(aerogauge): the Lamborghini port sampled that game's state machine (D_800CE6AC),
-// menu screen id (D_80098560) and attract demo index (D_800CE774) to gate/label captures.
-// TODO(aerogauge): the Lamborghini port sampled that game's state machine (D_800CE6AC),
-// menu screen id (D_80098560) and attract demo index (D_800CE774) to gate/label captures.
-// AeroGauge's equivalents are not identified yet, so the probe funcs return sentinels: state
-// -1 (unmapped) means the state-gated capture knobs never fire unless the user passes a
-// negative AERO_DL_RENDER_STATE / AERO_DL_INSPECT_STATE explicitly. Map these to real
-// globals once the boot+game state has been disassembled past the first fault.
+// These sentinels are deliberate: the current ROM state/menu globals have not
+// been mapped well enough for a state-gated capture. A probe must use its
+// explicit send-count trigger or remain inactive; it must not borrow an address
+// from another ROM.
+
 static int aero_state_unmapped()      { return -1; }
 static int aero_menu_screen_unmapped(){ return 0;  }
 
@@ -40,15 +42,13 @@ namespace headless {
 // ---------------------------------------------------------------------------
 // DL introspector (renderer-seam debug infra, gated by AERO_DL_INSPECT).
 //
-// The pivot is headless: send_dl drops the display list. But that OSTask carries
-// the REAL command stream the game built in RDRAM this frame -- the exact input an
-// HLE renderer (RT64, #58) will walk. With NO renderer wired, this is the only way
-// to answer "is what the game renders at state 8 real 3D geometry, or empty?" -- i.e.
-// whether the game-logic->DL pipeline is faithful (W102 proved the game LOGIC is;
-// this checks its rendered output). MEASURED (W103, 2026-07-01): the state-8 DL is
+// The headless context receives the real command stream the game built in
+// RDRAM. It is useful for checking whether game logic produced a display list
+// before involving RT64. The current capture path expects F3DEX v1 commands
+// with textured 3D geometry; confirm that assumption when the ROM or hook set changes.
 // F3DEX (Fast3DEX v1), NOT F3DEX2 -- 0xB1=G_TRI2 present, 0x01=G_MTX/0x04=G_VTX low
 // opcodes. This matters for RT64: the HLE must select the F3DEX ucode profile.
-// Env-gated so the DEFAULT build is byte-unchanged. AERO_DL_INSPECT=1 dumps a one-shot
+// Env-gated so normal runs stay quiet. AERO_DL_INSPECT=1 dumps a one-shot
 // summary at AERO_DL_INSPECT_STATE (default 8). Walks G_DL branches + gsSPSegment addressing.
 namespace dlinspect {
 
@@ -290,11 +290,10 @@ static void dump_summary(const uint8_t* rdram, const OSTask* t) {
                      i, st.tex_addr[i], fmt_name(st.tex_fmt[i]), siz_name(st.tex_siz[i]));
 }
 
-// Menu-DL census (issue #32): per-frame counts of G_SPRITE2D / TEXRECT / total commands.
-// The G_SPRITE2D count exists because issue #32 was filed blaming RT64's empty sprite2DBase
-// handler; this census measured ZERO Sprite2D commands on every menu screen (and none built
-// anywhere in the ROM), falsifying that hypothesis -- the real cause was two truncated,
-// force-stubbed menu draw emitters (gen_syms_toml.py SPLIT_MERGES func_8006CEC8/func_8004AFD8).
+// Menu display-list census: count G_SPRITE2D, TEXRECT, and total commands.
+// This probe was added after an empty-sprite hypothesis was not supported by
+// the observed command stream. Keep the result tied to the actual ROM dump
+// and the current generated stub list, rather than to an issue label.
 // Same walk discipline as walk() above: follows G_DL, tracks gsSPSegment.
 struct SpriteScan {
     uint32_t count = 0;      // G_SPRITE2D commands seen this frame
@@ -363,9 +362,9 @@ static void sprite_scan(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[
     }
 }
 
-// One-shot full-DL dump (issue #32): walk the frame's DL like sprite_scan but append every
-// resolved command (depth, rdram offset, w0, w1) as text to `f`. Ground truth for diffing
-// the port's menu command stream against an ares capture of the same screen.
+// One-shot full-DL dump: walk the frame's DL like sprite_scan and append every
+// resolved command (depth, RDRAM offset, w0, w1) as text to f. Use it with a
+// fixed ROM and matching trigger when comparing two renderer paths.
 static void dump_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16],
                       std::FILE* f, int depth) {
     if (depth > 12) return;
@@ -390,7 +389,7 @@ static void dump_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16
     }
 }
 
-// Geometry-set sampler (draw-distance pop-in attribution, follow-up to #2): collect the
+// Geometry-set sampler (draw-distance pop-in attribution): collect the
 // frame's set of resolved G_DL branch targets, G_VTX source pages (phys >> 12), and the
 // triangle/CULLDL totals. Consecutive samples get diffed offline to catch geometry
 // appearing/disappearing as the attract-demo craft moves -- the residual large-scale
@@ -453,27 +452,18 @@ static void geom_walk(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[16
 } // namespace dlinspect
 
 // ---------------------------------------------------------------------------
-// The pivot's software reference renderer -- runs on the DEFAULT path, every frame.
+// Software renderer used by headless and RT64-fallback runs.
 //
-// W103 proved the state-8 demo-race DL is a real, textured, transformed F3DEX 3D
-// scene (1213 tris, 1831 verts, 45 matrices). RT64 (ADR 0002, #58) is the eventual
-// HLE renderer but is not vendored and is a multi-session lift, so this is the in-tree
-// renderer for now: walk the game's real DL, apply the real G_MTX matrices, transform
-// the G_VTX verts, and rasterize TRI1/TRI2/QUAD into an RGBA framebuffer.
+// It reads the real task and guest RDRAM, walks F3DEX display lists, and
+// rasterizes a small framebuffer for boot probes and measurements. It writes
+// no guest memory and does not own normal presentation. RT64 remains the
+// player renderer when its context starts successfully.
 //
-// It is a SCAFFOLD toward RT64 (correct-but-slow) and is TRACKED for retirement when RT64
-// lands (#53/#54). W105 added per-pixel texturing (RGBA16 + CI4/CI8 via TLUT, sampled from
-// the source image in RDRAM, perspective-correct, modulated by Gouraud shade); untextured or
-// unhandled-format tris fall back to Gouraud vertex colour. But per this
-// project's rules it is NOT gated off: the DEFAULT build IS the integration target,
-// and a renderer hidden behind a flag would be the "gated A/B scaffold, not durable
-// default-path convergence" failure mode ADR 0002 was created to escape. So it renders
-// on every send_dl -- the trunk is what gets stress-tested. It only READS RDRAM (never
-// writes), so it cannot perturb game logic; that is a correctness property, NOT a
-// "byte-unchanged" success gate (byte-identicality between builds is explicitly a
-// REJECTED metric -- faithfulness = convergence to ares). The one knob is frame
-// CAPTURE-to-file (a diagnostic, not a gate): save the first frame at a chosen state
-// for the port-vs-ares FB-diff harness.
+// The implementation is intentionally a test instrument. Its captures can
+// help separate game display-list production from host renderer setup, but a
+// matching software capture is not proof that RT64 or a human-facing image
+// is correct. Keep capture switches bounded and record their ROM/commit
+// inputs in the issue or pull request that owns the check.
 namespace swrender {
 
 // Reuse the F3DEX opcode enum + address resolver from dlinspect (same translation unit).
@@ -560,7 +550,7 @@ struct RState {
     SVtx vtx[128];
     Framebuffer* fb;
     // --- texture pipeline state (tracked across the DL walk, like RDP TMEM state) ---
-    // W105: the state-8 scene is textured (RGBA16 majority + CI4/CI8 via TLUT). We sample
+    // The current capture path uses RGBA16 and CI4/CI8 textures via TLUT. We sample
     // the SOURCE image in RDRAM directly (no TMEM byte-array model): every texture group
     // re-issues SETTIMG(texel) right before its render tile + draw, so the "current SETTIMG"
     // IS this group's texel source. The two-tile idiom means tile 7 is the LOADBLOCK load
@@ -572,7 +562,7 @@ struct RState {
     uint32_t rt_w = 0, rt_h = 0;    // render tile texel dims from SETTILESIZE
     uint8_t  rt_cmS = 0, rt_cmT = 0;// render-tile clamp/mirror bits (bit0=G_TX_MIRROR, bit1=G_TX_CLAMP)
     bool     tex_on = false;        // G_TEXTURE enable
-    // --- colour combiner + register colours (W107): the state-8 scene uses NINE distinct
+    // --- colour combiner + register colours: the current capture path uses several distinct
     // SETCOMBINE muxes, not just TEXEL0*SHADE. The sky is TEX0-only (no shade), road is
     // 2-cycle LOD*SHADE, many body panels are TEX0*PRIM. Track the raw mux + PRIM/ENV so
     // raster can evaluate the real (a-b)*c+d per pixel instead of forcing modulate.
@@ -580,7 +570,7 @@ struct RState {
     uint32_t cc_w1 = 0xFFFCF83C;    // SETCOMBINE w1
     uint8_t  prim_r = 255, prim_g = 255, prim_b = 255, prim_a = 255;
     uint8_t  env_r  = 255, env_g  = 255, env_b  = 255, env_a  = 255;
-    // --- fog + blender render mode (W109): the state-8 scene is a DUSK RACE WITH FOG.
+    // --- fog + blender render mode: the current capture path includes a dusk-race fog mode.
     // The RSP folds a z-derived fog coefficient into vertex alpha (see G_FOG above); the
     // blender then mixes the combiner output toward fog_color by that coefficient on the
     // surfaces whose render-mode cycle-1 P input is CLR_FOG. Track fm/fo (G_MW_FOG), the
@@ -588,7 +578,7 @@ struct RState {
     int16_t  fog_mul = 0, fog_off = 0;      // raw s16 fog multiplier / offset
     uint8_t  fog_r = 0, fog_g = 0, fog_b = 0;
     uint32_t othermode_lo = 0;              // accumulated render mode (blender lives in bits 16-31)
-    // --- real N64 vertex lighting (W110): the state-8 scene loads 2 directional lights +
+    // --- real N64 vertex lighting: a display list may load directional lights +
     // 1 ambient via G_MOVEMEM (indices G_MV_L0=0x86, L1=0x88, ambient at 0x86+num*2). The RSP
     // lambert-shades each vertex normal against these COLOURED lights; the port previously
     // faked it with a single grey headlight, flattening the dusk key/fill and darkening the
@@ -673,7 +663,7 @@ static void xform_vertex(RState& s, uint32_t phys, SVtx& out, bool lighting) {
     uint8_t cg = rd_u8(s.rdram, phys + 13);
     uint8_t cb = rd_u8(s.rdram, phys + 14);
     if (lighting && s.lights_loaded) {
-        // Real N64 lighting (W110): the cn bytes are a signed normal. Rotate it into eye space
+        // N64 lighting: the cn bytes are a signed normal. Rotate it into eye space
         // by the modelview upper-3x3, normalise, then accumulate ambient + per-directional-light
         // lambert, each weighted by the light's own RGB colour. This restores the dusk key
         // (warm yellow from above) + fill (cool blue) that the old grey headlight flattened.
@@ -707,7 +697,7 @@ static void xform_vertex(RState& s, uint32_t phys, SVtx& out, bool lighting) {
     } else {
         out.r = cr; out.g = cg; out.b = cb;
     }
-    // Fog fold (W109): when G_FOG is set, the RSP replaces vertex alpha with a fog
+    // Fog fold: when G_FOG is set, the RSP replaces vertex alpha with a fog
     // coefficient derived from the projected screen-z, NOT the authored byte. Formula
     // (matches GLideN64/fast3d): fog = clamp(ndc_z * fm + fo, 0, 255), ndc_z = clip_z/clip_w
     // in [-1,1]. fm/fo are the raw s16 gSPFogPosition values (fm>0, fo<0), so fog rises
@@ -850,8 +840,8 @@ static int clip_near_plane(const ClipV* in, int n, ClipV* out) {
 // (fm=25600 fo=-25344), i.e. distant terrain fades to fog AT the far plane and anything
 // past it must VANISH so the dusk-sky backdrop shows through at the horizon. Without
 // this clip the port draws that terrain as a fully-fogged dark curtain over the lower
-// sky (W112: port horizon band y=60-95 was (56,50,43) == fog colour, where live ares
-// shows the bright sky (170-185,140-150,115-122)).
+// sky (the original capture showed a fog-colour horizon where a fixed
+// reference emulator showed the bright sky).
 static int clip_far_plane(const ClipV* in, int n, ClipV* out) {
     int m = 0;
     for (int i = 0; i < n; ++i) {
@@ -875,7 +865,7 @@ static inline void project(const RState& s, const ClipV& c, ScreenV& o) {
     o.s = c.s; o.t = c.t; o.r = c.r; o.g = c.g; o.b = c.b; o.a = c.a;
 }
 
-// --- N64 colour combiner (W107) -------------------------------------------------
+// --- N64 colour combiner -------------------------------------------------------
 // The RDP combiner computes out = (A - B) * C + D per cycle, in two cycles, with the
 // cycle-0 result feeding cycle-1 as COMBINED. The state-8 scene uses nine distinct
 // muxes; forcing TEX0*SHADE darkened the sky (a TEX0-only surface) and mis-tinted the
@@ -983,8 +973,8 @@ static bool raster_screen_tri(RState& s, const ScreenV& a, const ScreenV& b, con
     float area = edge(a.sx, a.sy, b.sx, b.sy, c.sx, c.sy);
     if (area == 0.0f) return false;
     // Backface cull per the F3DEX geometry mode. With the viewport y-flip baked into vp_sy,
-    // a front-facing triangle yields a POSITIVE signed area here (empirically verified vs the
-    // ares state-8 frame); G_CULL_BACK culls the negative-area (back-facing) triangles.
+    // a front-facing triangle yields a POSITIVE signed area here; G_CULL_BACK culls the
+    // negative-area (back-facing) triangles.
     if ((s.geom_mode & G_CULL_BACK) && area < 0.0f) return false;
     if ((s.geom_mode & G_CULL_FRONT) && area > 0.0f) return false;
     float inv_area = 1.0f / area;
@@ -996,18 +986,18 @@ static bool raster_screen_tri(RState& s, const ScreenV& a, const ScreenV& b, con
     bool textured = tex_avail && want_tex;
     RGBA prim = {s.prim_r / 255.0f, s.prim_g / 255.0f, s.prim_b / 255.0f, s.prim_a / 255.0f};
     RGBA env  = {s.env_r  / 255.0f, s.env_g  / 255.0f, s.env_b  / 255.0f, s.env_a  / 255.0f};
-    // Fog blender (W109): a surface is fogged iff its render-mode cycle-1 P colour input is
+    // Fog blender: a surface is fogged iff its render-mode cycle-1 P colour input is
     // CLR_FOG (bits 31-30 of othermode_lo == 3, e.g. the CB023038 fog-add mode). For those,
     // mix the combiner output toward fog_color by the per-pixel fog coefficient (shade.a,
     // which xform_vertex folded z-derived fog into). Non-fog surfaces are untouched.
-    // Measurement knob (#83): AERO_SWRENDER_NO_FOG=1 skips the fog blend so the capture
+    // Measurement knob: AERO_SWRENDER_NO_FOG=1 skips the fog blend so the capture
     // shows the raw geometry BEHIND the fog. Answers "is the 3P/4P far-clip actually short,
     // or is the near-black fog the only thing hiding the distance?" -- the swrender uses the
     // ROM's own projection, so culled-away far geometry stays absent even with fog off.
     static const bool s_no_fog = []{ const char* e = std::getenv("AERO_SWRENDER_NO_FOG"); return e && e[0] == '1'; }();
     bool fog_surface = !s_no_fog && ((s.othermode_lo >> 30) & 3) == 3;
     RGBA fogc = {s.fog_r / 255.0f, s.fog_g / 255.0f, s.fog_b / 255.0f, 1.0f};
-    // Translucency (W109): a surface alpha-blends against the framebuffer iff its blender
+    // Translucency: a surface alpha-blends against the framebuffer iff its blender
     // cycle-2 reads CLR_MEM weighted by (1-A) -- M2==CLR_MEM(1) && B2==1MA(0). This is the
     // faithful test (NOT ALPHA_CVG_SEL). The car's soft shadow (C8104A50) passes; the opaque
     // fogged body/road (CB023038, cyc2 M2==CLR_IN) does not. XLU surfaces z-TEST but don't
@@ -1130,7 +1120,7 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                     bool load = (flags & 0x02) != 0;
                     bool push = (flags & 0x04) != 0;
                     if (proj) {
-                        // Projection-matrix probe (AERO_PROJ_PROBE=1, widescreen investigation):
+                        // Projection-matrix probe (AERO_PROJ_PROBE=1, widescreen probe):
                         // RT64 only FOV-widens scenes whose PROJECTION matrix looks perspective
                         // (m[3][3]==0 && m[1][1]!=0, rt64_rsp.cpp getCurrentProjectionType). Log
                         // the first few proj loads so we can see what this ROM actually loads.
@@ -1251,7 +1241,7 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                 if (i3 < 128 && i4 < 128 && i5 < 128) raster_tri(s, s.vtx[i3], s.vtx[i4], s.vtx[i5]);
                 break;
             }
-            // --- texture pipeline (W105): decode enough of the RDP tile state to sample.
+            // --- texture pipeline: decode enough of the RDP tile state to sample.
             case G_SETTIMG: {
                 // Declares the source image in RDRAM. For this scene the "current" SETTIMG at
                 // draw time is the group's texel source (the palette SETTIMG is consumed by the
@@ -1295,7 +1285,7 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                 break;
             }
             case G_SETCOMBINE: {
-                // Store the raw 2-cycle mux; raster evaluates (A-B)*C+D per pixel (W107).
+                // Store the raw 2-cycle mux; raster evaluates (A-B)*C+D per pixel.
                 s.cc_w0 = w0; s.cc_w1 = w1;
                 break;
             }
@@ -1425,15 +1415,15 @@ public:
     void enable_instant_present() override {}
     void send_dummy_workload(uint32_t) override {}
     // The game's main loop built a DL and osSpTaskStartGo -> submit_rsp_task delivered it
-    // here. The software reference renderer (swrender) rasterizes it into m_fb on the
-    // DEFAULT path every frame -- the trunk renders, so the trunk is what gets stress-tested
-    // (RT64, #58, will replace swrender). Log the FIRST gfx OSTask once as the "gfx-OSTask
-    // seam reached" runtime signal.
+    // here. In a headless context the software renderer rasterizes it into
+    // m_fb. Log the first task once as evidence that the game-to-renderer
+    // seam was reached.
     void send_dl(const OSTask* t) override {
         static int count = 0;
         ++count;
         if (t && g_aero_rdram) {
-            // (Lamborghini fog-match hook dropped from the base stack.)
+            // The pointer is intentionally observed only; game-specific
+            // fog policy belongs in its own ROM-derived hook.
         }
         if (count == 1) {
             std::fprintf(stderr, "[gfx] first OSTask submitted to renderer (send_dl); task type=%u\n",
@@ -1448,8 +1438,9 @@ public:
             if (!s_done) {
                 const char* se = std::getenv("AERO_DL_INSPECT_STATE");
                 int target = se ? std::atoi(se) : 8;
-                // state = high halfword of the word at 0x800CE6AC (MEM_H, matches state_probe()).
-                int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+                // The state probe is intentionally unmapped for this ROM.
+                // A state-based capture therefore stays inactive.
+                int state = aero_state_unmapped();
                 if (state >= target) {
                     std::fprintf(stderr, "[dl-inspect] state=%d (>= target %d), send_dl #%d\n",
                                  state, target, count);
@@ -1458,14 +1449,14 @@ public:
                 }
             }
         }
-        // Race-DL dump (issue #84, AERO_RACE_DL_DUMP=<basename>): once the race state (>=8)
+        // Race-DL dump (AERO_RACE_DL_DUMP=<basename>): once the race state (>=8)
         // has settled, dump the walked frame DL to <basename>.txt and RDRAM to <basename>.bin
         // so a 1P-vs-3P sky draw can be diffed offline. Default: env unset -> skipped.
         static const char* s_race_dump = std::getenv("AERO_RACE_DL_DUMP");
         if (s_race_dump && t && g_aero_rdram) {
             static bool s_done = false;
             static int s_settle = 0;
-            int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+            int state = aero_state_unmapped();
             // AERO_DL_DUMP_AT=<send_dl count>: alternative trigger while the state global
             // is unmapped -- dump at an absolute frame count (calibrate with a screenshot
             // sequence; the HUD-derivation runs used A-pulse menu walks landing in-race
@@ -1514,16 +1505,16 @@ public:
                 std::fputc('\n', stderr);
             }
         }
-        // Menu-DL trace (issue #32, AERO_MENU_DL_TRACE=1): per-frame command census keyed by
-        // the menu screen id, logged on every (screen, count) change -- the port-vs-ares DL
-        // convergence tool that found the missing cursor/arrow emitters. Default: env unset.
+        // Menu-DL trace (AERO_MENU_DL_TRACE=1): per-frame command census keyed
+        // by the menu screen id. It is a comparison tool for fixed captures.
+        // Default: env unset.
         static const bool s_sprite_trace = (std::getenv("AERO_MENU_DL_TRACE") != nullptr);
         if (s_sprite_trace && t && g_aero_rdram) {
             uint32_t seg[16] = {0};
             dlinspect::SpriteScan sc;
             uint32_t dl_addr = (uint32_t)(int32_t)t->t.data_ptr;
             dlinspect::sprite_scan(g_aero_rdram, dl_addr, seg, sc, 0);
-            int scr = aero_menu_screen_unmapped(); // TODO(aerogauge): re-point (was Lambo D_80098562)
+            int scr = aero_menu_screen_unmapped(); // Guest menu state is not yet symbol-backed.
             static int s_scr = -9999; static uint32_t s_count = 0xFFFFFFFF;
             static uint32_t s_cmds = 0;
             if (scr != s_scr || sc.count != s_count || sc.cmds != s_cmds) {
@@ -1539,7 +1530,7 @@ public:
             }
             // AERO_MENU_DL_DUMP=<screen>: once, on the target menu screen (after the
             // transition frames settle), dump the walked DL to dl_screen<N>.txt and the full
-            // RDRAM to rdram_screen<N>.bin (both cwd) for offline port-vs-ares diffing.
+            // RDRAM to rdram_screen<N>.bin (both cwd) for offline renderer comparison.
             static const char* s_dump_env = std::getenv("AERO_MENU_DL_DUMP");
             static bool s_dumped = false;
             static int s_settle = 0;   // skip the screen's transition frames before dumping
@@ -1570,19 +1561,19 @@ public:
             if (!m_fb_ready) { m_fb.init(320, 240); m_fb_ready = true; }
             swrender::RenderStats rs = swrender::render_into(m_fb, g_aero_rdram, t);
             // Frame CAPTURE-to-file (diagnostic knob, not a gate): save the first frame that
-            // reaches the capture state for the port-vs-ares FB-diff harness. State + path are
+            // reaches the capture state for a framebuffer comparison. State + path are
             // configurable (AERO_DL_RENDER_STATE default 8, AERO_DL_RENDER_OUT default below);
             // they tune a default-on behaviour, they do not switch rendering on/off.
             // AERO_DL_RENDER_EVERY=N additionally re-captures every N send_dls after the
             // first hit (numbered .N.bmp suffixes) -- needed to compare ATTRACT DEMO CYCLES
-            // against ares (W112: the attract plays different demo tracks per state-8 pass;
-            // a single first-frame capture can be a different SCENE than an ares capture).
+            // against a fixed reference capture. The attract loop can choose a
+            // different scene on each pass, so record the scene with the image.
             static const char* s_every_env = std::getenv("AERO_DL_RENDER_EVERY");
             static const int s_every = s_every_env ? std::atoi(s_every_env) : 0;
             if (!m_frame_captured || (s_every > 0 && count >= m_next_capture)) {
                 const char* se = std::getenv("AERO_DL_RENDER_STATE");
                 int target = se ? std::atoi(se) : 8;
-                int state = aero_state_unmapped(); // TODO(aerogauge): re-point (was Lambo D_800CE6AC)
+                int state = aero_state_unmapped(); // Guest state is not yet symbol-backed.
                 if (state >= target) {
                     const char* out = std::getenv("AERO_DL_RENDER_OUT");
                     const char* base = out ? out : "dl_render_state8.bmp";
@@ -1594,9 +1585,8 @@ public:
                     }
                     if (s_every > 0) m_next_capture = count + s_every;
                     bool ok = swrender::write_bmp(path, m_fb);
-                    // TODO(aerogauge): the Lamborghini port logged a demo-track index here so
-                    // every capture self-identified its attract demo (D_800CE774 was the
-                    // Lambo global). Unmapped for AeroGauge — re-add once its attract loop runs.
+                    // The state trigger is intentionally unmapped for this ROM, so a capture
+                    // records the trigger and frame count but not an inferred attract index.
                     std::fprintf(stderr,
                         "[dl-render] captured state=%d frame (send_dl #%d) -> %s (%s)\n"
                         "[dl-render]   verts_loaded=%u tris_in=%u drawn=%u clipped=%u pixels=%u tex_pixels=%u  viewport=%s\n"
@@ -1609,14 +1599,9 @@ public:
                 }
             }
         }
-        // Periodic heartbeat: a SUSTAINED gfx pipeline (not the #58 1-task stall). Before the
-        // __osViCurr/__osViNext retrace-promotion fix (vi_cb in main.cpp), this stuck at 1 forever.
-        // GATED behind AERO_HARNESS_LOG=1 (default off, same gate as the RT64 context in
-        // src/rt64_renderer.cpp) — at this title's 30 fps this fires once per second on
-        // the gfx thread, and a synchronous Windows console write measured 10-77 ms per
-        // line when stderr was a live console (the 1 Hz hitch root cause). A headless
-        // repro boot into the swrender fallback would reintroduce the exact hitch without
-        // this gate; opt back in via the env var for diagnostic runs.
+        // Optional low-rate heartbeat for the graphics-thread boundary.
+        // It is disabled by default because synchronous console output can
+        // disturb timing. Enable AERO_HARNESS_LOG=1 only for a diagnostic run.
         if (aero::config::harness_log() && count % 30 == 0) {
             std::fprintf(stderr, "[gfx] send_dl count=%d (pipeline sustained)\n", count);
         }
@@ -1637,11 +1622,9 @@ std::unique_ptr<ultramodern::renderer::RendererContext>
 create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle,
                       bool developer_mode) {
     g_aero_rdram = rdram;
-    // RT64 is the DEFAULT presenter (#58, flipped 2026-07-02). AERO_HEADLESS=1 (harness
-    // knob) keeps the headless swrender, which remains the measurement instrument: it
-    // rasterises into the RDRAM framebuffer the port-vs-ares harness byte-compares.
-    // RT64 setup failure (no Vulkan device / no window) also degrades to swrender so
-    // the boot probe still runs.
+    // RT64 is the normal presenter. AERO_HEADLESS=1 keeps this software
+    // renderer, and an RT64 setup failure falls back here so a bounded boot
+    // probe can still run without a graphics device.
     if (aero_rt64::enabled()) {
         auto rt64_ctx = aero_rt64::create_render_context(rdram, window_handle, developer_mode);
         if (rt64_ctx) {
@@ -1656,15 +1639,10 @@ create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window
 }
 
 // ---- deterministic lighting self-test (AERO_LIGHTING_SELFTEST=1, no ROM) ----------
-// Validates the W110 real-lighting path end-to-end WITHOUT the ROM or ares: builds a
-// synthetic byte-swapped RDRAM holding a minimal F3DEX DL (G_MW_NUMLIGHT moveword +
-// light-struct G_MOVEMEMs + SHADE-only SETCOMBINE + optional G_MTX + G_VTX + G_TRI1)
-// and runs it through the REAL render path (swrender::render_into), printing the
-// centre-pixel colour per case. tests/pivot/test_lighting.py recomputes the expected
-// lambert sum INDEPENDENTLY in Python and compares -- a deterministic answer to "is
-// the lighting math + light decode right" that bypasses the ares frame-misalignment
-// trap entirely (W111: the demo-race scene never sets G_LIGHTING, so no ares FB-diff
-// can exercise this path at state 8).
+// Builds synthetic byte-swapped RDRAM with a minimal F3DEX display list and
+// runs the real software-renderer path. It checks host lighting and memory
+// decoding without needing the game image; it cannot prove that a live game
+// frame emits the same light commands.
 namespace selftest {
 
 // Byte-order-mirrored writers (inverse of swrender's rd_* readers: aligned u32 is
@@ -1677,7 +1655,7 @@ struct FakeMem {
     void w8 (uint32_t off, uint8_t  v) { buf[off ^ 3] = v; }
 };
 
-// The W111-measured state-8 light set (colours 0-255, directions raw s8) -- using the
+// The recorded state-8 light set (colours 0-255, directions raw s8) -- using the
 // real game's values keeps the test representative of the scene that matters.
 struct TLight { uint8_t r, g, b; int8_t dx, dy, dz; };
 static const TLight kL0  = {241, 254, 153, -11,  55, -101};   // warm dusk key

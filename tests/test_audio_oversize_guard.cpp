@@ -6,8 +6,8 @@
 // guard ran, so a windowed run died with EXCEPTION_ACCESS_VIOLATION zeroing ~4 GB
 // of not-mapped memory. The guard must reject the length before ANY write.
 //
-// Standalone host test, no ROM build needed (same convention as the Lamborghini
-// port's tests/). Compile from the repo root with the host compiler and run from
+// Standalone host test, no ROM build needed. Compile from the repo root with the
+// host compiler and run from
 // build/ so SDL2.dll resolves:
 //   g++ -I src -I lib/N64ModernRuntime/ultramodern/include \
 //       -I lib/rt64/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/include \

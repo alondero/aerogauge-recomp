@@ -11,25 +11,21 @@ watchpoints, dump memory from a running game — no human in the loop.
 
 ## Bootstrap (first use in a fresh clone/worktree)
 
-The harness is NOT checked in (gitignored; see .gitignore's note). Copy it from
-the Lamborghini repo, then point it at this ROM:
-
-```powershell
-robocopy F:\src\automobililamborghini-recomp\tools\emu_instrumentation `
-         tools\emu_instrumentation /E
-```
-
-- `ares_session.py` defaults `DEFAULT_ROM` to the Lambo ROM and `ARES_EXE` to
-  `<repo>/tools/emulators/...` — pass both explicitly instead of editing:
-  `ares_session(rom=Path("AeroGauge (USA).z64"), ares_exe=Path(r"F:\src\automobililamborghini-recomp\tools\emulators\ares-base\ares-v147\ares.exe"), port=9150)`
+The harness and ares executable are not checked in. This workflow is optional
+and requires a separate local ares setup. A clean checkout does not provide
+either tool; keep local copies outside version control. Pass the ROM and
+executable explicitly instead of relying on helper defaults.
 
 ## Quickstart
 
+Set `ARES_EXE` to the local ares executable before running this example.
+
 ```python
+import os
 import sys; sys.path.insert(0, r'tools\emu_instrumentation')
 from pathlib import Path
 from ares_session import ares_session
-ARES = Path(r"F:\src\automobililamborghini-recomp\tools\emulators\ares-base\ares-v147\ares.exe")
+ARES = Path(os.environ["ARES_EXE"])
 
 with ares_session(rom=Path("AeroGauge (USA).z64"), ares_exe=ARES, port=9150) as c:
     print(f'VI_CURRENT: 0x{c.read32(0xA4400010):08X}')
@@ -53,7 +49,9 @@ signal-16 halts) — read the pre-store value or just continue.
 fine for DLs/tables; a full 8MB dump takes minutes), `c.write_mem(addr, bytes)`
 (bytes land as given — ares RDRAM is big-endian).
 
-**Per-frame VI capture**: `python tools/emu_instrumentation/run_ares_debug.py "AeroGauge (USA).z64" --frames 3 --output ares_vi.json --port 9151` (check the script accepts an ares-exe override; else set ARES_EXE).
+**Per-frame VI capture**: use the separate local harness's capture script when
+it is available. Check that script's `--help` output for its executable-path
+option; this repository does not ship the harness.
 
 ## Gotchas (verified the hard way)
 

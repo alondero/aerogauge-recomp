@@ -3,9 +3,9 @@
     Build AeroGauge: Recompiled on Windows (MinGW GCC + Ninja).
 
 .DESCRIPTION
-    End-to-end build for the N64Recomp static-recompilation port. Stack cloned
-    from the Automobili Lamborghini port. Idempotent: each step detects what's
-    already done and skips.
+    End-to-end build for the N64Recomp static-recompilation port. It uses the
+    pinned N64ModernRuntime, RecompFrontend, and RT64 submodules. Idempotent:
+    each step detects what's already done and skips.
 
     Steps:
       1. Toolchain PATH: Python's CMake (v4.x) ahead of MSYS2's buggy 3.25.1,

@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// SDL2 push-audio backend for the ultramodern pivot. See aero_audio.h for the contract.
-// NOTE (2026-07-12, #53): the game submits real M_AUDTASKs (task type 2) with an ACMD list every
-// audio frame; PCM is synthesised by the RSP aspMain microcode at AeroGauge ROM 0x7F330 -- byte-
-// identical to the Automobili Lamborghini port's audio-SDK mixer blob -- now RSPRecomp'd into
-// src/aspMain.cpp and routed from the M_AUDTASK path in main.cpp (see aspMain.us.toml for the
-// static ROM derivation). osAiSetNextBuffer (native) then queues the finished buffer into this sink.
+// SDL2 host sink for the translated game's AI audio buffers.
+//
+// The game submits M_AUDTASK work. RSPRecomp-generated aspMain code mixes
+// that work, the runtime invokes the callbacks registered by this module,
+// and SDL owns the final host device. The ROM offset and generated-file
+// boundary are recorded in docs/reference/rom.md.
+//
+// Ownership and failure behavior:
+//   - queueing and conversion are protected by g_state_mtx;
+//   - the persistent SDL stream carries resampler state across buffers;
+//   - a headless run uses the virtual AI FIFO because no device drains it;
+//   - a missing device leaves the game path measurable but cannot prove
+//     audible playback; use the audio probes and tests for that distinction.
 //
 // Design notes:
 //  * Format: int16 stereo at 48 kHz initially. SDL is asked for AUDIO_S16LSB
@@ -13,10 +20,9 @@
 //  * Thread model: the game's audio thread calls queue_samples (via the
 //    ultramodern shim). SDL_QueueAudio and SDL_GetQueuedAudioSize are
 //    thread-safe (per SDL2 docs) -- no extra lock needed.
-//  * First-AICall tripwire: submit() logs once the first time it sees a NON-SILENT
-//    buffer. With real aspMain synthesis wired (#53) it fires once the game starts
-//    mixing -- the headless boot-smoke's "first NON-SILENT buffer" line is the
-//    end-to-end proof that PCM is reaching the sink.
+//  * submit() logs the first non-silent buffer before checking for a host device.
+//    This distinguishes generated PCM from audible host playback in headless
+//    and windowed runs.
 
 #include "aero_audio.h"
 
@@ -43,11 +49,10 @@ namespace {
 SDL_AudioDeviceID g_dev = 0;
 SDL_AudioSpec     g_obtained{};
 uint32_t         g_desired_rate = 0;
-// Persistent stream converter (W137, #53): resampling 22050->48000 needs filter STATE carried
-// across submits. The old per-submit SDL_AudioCVT path reset that state every ~21 ms buffer
-// (SDL_ConvertAudio is a one-shot API that pads each chunk's edges with silence), which garbled
-// the whole mix at chunk rate — Adam's "each chunk sounds played backwards" report. Guarded by
-// g_state_mtx; recreated when the game changes the AI frequency.
+// Persistent stream converter: resampling needs filter state carried across
+// submits. Recreating a one-shot converter for every small buffer resets that
+// state at each boundary and can corrupt the mix. Guarded by g_state_mtx;
+// recreated when the game changes the AI frequency. See docs/reference/audio.md.
 SDL_AudioStream*  g_stream = nullptr;
 uint32_t          g_stream_src_rate = 0;
 bool              g_playback_started = false; // guarded by g_state_mtx
@@ -60,8 +65,9 @@ std::atomic<bool> g_first_nonsilent_logged{false};
 
 // Tiny guard for the rare case the runtime calls set_frequency before init
 // (init_audio does this). We accept whatever was last set; if init never ran,
-// we just store into a dead local and the device path is never taken (the
-// runtime reports get_remaining_audio_bytes=100 -- see ultramodern/src/audio.cpp:52).
+// we just store into a dead local and the device path is never taken. The
+// callback contract and its fallback behavior are recorded in
+// docs/reference/audio.md.
 std::mutex g_state_mtx;
 
 // Real AI hardware masks the length register to 18 bits (max DMA 256 KB); anything above
@@ -135,11 +141,9 @@ void submit(const int16_t* pcm, size_t sample_count) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_state_mtx);
-    // One-shot content tripwire (PERMANENT harness instrumentation): distinguishes "sink receives
-    // buffers" from "sink receives AUDIBLE PCM" in headless logs. Runs BEFORE the device check so
-    // a headless run without a drainable audio device (e.g. SDL_AUDIODRIVER=dummy under WSL, where
-    // an undrained Pulse queue makes the game's backpressure stop synthesis) still reports whether
-    // the game produced real PCM.
+    // One-shot content probe: distinguishes non-zero submitted PCM from host
+    // device playback. It runs before the device check so headless runs can
+    // still report generated audio without claiming speaker output.
     if (!g_first_nonsilent_logged.load() && sample_count <= kMaxAiSamples) {
         for (size_t i = 0; i < sample_count; i++) {
             if (pcm[i] != 0) {
@@ -154,21 +158,19 @@ void submit(const int16_t* pcm, size_t sample_count) {
         }
     }
     if (!g_device_opened.load() || g_dev == 0) {
-        // Graceful degradation: drop. This is the same shape peer projects use
-        // for headless builds where no audio device is available.
+        // Graceful degradation: drop the host submission. The content probe
+        // above still records whether the game produced non-zero PCM.
         return;
     }
     // sample_count is total int16 samples (stereo: 2 per frame). Bytes =
     // sample_count * sizeof(int16_t).
     const uint32_t byte_count = (uint32_t)(sample_count * sizeof(int16_t));
 
-    // Un-swizzle the guest sample order (W137, #53). N64Recomp stores RDRAM as byte-swapped
+    // Un-swizzle the guest sample order. N64Recomp stores RDRAM as byte-swapped
     // 32-bit words (guest byte A lives at host A^3), and the RSP DMA writes the finished PCM
-    // through that convention. A raw int16 view of the buffer therefore yields each aligned
-    // word's two samples in REVERSED order (values intact) — i.e. the L/R channels swapped.
-    // Swapping each pair restores the guest (hardware) L,R interleave; peer ports do the same
-    // in their queue_samples callbacks. AI buffers are 8-byte aligned, so pairs line up with
-    // guest words.
+    // through that convention. A raw int16 view therefore reverses the two samples in each
+    // aligned word. Swapping each pair restores the guest L/R interleave. AI buffers are
+    // 8-byte aligned, so the pair operation matches the guest words.
     static std::vector<int16_t> swapped;
     swapped.resize(sample_count);
     for (size_t i = 0; i + 1 < sample_count; i += 2) {
@@ -269,21 +271,10 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     submit(pcm, sample_count);
 }
 
-// Headless virtual AI FIFO (issue #7 follow-up, aspMain crash, 2026-07-17). The N64
-// AI drains queued PCM at exactly the game's AI rate, so osAiGetLength declines smoothly and
-// only reaches 0 when the game genuinely stops feeding audio. The previous implementation
-// reported the SDL device queue, which (a) is pulled in whole callback-sized bursts (~10 ms
-// sawtooth, momentary zeros at pull boundaries) and (b) is absent entirely in AERO_HEADLESS
-// runs, where the old ideal-drain model reported a PERMANENT zero backlog. A zero report
-// makes the game's mixer request a maximum-length frame (target - 0 + 0x60 samples => 3+
-// subframes per task), and oversized frames expose a latent bug in the game's own command
-// builder: a voice whose pull produces zero samples emits its envmixer with a stale SETBUFF
-// count (0x240 from the preceding interleave/save block), whose wet-buffer writes wrap past
-// DMEM 0x1000 and shred the ACMD dispatch table -> "Unhandled jump target" crash (RSP DMEM
-// wraps identically on real hardware; console timing just never produces the degenerate
-// frame). Keep this fallback for runs without an audio device. Windowed playback must
-// use actual device feedback: resetting an expired virtual FIFO on each submit loses
-// the playback deficit and traps synthesis at the 352-frame minimum (~21120 Hz).
+// Headless virtual AI FIFO for the generated audio path. It models queued
+// guest-side drain at the requested AI rate so osAiGetLength declines smoothly
+// when no host device exists. Windowed playback uses actual device feedback;
+// the virtual FIFO is only the no-device fallback. See docs/reference/audio.md.
 // Guarded by g_state_mtx.
 std::chrono::steady_clock::time_point g_ai_fifo_end{};
 
@@ -358,7 +349,7 @@ void init(uint32_t desired_sample_rate) {
     }
     g_desired_rate = desired_sample_rate ? desired_sample_rate : 48000;
 
-    // HEADLESS harness runs get NO audio device (W135, #53). Rationale: in a headless/WSL
+    // A headless run deliberately gets no audio device. In a no-window
     // environment the SDL queue never drains (Pulse has no real sink; SDL's dummy driver buffers
     // forever), so a queue-based get_frames_remaining would report a full queue and the game's
     // backpressure would stop synthesising -- silently masking whether the audio pipeline works.
@@ -373,9 +364,8 @@ void init(uint32_t desired_sample_rate) {
         }
     }
 
-    // Windows driver hint: bypass DirectSound for the lower-latency WASAPI
-    // backend. Mirrors the peer pattern in Zelda64Recomp/SnowboardKids2/
-    // BM64Recomp. No-op on Linux/macOS.
+    // Windows uses WASAPI when available. This is a host-device preference,
+    // not part of the guest audio contract; Linux keeps SDL's normal backend.
 #if defined(_WIN32)
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
 #endif
@@ -391,8 +381,7 @@ void init(uint32_t desired_sample_rate) {
     want.format   = AUDIO_S16LSB;  // int16 little-endian, host-native on x86
     want.channels = 2;            // stereo, matching the N64 AI output
     want.samples  = 0x100;        // 256 frames ~= 5.3 ms at 48 kHz; the value
-                                  // ultramodern's buffer_offset_frames heuristic
-                                  // (ultramodern/src/audio.cpp:41) plays nicely with
+                                  // the runtime's buffer-offset heuristic plays nicely with
     want.callback = nullptr;      // use SDL_QueueAudio, not a callback
 
     g_dev = SDL_OpenAudioDevice(/*device=*/nullptr, /*iscapture=*/0,
@@ -434,7 +423,7 @@ void shutdown() {
 
 } // namespace aero::audio
 
-// NOTE(aerogauge): the Lamborghini port carried a native override here for that ROM's
-// sound-player status getter (a busy-spin the cooperative scheduler needed a dispatch
-// point in). Dropped with the stack port — AeroGauge equivalents get added when its
-// audio library is mapped.
+// No native sound-player override is registered here. Add one only after the
+// corresponding AeroGauge ROM function and its runtime ownership are mapped.
+// A busy loop without an explicit ownership contract would not establish that
+// guarantee.

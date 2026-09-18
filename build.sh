@@ -112,13 +112,12 @@ git -C lib/rt64 checkout -- .
 git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
 
 # --- 6. Apply submodule patches in canonical order (runtime, frontend, RT64) ----------------
-# Mirrors CI's Linux job exactly (workflow lines 93-95). 0001 then 0007 both
-# patch N64ModernRuntime with disjoint hunks (verified to apply sequentially
-# on the pinned commit). 0007 adds the save-state thread-context registry +
-# `ultramodern_relink_thread_contexts` (issue #22, all platforms). Without it,
-# (save-state module, when ported) fails to link with "undefined reference to
-# `ultramodern_relink_thread_contexts`".
-log "[2/5] Applying Lamborghini submodule patches..."
+# Keep this order aligned with the Linux CI job. Patches 0001 and 0007 both
+# update N64ModernRuntime with disjoint hunks and apply in sequence to the
+# pinned commit. Patch 0007 adds the save-state thread-context registry and
+# `ultramodern_relink_thread_contexts`; the port uses that function to repair
+# native thread references after a guest-memory snapshot is restored.
+log "[2/5] Applying local submodule patches..."
 PATCHES=(
     "lib/N64ModernRuntime:0001-ultramodern-runtime-scheduler-audio-vi.patch"
     "lib/N64ModernRuntime:0007-ultramodern-savestate-thread-context-relink.patch"

@@ -10,11 +10,13 @@ description: Close a work session — validate, reflect progress in the GitHub i
 1. **Summarize changes**: `git diff --stat HEAD` (+ `git log --oneline main..`).
 2. **Validate**: run the build-and-verify gate; record the actual result.
 3. **Persist derivations** — the step that makes the next session cheap:
-   - New game addresses/protocols → `docs/notes/rom-map.md`.
+   - New game addresses/protocols → `docs/reference/rom.md` after they are
+     confirmed and useful beyond the current change.
    - New libultra routing → its evidence comment in `scripts/gen_syms_toml.py`.
    - New probe/env var → the table in `.claude/skills/port-debugging/SKILL.md`.
-   - A falsified theory → mark it FALSIFIED in the doc where it lived (falsified
-     models get resurrected otherwise — it has happened here).
+   - A falsified theory → update the issue or pull request, and update any
+     lasting source comment or reference entry that would otherwise mislead
+     the next developer.
 4. **Tracker**: `gh issue comment <n>` with a one-paragraph status (what landed,
    what's blocking), or close it. Reference exact files/functions.
 5. **Handoff** (`nextsessionprompt.md`, gitignored — REWRITE, don't append):

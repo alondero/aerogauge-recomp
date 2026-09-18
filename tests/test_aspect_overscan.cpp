@@ -7,7 +7,7 @@
 // widened (pillarboxed under AspectRatio::Expand). coversWidthWithOverscan accepts a
 // small symmetric border while still excluding split-screen sub-viewports.
 //
-// Standalone host test (Lamborghini tests/ convention). From the repo root:
+// Standalone host test. From the repo root:
 //   g++ -std=c++20 -w -I lib/rt64/src/contrib/hlslpp/include \
 //       tests/test_aspect_overscan.cpp lib/rt64/src/common/rt64_common.cpp \
 //       -o build/test_aspect_overscan && ./build/test_aspect_overscan

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Audio epic #53 -- host-side audio sink for the ultramodern pivot.
+// Host audio boundary for the translated game.
 //
-// AeroGauge's recompiled game pushes 16-bit signed stereo PCM into the AI
-// buffer via osAiSetNextBuffer; the N64ModernRuntime HLE for that primitive
-// (librecomp/src/ai.cpp) routes the buffer into ultramodern::queue_audio_buffer,
-// which forwards to whatever the consuming project registered in
-// audio_callbacks_t. We register a SDL2 push-audio backend here. The pattern
-// mirrors the peer N64Recomp projects (Zelda64Recomp, Snowboard Kids 2, BM64Recomp,
-// Banjo-Kazooie, MegaMan64Recomp) -- all GPL-3.0, all using the same SDL2
-// SDL_OpenAudioDevice + SDL_QueueAudio + SDL_GetQueuedAudioSize shape.
+// Ownership: the runtime invokes these callbacks from the game audio path.
+// This module owns the SDL device, conversion stream, queueing, and the
+// headless virtual FIFO. The generated aspMain code owns RSP mixing; the
+// game owns the source task and AI buffer contract.
+//
+// A missing host device is reported by the callback path and does not make
+// the generated audio code correct or incorrect by itself. See
+// docs/reference/audio.md and docs/testing.md for the evidence boundary.
 #ifndef AERO_AUDIO_H
 #define AERO_AUDIO_H
 
@@ -22,9 +22,9 @@ namespace aero::audio {
 
 // Initialise the SDL2 audio backend. Safe to call once before recomp::start();
 // idempotent if called more than once. Opens the default audio device at the
-// requested sample rate (48 kHz is what ultramodern::init_audio asks for, per
-// ultramodern/src/ultrainit.cpp:28). The device stays paused until the runtime
-// has queued enough PCM to cover host resampling and playback callback timing.
+// requested sample rate (the current runtime requests 48 kHz). The device
+// stays paused until the runtime has queued enough PCM to cover host
+// resampling and playback callback timing.
 void init(uint32_t desired_sample_rate);
 
 // Populate the three ultramodern audio callbacks (queue_samples /

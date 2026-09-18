@@ -6,7 +6,7 @@ index d387090..a370cbe 100644
  #define G_EX_ORIGIN_LEFT            0x0
  #define G_EX_ORIGIN_CENTER          0x200
  #define G_EX_ORIGIN_RIGHT           0x400
-+// Split-screen widescreen quadrant tag (Automobili Lamborghini port). A value >= NONE so
++// Split-screen widescreen quadrant tag for the port. A value >= NONE so
 +// movedFromOrigin() leaves the viewport translate untouched; both the FOV gate
 +// (rt64_projection_processor) and the NDC-scale gate (rt64_framebuffer_renderer) treat a
 +// perspective viewport carrying it as "render wide" even though it only covers a fraction

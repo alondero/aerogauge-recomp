@@ -1,37 +1,17 @@
-// Native replacement for the game's two per-frame course-geometry registrars --
-// the CPU-side visibility window behind AeroGauge's large-scale pop-in (the far-plane
-// extension in aero_draw_distance.cpp made the world visible; this makes the game
-// actually SUBMIT it). Routed here by `[patches] ignored` in aerogauge.us.toml
-// (gen_syms_toml.py NATIVE_NAMES), same mechanism as guPerspectiveF.
+// ROM-specific course visibility replacement.
 //
-// Decoded course model (byte-verified against a live RDRAM capture, 2026-07-16):
-//   track byte  0x8013FF9B -> course row 0x8008B290 + 0x14*track:
-//     row[0]     byte map: craft section index (u16 @ craft+4) -> zone id
-//     row[1]     zone visibility rows: 3 bytes per zone (a hand-authored PVS)
-//     row[2]     zone -> object-list table   (also reachable as *(0x8013FF44))
-//     row[+0x10] zone -> section-DL group table (immediately precedes row[2])
-//   Section groups: 8-byte {u32 dlptr; u16 hw4; u16 hw6} pairs, dlptr==0 terminated.
-//   Object lists: 0x28-stride entries {u32 dlptr; u16 hw4; ...; u32 callback @+0x20;
-//     u16 hw26 @+0x26}, terminated when the NEXT entry's dlptr is 0. The callback is
-//     a one-shot node initialiser (stamps per-entry translation/rotation).
+// The original game registers only the current three-zone PVS window. This
+// module can enumerate the course tables and register more geometry so long
+// distance views do not pop in. The game thread owns the lists; this module
+// writes guest RDRAM through N64Recomp memory helpers and calls the game's
+// own node-registration functions.
 //
-// Original behaviour (both registrars, ROM 0x80007150 / 0x80007310): look up the
-// craft's zone, then register ONLY the 3 zones in its visibility row into the
-// per-craft draw lists. Each draw list is a fixed 48-slot arena (0xB8-byte nodes,
-// slot 0 = sentinel, so 47 usable) whose ACTIVE chain is linked through node+0xA4
-// by the registration helpers.
-//
-// Full-track mode (config `full_track`, default on):
-//   * Sections have no callbacks and identity transforms, so ALL zones' section DLs
-//     are merged into a handful of synthetic display lists (one per distinct
-//     (hw4, hw6) bucket, built once per course in RDRAM the game never touches)
-//     and registered as ONE node each -- constant arena usage.
-//   * Objects need their per-entry init callbacks, so they are registered
-//     individually through the game's own helper; if a list outgrows its 47-slot
-//     arena the extra nodes are placed in a side arena (init'd with the same
-//     per-list handler) and spliced into the node+0xA4 chain.
-// The off path is a faithful transcription of the original 3-zone window,
-// A/B-verifiable with the AERO_DL_GEOMSET probe (stub_renderer.cpp).
+// Full-track mode is transitional infrastructure. It depends on this ROM's
+// course tables, node arenas, allocator ceiling, byte order, and display-list
+// lifetime. A failed derivation must leave the original PVS path in place.
+// A future decompilation or named code-mod seam should replace this memory
+// surgery. See docs/reference/rom.md and docs/architecture.md.
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -94,8 +74,9 @@ enum class SectionFilter : uint8_t {
     PvsGatedOnly,
 };
 
-// Debug bisection knobs (scaffolding — see https://github.com/... issue TBD when
-// filed; remove once the per-zone regression check ships). Unset = feature default:
+// Debug bisection knobs. They are kept for repeatable renderer investigations;
+// remove them only after per-zone regression coverage replaces their purpose.
+// Unset = feature default:
 //   AERO_FT_SECTIONS=0 / AERO_FT_OBJECTS=0  -> windowed path for that registrar only
 //   AERO_FT_ZONE_MASK=<hex u64>             -> full-track includes only zones whose
 //                                              bit is set (sections AND objects)

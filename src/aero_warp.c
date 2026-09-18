@@ -1,6 +1,10 @@
-// Developer warp menu (issue #3; survey pattern A13 — Banjo warps_table, Dr Mario
-// scene_table; ported from the Lamborghini repo's #12/PR#48 after re-deriving every
-// address from THIS ROM).
+// Developer race warp for the accepted USA ROM.
+//
+// The SDL/main thread publishes a one-shot request. The game thread consumes
+// it at the scene-driver hook and performs the same race-parameter stores
+// that the ROM's menu launch performs. All guest reads and writes use the
+// N64Recomp MEM helpers. The scene manager still owns fade, loading, and
+// phase changes; this module must not invent game rules.
 //
 // AeroGauge funnels every race start through its scene manager: a current/target
 // scene-id pair at 0x8013FF80/0x8013FF84 (race scene = 5, menu = 4, title = 3,
@@ -138,13 +142,10 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
         env_parsed = 1;
         parse_env_request();
     }
-    // SCAFFOLD (empirical pacing, not a decoded mechanic): track how long the
-    // current scene has been current and idle (no transition in flight). The ROM's
-    // own launches always fire from a quiescent scene behind a completed fade;
-    // acting on a 1-2 frame old scene (whose entry loading is still in flight)
-    // crashes the course loader (func_80007310 chain, guest NULL deref)
-    // nondeterministically. 30 ticks ≈ one fade. The decoded ready signal (the
-    // menu fade object 0x80052E60 polls) would replace this — tracked in issue #3.
+    // Require a conservative settled window before changing race parameters.
+    // Scene equality alone does not show that the previous loader has finished.
+    // A ROM-derived ready signal would be preferable; replacing this condition
+    // requires a regression check for transitions and course loading.
     uint32_t cur = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
     uint32_t tgt = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_REQ);
     static uint32_t stable_scene = ~0u;
@@ -233,10 +234,9 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
     // its replay blob to 0x801B5A30 exactly as a real menu launch would.
     //
     // (Race BGM needs none of this: the race scene's own per-frame music director
-    // func_80002180 — called from func_80015FD0 — posts the track's song on the
-    // scene-phase walk. It was silent under EVERY launch path until the runtime's
-    // osPiStartDma completion message was fixed to carry the OSIoMesg pointer;
-    // see patches/0012 and issue #7.)
+    // func_80002180 posts the track's song during the scene-phase walk. The
+    // PI completion message contract is covered by runtime patch 0012; keep
+    // that dependency detail in the runtime reference.)
     func_80036C54(rdram, ctx);
     uint32_t track_ptr = (uint32_t)MEM_W(0, (gpr)(int32_t)(TRACK_TAB + 4u * (uint32_t)track));
     MEM_W(0, (gpr)(int32_t)(TRACK_REC + 20u * (uint32_t)track)) = (int32_t)track_ptr;

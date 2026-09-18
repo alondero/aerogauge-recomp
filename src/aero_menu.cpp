@@ -1,3 +1,15 @@
+// RecompFrontend settings-overlay integration.
+//
+// The SDL/main thread calls attach(), handle_event(), update(), and
+// toggle_fullscreen(). RecompFrontend owns the temporary page state; the
+// configuration module owns JSON persistence; the renderer and runtime own
+// live graphics state.
+//
+// This is intentionally a narrow integration layer. The shared settings
+// overlay is built on the Windows and Linux paths. Menu writes are
+// synchronous today, so any future scheduling change must preserve main-thread
+// ownership and define the lock boundary explicitly.
+
 #include "aero_menu.h"
 #include "aero_config.h"
 #include "ui/aero_frontend_settings.h"

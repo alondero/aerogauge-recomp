@@ -14,7 +14,7 @@ verified cases before adding a shared authoring rule.
 ## When NOT to use this
 
 - HUD-only artefacts (cursor, needle, dial ring) → use the widescreen recipe in
-  `docs/notes/hud-widescreen.md`.
+  `docs/reference/renderer.md` (## HUD hook contract).
 - Audio glitches or frame-pacing issues → `port-debugging` skill (`AUDIO_RMS`,
   `AERO_FRAME_LOG`).
 - Renderer/cmd-stream mismatches inside an already-correctly-routed DL → read
@@ -134,10 +134,10 @@ verified geometry unless a shared authoring rule is demonstrated."
    launch a fresh live race with `AERO_FULL_TRACK=1` and re-run the captured
    repro path. The saved state from Phase 1 should *not* look different —
    it was the stale-bank trap.
-10. Record the derivation: `docs/notes/rom-map.md` gets a one-line entry in
-    the existing "Course zone/visibility model" section, with the same
-    discipline as the existing entries: name the method (e.g. "saved-state
-    frame-DL runtime bisection"), the date, and the track/zone/DL tuple.
+10. If the result establishes a lasting ROM fact, add the track/zone/display-list
+    tuple to `docs/reference/rom.md` and state the evidence that supports it.
+    Keep dates, raw measurements, and the step-by-step investigation in the
+    issue or pull request.
 11. Remove temporary probes (`AERO_DL_SKIP_DL`, `AERO_RACE_DL_DUMP`,
     `AERO_FT_TRACE`), screenshots, and `.bin`/`.txt` dumps unless they are
     deliberately documented project fixtures. Confirm no generated recompiler
@@ -179,5 +179,5 @@ bucket. **Treat those values as a worked example, not a rule for other tracks.**
   included here; the build-flow gotcha in `native-patching` still applies)
 - `src/aero_full_track_policy.h` — canonical policy header pattern
 - `tests/test_full_track_policy.cpp` — canonical test pattern
-- `docs/notes/rom-map.md` — record every new derivation in the existing
-  "Course zone/visibility model" section
+- `docs/reference/rom.md` — record only stable ROM facts that are useful to
+  future changes

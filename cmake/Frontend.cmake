@@ -22,8 +22,10 @@ set(RECOMP_FRONTEND_N64MODERNRUNTIME_PATH "${N64MR}" CACHE PATH "" FORCE)
 set(RECOMP_FRONTEND_RT64_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64" CACHE PATH "" FORCE)
 set(sdl2_SOURCE_DIR "${SDL2_WIN32_DEPS}")
 add_subdirectory(lib/RecompFrontend)
-# These static libraries call into each other (including when the host omits
-# the controls tab). Declare the cycle so CMake repeats them for GNU linkers.
+
+# These static libraries call into each other, including when the host omits
+# the controls tab. Declare the cycle so CMake repeats the archives for
+# linkers that resolve static libraries from left to right.
 target_link_libraries(recompui PUBLIC recompinput rt64)
 target_link_libraries(recompinput PUBLIC recompui)
 foreach(frontend_target recompui recompinput rmlui_core rmlui_debugger)
@@ -35,6 +37,9 @@ endforeach()
 target_sources(aerogauge_modern PRIVATE src/ui/aero_frontend_settings.cpp)
 target_include_directories(aerogauge_modern PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
+
+# This host-only test exercises the settings adapter without a ROM or generated
+# game output.
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
@@ -46,6 +51,9 @@ else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
 endif()
 add_test(NAME frontend_settings COMMAND test_frontend_settings)
+
+# Release and source-build output needs the frontend assets and RmlUi fonts
+# beside the executable. Windows also needs the FreeType runtime DLL below.
 add_custom_command(TARGET aerogauge_modern POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/frontend $<TARGET_FILE_DIR:aerogauge_modern>/assets

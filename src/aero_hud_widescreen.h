@@ -1,14 +1,16 @@
 #ifndef AERO_HUD_WIDESCREEN_H
 #define AERO_HUD_WIDESCREEN_H
 
-// Widescreen HUD rect-pin scaling math.
+// Widescreen HUD math shared by the native re-emitter and its host tests.
 //
-// The aspect-scale helpers are inherited from the Lamborghini port (they depend only on
-// `aspect` / RT64's `extAspectPercentage`, nothing game-specific); the classification
-// thresholds below were measured from THIS ROM's steady mode-4 race capture.
+// RT64 supplies the rectangle-alignment behavior. These helpers calculate
+// how far this ROM's HUD should travel and classify its observed texrects.
+// The thresholds and scene gate are ROM-specific measurements. They are
+// intentionally pure functions so a host test can catch a changed policy
+// without starting the translated game.
 //
-// `aspect` is the EFFECTIVE rect-pin aspect (see below), always >= 4/3 by
-// construction; the clamp is only a guard.
+// The aspect argument is the effective rect-pin aspect, not always the raw
+// output aspect. Keep that distinction aligned with rt64_renderer.cpp.
 static inline float aero_ws_hud_shift_scale_for_aspect(float aspect) {
     float scale = aspect * 2.25f - 3.0f;
     return scale > 0.0f ? scale : 0.0f;
@@ -44,7 +46,7 @@ static inline float aero_ws_hud_effective_rect_aspect(float display, float sourc
     return source + (display - source) * ext_percentage;
 }
 
-// --- per-texrect pin classification (whole-frame DL retag pass, issue #1) ---
+// --- per-texrect pin classification (whole-frame display-list pass) ---
 //
 // The 2D dispatcher's per-group handlers mix LEFT and RIGHT elements inside a single
 // call (e.g. func_80018EA0 draws TEMP right + GLPS left), so no call-boundary bracket
@@ -126,8 +128,8 @@ static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
     // y16..31) -- but it crosses the centre deadband, so pure thresholds leave it
     // behind when its digits pin right. Match it tightly (top strip only; same 2-3 px
     // slack as the bounds above) and keep it travelling with the group. This is a
-    // coordinate-matched heuristic: if another top-strip rect ever appears in this box
-    // it would pin too -- tracked on issue #1.
+    // coordinate-matched heuristic: another top-strip rect in this box would
+    // also pin. Add a focused fixture before changing this bound.
     if (ulx_qp >= 104 * 4 && lrx_qp <= 172 * 4 && uly_qp <= 26 * 4) {
         return AERO_WS_PIN_RIGHT;
     }

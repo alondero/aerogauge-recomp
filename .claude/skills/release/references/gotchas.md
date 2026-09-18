@@ -1,114 +1,51 @@
-# Gotchas
+# Release-flow gotchas
 
-Four non-obvious things that have all bitten us in the Lambo release flow
-(this skill is forked from there). AeroGauge has no prior releases yet, so
-these are forward-looking guards — read them BEFORE the first release so we
-don't burn a tag on the trap.
+This page records failure modes in the AeroGauge release workflow. Read it
+before cutting a tag.
 
-## 1. `gh release create --draft` puts the release under `untagged-<id>`
+## Draft releases and release URLs
 
-This is the single biggest trap in the release flow.
+GitHub gives a draft release a temporary `untagged-<id>` URL. A release that
+must be published should be created with `draft=false`. If a review is needed,
+create the release with the final tag and change the draft state deliberately.
 
-**Symptom**: After `gh release create <tag> ... --draft --prerelease`, the
-release exists, has the right `tag_name`, has assets, has notes — but:
+The workflow defaults both `draft` and `prerelease` to true. The release
+script passes false for both when it is asked to publish a release:
 
-- `gh api repos/<owner>/<repo>/releases/tags/<tag>` returns **404**.
-- The `html_url` ends in `untagged-<hash>` instead of `<tag>`.
+`.claude/skills/release/scripts/tag-and-dispatch.sh <version>`
 
-**Root cause**: GitHub stores draft releases under a synthetic `untagged-<id>`
-URL even when the underlying git tag exists on origin. The flag combination
-matters more than the tag's actual presence in the refs.
+## Tag the merge commit
 
-**Fix**: Do NOT pass `--draft` to `gh release create`. Create the release
-"live" (still as `draft:false, prerelease:false`) and let `verify-release.sh`
-confirm. If you actually want a pre-publish review, create it without
-`--draft`, then use `gh release edit <tag> --draft=true` to flip the flag
-afterward — the URL stays properly bound because the release was created
-without `--draft`.
+Tag the commit that landed on `main`, not an arbitrary feature commit. This
+keeps the source, dependency pins, and release notes aligned.
 
-**Why this matters for AeroGauge**: The `Build & Release` workflow (when
-ported) has inputs `prerelease` and `draft`, both default `true`. Every
-Lambo release (v0.1.0 through v0.6.x) was actually dispatched with
-`prerelease=false, draft=false` — see the v0.4.0 workflow log where the
-conditional expansion evaluated to empty. Always dispatch the workflow with
-`-f prerelease=false -f draft=false` to avoid the trap from release #1.
+The release script checks that local `main` matches `origin/main` and that the
+commit has a second parent. If the target tag must be cut from a non-merge
+commit, follow the manual fallback printed by the script and record that
+exception in the pull request.
 
-## 2. Tag at the merge commit, not the feature commit
+## GitHub flags and release wording
 
-Every prior Lambo release tag points at a merge commit on `main`, not at the
-feature commit:
+The GitHub `prerelease` flag controls the badge and filtering in the release
+list. Text such as "pre-release quality" is only release-note wording. Choose
+the flag and the wording separately, then check both with:
 
-| tag | commit | subject |
-|-----|--------|---------|
-| v0.4.0 | `5e07da1` | Merge pull request #94 from alondero/gh78-widescreen-3p4p-… |
-| v0.4.1 | `1f489fb` | Merge pull request #112 from alondero/inbred-rebellious-sphinx |
-| v0.4.2 | `03e533a` | Merge pull request #113 from alondero/significant-significant-bolt |
+`.claude/skills/release/scripts/verify-release.sh <version>`
 
-The merge commit is the smallest unit that includes the new code AND the
-issue/PR reference in the subject. Feature commits come and go; merge
-commits mark the "this PR landed on main" moment, which is what release
-notes link to.
+## Replace workflow placeholder notes
 
-AeroGauge already follows this convention — every commit visible on `main` is
-a merge commit (`Merge pull request #N from alondero/<branch>`), because
-the worktree workflow lands PRs via squash-free merges. The
-`tag-and-dispatch.sh` script enforces this — it refuses to tag if HEAD
-isn't a merge commit. For the inaugural release, if HEAD isn't a merge
-commit (e.g. straight-to-main initial commit), pass the SHA directly:
+The workflow creates the release with a short automated note. That note is
+not sufficient for players. Draft the complete body from
+`release-notes-template.md`, then run:
 
-```bash
-git tag v0.1.0 <initial-commit-sha>
-git push origin v0.1.0
-```
+`.claude/skills/release/scripts/update-notes.sh <version> <notes-file>`
 
-then proceed with `gh workflow run` manually — the script's merge-commit
-check will fail and should be relaxed for that one case.
+The script refuses empty notes, the automated placeholder, and the known
+unrendered template tokens.
 
-## 3. The release's `prerelease` flag is `false` — "Pre-release quality" is body copy
+## Quick verification
 
-This is a contradiction in the project's release naming that's confused
-every new contributor (and me, twice):
-
-- The release notes' opening blockquote says "**Pre-release quality.**"
-- The GitHub release's `prerelease` flag is **false**.
-
-The blockquote is the *project's* self-description (mirror of semver's
-"anything <1.0 is pre-release"). The flag is GitHub's mechanism for showing
-the release with a "Pre-release" badge in the UI. The project has decided
-not to use the badge — every Lambo release has `prerelease: false`.
-
-`verify-release.sh` checks this and will fail loudly if a release gets
-flagged `prerelease: true` — that's a deliberate gate so we don't
-accidentally introduce a different convention. AeroGauge should follow
-this from v0.1.0; it's easier than retraining the convention later.
-
-## 4. The workflow's release-notes placeholder must be replaced after the build
-
-The `Build & Release` workflow's release job runs (Lambo; AeroGauge will
-mirror it):
-
-```bash
-gh release create "$tag" <assets> \
-  --notes "Automated build from commit $GITHUB_SHA. ..."
-```
-
-That placeholder is fine for the in-flight workflow but is the user-facing
-release body. Step 5 of the skill (`update-notes.sh`) replaces it with the
-real release notes drafted from `release-notes-template.md`. If you skip
-step 5, users downloading the binary see a useless placeholder.
-
-## Quick diagnostic flow
-
-If a release looks wrong, walk down this list:
-
-1. `git ls-remote --tags origin <tag>` — does the tag exist?
-2. `gh api repos/.../releases/tags/<tag>` — does the API see it?
-   - 404 → workflow hasn't finished OR `--draft` trap (gotcha #1)
-3. `gh release view <tag> --json htmlUrl,isDraft,isPrerelease` — sanity check
-   - `untagged-` in url → `--draft` trap (gotcha #1)
-   - `isDraft: true` → publish via UI or `gh release edit <tag> --draft=false`
-   - `isPrerelease: true` → almost certainly a misconfig (gotcha #3)
-4. `gh release view <tag> --json body --jq '.body' | head -n 3` — placeholder
-   notes? Run `update-notes.sh`.
-
-`verify-release.sh` automates all of this; trust its output.
+After the build finishes, use
+`.claude/skills/release/scripts/wait-for-build.sh <run-id>` and then
+`verify-release.sh`. Check the tag, release URL, draft and prerelease flags,
+and both platform archives.

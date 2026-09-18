@@ -15,7 +15,7 @@
 // Matrices below are AeroGauge's real ones, measured from the demo race via the
 // swrender's AERO_PROJ_PROBE (see stub_renderer.cpp).
 //
-// Standalone host test (Lamborghini tests/ convention). From the repo root:
+// Standalone host test. From the repo root:
 //   g++ -std=c++20 -I lib/rt64/src/contrib/hlslpp/include \
 //       tests/test_viewproj_decompose.cpp lib/rt64/src/common/rt64_math.cpp \
 //       -o build/test_viewproj_decompose && ./build/test_viewproj_decompose

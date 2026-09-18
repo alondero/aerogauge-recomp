@@ -1,11 +1,16 @@
-// RT64 renderer context for the pivot runtime — the DEFAULT presenter (#58, flipped
-// 2026-07-02; headless harness runs opt out with AERO_HEADLESS=1, see aero_rt64.h).
+// RT64 renderer context for the normal player path.
 //
-// Adapted from Zelda64Recomp's src/main/rt64_render_context.cpp (MIT), minus the
-// texture-pack / mod / UI plumbing. The seam is identical to the headless swrender
-// path: ultramodern's gfx thread calls RendererContext::send_dl(OSTask*) with the
-// game's real F3DEX (v1) display list; RT64's HLE interpreter auto-detects the ucode
-// from the task's ucode/ucode_data pointers and renders via plume (Vulkan on Linux).
+// The ultramodern graphics thread owns the task boundary. This module owns
+// the RT64 application setup, the SDL window-handle bridge, the settings
+// mapping, texture replacement paths, and the task-to-display-list call.
+// RT64 owns display-list interpretation and presentation. AERO_HEADLESS is
+// handled by stub_renderer.cpp instead.
+//
+// The live application pointer is published atomically because the game HUD
+// hook reads the current output aspect from the game thread. It is cleared
+// before the RT64 object is destroyed. Guest task addresses are masked and
+// interpreted as N64 addresses; they are not host pointers. See
+// docs/reference/renderer.md for the upstream/local boundary.
 
 #define HLSL_CPU
 #include <algorithm>
@@ -33,8 +38,8 @@
 
 namespace {
 
-// RT64 wants RSP DMEM/IMEM and MI/DPC register storage; the pivot HLEs all of that,
-// so hand RT64 dummy backing store exactly like Zelda64Recomp does.
+// RT64 needs RSP DMEM/IMEM and MI/DPC register storage for HLE setup. These
+// arrays are backing storage for the renderer context, not guest RDRAM.
 uint8_t DMEM[0x1000];
 uint8_t IMEM[0x1000];
 
@@ -50,11 +55,11 @@ uint32_t DPC_TMEM_REG = 0;
 
 void dummy_check_interrupts() {}
 
-// Live swapchain handle for the widescreen HUD rect-aspect helper (issue #67): the
+// Live swapchain handle for the widescreen HUD rect-aspect helper. The
 // game-space 2D HUD geometry shifts key off the effective rect-pin aspect, which depends
 // on the live output size and hr_option -- see aero_ws_get_hud_rect_aspect_bits() below.
-// (The issue #3 skybox no longer uses this: it is handled entirely in the renderer by
-// stretching parallax-free perspective backdrops -- patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch.)
+// Sky backdrop handling is owned by RT64's local patch; this pointer is only
+// used for the HUD aspect calculation.
 //
 // Written on the gfx thread (RT64Context ctor/dtor), read every frame on the CPU/
 // game-logic thread inside aero_ws_get_hud_rect_aspect_bits() below -- unlike
@@ -172,7 +177,7 @@ public:
     RT64Context(uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool debug) {
         static unsigned char dummy_rom_header[0x40];
 
-        // Wire the RT64 application core to the pivot runtime's state.
+        // Wire the RT64 application core to the runtime's state.
         RT64::Application::Core appCore{};
 #if defined(_WIN32)
         appCore.window = window_handle.window;
@@ -234,7 +239,7 @@ public:
         auto& cur_config = ultramodern::renderer::get_graphics_config();
         set_application_user_config(app.get(), cur_config);
         app->userConfig.developerMode = debug;
-        // Force gbi depth branches to prevent LODs from kicking in (Zelda64Recomp default).
+        // Keep display-list branch behavior stable for the current texture path.
         app->enhancementConfig.f3dex.forceBranch = true;
         // Scale LODs based on the output resolution.
         app->enhancementConfig.textureLOD.scale = true;
@@ -267,7 +272,7 @@ public:
         // dtor's reverse-order unpublish still fires while `app` is alive.
         g_aero_active_app = app.get();
 
-        // Texture replacement wiring (issue #9). RT64 already owns the whole
+        // Texture replacement wiring. RT64 owns the replacement machinery;
         // dump/hash/replace machinery; the port just points it at directories. Both
         // are opt-in (empty path = off) and independent of developerMode, so an
         // end-user pack loads without the F1 developer overlay.
@@ -417,13 +422,12 @@ public:
         // Match the swrender's KSEG0 call-site convention (stub_renderer.cpp send_dl)
         // so resolve()'s hi>=0x80 branch handles both call sites; the seg[0]={0} default
         // would silently mis-resolve in RT64 if the root DL ever set segment 0.
-        // (Lamborghini's 3P/4P fog-match DL rewrite hooked here; dropped from the base stack.)
+        // Game-specific fog policy is not part of this generic task bridge.
         app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
         app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
         // Same sustained-pipeline heartbeat as the headless context, so RT64 runs are
         // comparable against headless logs. VI_ORIGIN/STATUS prove the present path is
-        // scanning out the game's REAL framebuffer (via the promote_vi_context bridge),
-        // not the pre-game dummy at 0x80700000 / a blanked STATUS of 0.
+        // scanning out the game's framebuffer, not the renderer's dummy setup store.
         //
         // GATED (AERO_HARNESS_LOG=1, default off): this fires exactly once per second
         // (30 send_dls at this title's 30 fps) ON THE GFX THREAD, and when stderr is a
@@ -431,7 +435,7 @@ public:
         // hitch every second of play. Diagnostic runs opt back in via the env var.
         if (aero::config::harness_log() && count % 30 == 0) {
             const ultramodern::renderer::ViRegs* vr = ultramodern::renderer::get_vi_regs();
-            // Interpolation health (#1 display-rate rendering): viOriginalRate is the game's
+            // Interpolation health: viOriginalRate is the game's
             // detected update rate (30 for this title), targetRate the present pace RT64 aims
             // for (display Hz when RefreshRate::Display), and interp count/presented the
             // per-workload synthesized-frame counters -- count ~= targetRate/viOriginalRate
@@ -455,7 +459,7 @@ public:
                 swap_hz = sq->swapChainRate;
                 interp_count = fc.count;
                 interp_presented = fc.presented;
-                // Widescreen health (#widescreen): resolutionScale.x carries the
+        // Widescreen health probe: resolutionScale.x carries the
                 // aspectRatioScale factor (rt64_workload_queue.cpp:211) -- x > y means the
                 // Expand config reached the workload layer; x == y means the target aspect
                 // never derived (swapchain size unknown or config lost).
@@ -558,10 +562,10 @@ extern "C" uint32_t aero_ws_get_output_aspect_bits(void) {
     return bits;
 }
 
-// (issue #67) Effective aspect the extended-GBI HUD rect pins travel to, as raw float
-// bits. Full reaches the real edges, Clamp16x9 stops at 16:9, Original doesn't move.
-// Geometry must match these rect pins rather than the raw output aspect.
-// Mirrors RT64's extAspectPercentage math, with the same lock and 4/3 floor above.
+// Effective aspect the extended-GBI HUD rect pins travel to, returned as raw
+// float bits. Full reaches the real edges, Clamp16x9 stops at 16:9, and
+// Original does not move. Geometry must match these rect pins rather than the
+// raw output aspect. The shared-state read uses RT64's configuration lock.
 extern "C" uint32_t aero_ws_get_hud_rect_aspect_bits(void) {
     const float source = 4.0f / 3.0f;
     float aspect = source;

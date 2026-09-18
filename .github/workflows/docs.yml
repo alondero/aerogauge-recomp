@@ -1,0 +1,52 @@
+name: Documentation checks
+
+on:
+  push:
+    paths:
+      - "*.md"
+      - "docs/**"
+      - "assets/**"
+      - "cmake/**"
+      - "patches/**"
+      - ".claude/**"
+      - "scripts/check_docs.py"
+      - "CMakeLists.txt"
+      - ".github/workflows/docs.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - "src/**"
+      - "include/**"
+  pull_request:
+    paths:
+      - "*.md"
+      - "docs/**"
+      - "assets/**"
+      - "cmake/**"
+      - "patches/**"
+      - ".claude/**"
+      - "scripts/check_docs.py"
+      - "CMakeLists.txt"
+      - ".github/workflows/docs.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - "src/**"
+      - "include/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check documentation
+        run: python3 scripts/check_docs.py
+      - name: Check whitespace (pull request)
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${{ github.base_ref }}..HEAD"
+      - name: Check whitespace (push)
+        if: github.event_name != 'pull_request'
+        run: git diff --check "HEAD~1..HEAD"
