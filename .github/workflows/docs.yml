@@ -14,6 +14,8 @@ on:
       - ".github/workflows/docs.yml"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/pull_request_template.md"
+      - "src/**"
+      - "include/**"
   pull_request:
     paths:
       - "*.md"
@@ -27,6 +29,8 @@ on:
       - ".github/workflows/docs.yml"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/pull_request_template.md"
+      - "src/**"
+      - "include/**"
 
 permissions:
   contents: read
