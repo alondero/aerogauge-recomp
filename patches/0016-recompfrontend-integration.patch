@@ -74,7 +74,7 @@ index 6c84c05..1ad8f7b 100644
          });
          auto close_button = config_modal->modal_root_context.create_element<IconButton>(header_right, "icons/X.svg", ButtonStyle::Basic);
 diff --git a/recompui/src/config/ui_config_option.cpp b/recompui/src/config/ui_config_option.cpp
-index 86428c9..84e0e31 100644
+index 86428c9..90961c2 100644
 --- a/recompui/src/config/ui_config_option.cpp
 +++ b/recompui/src/config/ui_config_option.cpp
 @@ -1,5 +1,7 @@
@@ -111,7 +111,7 @@ index 86428c9..84e0e31 100644
      }
  }
  
-@@ -184,6 +191,138 @@ void ConfigOptionEnum::update_enum_disabled() {
+@@ -184,6 +191,144 @@ void ConfigOptionEnum::update_enum_disabled() {
      }
  };
  
@@ -194,6 +194,12 @@ index 86428c9..84e0e31 100644
 +
 +void ConfigOptionEnumCycler::process_event(const Event &e) {
 +    switch (e.type) {
++    case EventType::Update:
++        // This element renders selected state purely from config state (no
++        // self-repainting widget underneath), so Value updates queued by the
++        // options page must re-run update_value().
++        update_value();
++        break;
 +    case EventType::Navigate:
 +        {
 +            NavDirection dir = std::get<EventNavigate>(e.variant).direction;
@@ -317,7 +323,7 @@ index 0561657..24aca07 100644
  
  class ConfigOptionNumber : public ConfigOptionElement {
 diff --git a/recompui/src/config/ui_config_page_options_menu.cpp b/recompui/src/config/ui_config_page_options_menu.cpp
-index 6ba64e2..829fcdd 100644
+index 6ba64e2..431768c 100644
 --- a/recompui/src/config/ui_config_page_options_menu.cpp
 +++ b/recompui/src/config/ui_config_page_options_menu.cpp
 @@ -1,5 +1,7 @@
@@ -344,7 +350,28 @@ index 6ba64e2..829fcdd 100644
                      break;
                  }
                  case ConfigOptionUpdateType::Value: {
-@@ -186,14 +186,28 @@ void ConfigPageOptionsMenu::render_config_options() {
+@@ -144,11 +144,20 @@ void ConfigPageOptionsMenu::render_confirmation_footer() {
+     apply_button->add_pressed_callback([this]() {
+         this->config->save_config();
+         this->apply_button->set_enabled(this->config->is_dirty());
++        this->queue_update();
+     });
+ }
+ 
+ void ConfigPageOptionsMenu::on_set_option_value(const std::string &option_id, recomp::config::ConfigValueVariant value) {
+     config->set_option_value(option_id, value);
++    if (config->requires_confirmation) {
++        // set_option_value only writes storage; without an explicit Value
++        // report the option element never re-renders (the Radio widget masked
++        // this by repainting itself on click; the cycler label renders purely
++        // from config state).
++        size_t option_index = config->get_config_schema().options_by_id.at(option_id);
++        config->report_config_option_update(option_index, recomp::config::ConfigOptionUpdateType::Value);
++    }
+     if (config->requires_confirmation && apply_button != nullptr) {
+         apply_button->set_enabled(config->is_dirty());
+     }
+@@ -186,14 +195,28 @@ void ConfigPageOptionsMenu::render_config_options() {
              ConfigOptionElement *element = nullptr;
              switch (config_option.type) {
                  case recomp::config::ConfigOptionType::Enum: {
