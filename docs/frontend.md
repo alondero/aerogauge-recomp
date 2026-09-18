@@ -5,7 +5,7 @@ Automobili Lamborghini port. It is drawn by RT64, so it works on Windows and Lin
 RecompFrontend is pinned to `b1a1477`. N64ModernRuntime is pinned to `cdf5abb` for
 the configuration API. Fonts and other menu files are in `assets/frontend`.
 
-The screen has three pages:
+The screen has three pages, in this tab order:
 
 - **Graphics:** resolution, supersampling, aspect ratio, HUD position, refresh rate,
   manual FPS, MSAA, precision, window mode, window size presets, graphics API,
@@ -13,13 +13,20 @@ The screen has three pages:
 - **Enhancements:** draw distance (unlimited or a multiplier), full-course geometry,
   and Easy Turbo/Boost Start.
 - **Debug:** the RT64 developer overlay (moved off Graphics; takes effect after a
-  restart).
+  restart). Created last so it renders as the right-most tab.
 
 The window size is a preset picker (640x360 through 3840x2160, 16:10 and 4:3
-favourites included) applied immediately on selection; a window size typed
-directly into graphics.json shows as Custom. Draw distance offers an explicit
+favourites included) applied with the Graphics page's Apply button, like the
+rest of that page; a window size typed directly into graphics.json shows as
+Custom and is kept on Apply unless a preset is picked. Enums with more than
+four options
+(such as the resolution picker) render as one-at-a-time cyclers: the selected
+value sits between two arrow buttons and pressing left/right rotates through the
+options (the RecompUI framework gained this widget for this port via patch 0016).
+Draw distance offers an explicit
 Unlimited choice that maps to the internal 0 sentinel (no far clipping plane);
-when it is off, the far-plane multiplier slider applies. The Easy Turbo entry
+when it is off, the far-plane multiplier slider applies, stepping in 10x
+increments from 1. The Easy Turbo entry
 describes both triggers: hold Accelerate through the countdown for the Boost
 Start, and press the dedicated Turbo button (R or E on keyboard, right trigger
 or right shoulder on gamepad) during player-1 races.
