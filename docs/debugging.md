@@ -169,11 +169,10 @@ Use the headless round-trip script while investigating the state format.
 
 ## Unresolved findings
 
-Use the [reverse-engineering issue template](../.github/ISSUE_TEMPLATE/reverse_engineering.md)
-for a ROM, guest-memory, runtime, or renderer question that is not yet
-confirmed. Include the fixed inputs, observation, hypothesis, falsifying check,
-and remaining uncertainty.
+Open a regular issue for a ROM, guest-memory, runtime, or renderer question
+that is not yet confirmed. Keep the fixed inputs, observation, hypothesis,
+falsifying check, and remaining uncertainty in the issue body.
 
 When the answer is confirmed, move the lasting rule into the owning source
-comment, focused test, or stable reference page. Keep the issue as the work
-record. Do not create a dated document just to record that a check was not run.
+comment, focused test, or stable reference page. Close the issue. Do not
+create a dated document just to record that a check was not run.

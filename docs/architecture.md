@@ -93,10 +93,9 @@ evidence of the input change.
 
 The current symbol generator uses discovered calls and IDO-style stack
 prologues to propose function boundaries. That is a bootstrap method. A
-plausible name or boundary is not proof. Use the
-[reverse-engineering issue template](../.github/ISSUE_TEMPLATE/reverse_engineering.md)
-for an uncertain boundary, then put the confirmed rule in the source, test, or
-ROM reference.
+plausible name or boundary is not proof. Open a regular issue for an
+uncertain boundary while it is being worked out, then move the confirmed rule
+into the source, focused test, or ROM reference.
 
 ## Hooks and patches
 

@@ -176,6 +176,5 @@ Before adding a hook or native replacement:
 4. use the N64Recomp memory helpers for guest values; and
 5. add a focused test or capture that would fail if the address moved.
 
-If the address is uncertain, use the
-[reverse-engineering issue template](../../.github/ISSUE_TEMPLATE/reverse_engineering.md).
-An address copied from a comment or another port is a lead, not proof.
+If the address is uncertain, open a regular issue. An address copied from a
+comment or another port is a lead, not proof.

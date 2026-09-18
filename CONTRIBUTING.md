@@ -20,13 +20,11 @@ changing a subsystem.
 3. Reproduce the behavior when possible. If it cannot be reproduced, say so.
 4. Decide whether the change belongs in generated input, hand-written port
    code, a dependency patch, a test, or stable documentation.
-5. Open an issue when the question is still uncertain. Use the
-   [reverse-engineering issue template](.github/ISSUE_TEMPLATE/reverse_engineering.md)
-   for measured ROM or guest-memory findings.
-
-An issue can preserve a question while it is being worked out. It is not a
-replacement for a source comment, test, or stable reference page once the
-answer is known.
+5. Open a regular issue when the question is still uncertain. Domain
+   knowledge belongs in the owning source comment, focused test, or domain
+   page (controllers, audio, renderer, full-course geometry, etc.); an
+   issue only preserves the question while it is being worked out and is
+   not a substitute for those once the answer is known.
 
 ## File ownership
 

@@ -87,8 +87,7 @@ on a real gamepad.
 
 ## Changing input or accessory code
 
-Use the [reverse-engineering issue template](../.github/ISSUE_TEMPLATE/reverse_engineering.md)
-for an uncertain ROM or guest-memory finding. A useful finding names the ROM
-identity, host, tool, address or field width, byte order, owner, and a test
-that could disprove the hypothesis. Once confirmed, put the lasting rule in
-the source comment, focused test, or this page.
+Open a regular issue for an uncertain ROM or guest-memory finding. A useful
+finding names the ROM identity, host, tool, address or field width, byte
+order, owner, and a test that could disprove the hypothesis. Once confirmed,
+put the lasting rule in the source comment, focused test, or this page.

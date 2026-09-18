@@ -12,7 +12,6 @@ Developers need clear build steps, evidence, and ownership.
 | Change code | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Run checks | [Testing](testing.md) |
 | Investigate a failure | [Debugging](debugging.md) |
-| Report a ROM finding | [Reverse-engineering issue template](../.github/ISSUE_TEMPLATE/reverse_engineering.md) |
 | Understand dependency patches | [Patch inventory](../patches/README.md) |
 
 ## Player help
@@ -56,11 +55,11 @@ Developers need clear build steps, evidence, and ownership.
 ## How evidence becomes documentation
 
 Source, tests, checked-in fixtures, and reproducible measurements are the
-project record. An uncertain ROM observation belongs in a
-[reverse-engineering issue](../.github/ISSUE_TEMPLATE/reverse_engineering.md)
-until it becomes a named source rule, a test, or a stable reference entry.
-The issue is a work record; the source, test, or reference page is the lasting
-documentation.
+project record. Domain knowledge lives in the relevant domain page:
+controllers, audio, renderer, full-course geometry, ROM reference, etc. An
+uncertain ROM observation goes into a regular bug report while it is being
+worked out; once confirmed, the lasting rule moves into the source comment,
+focused test, or domain page and the bug report is closed.
 
 A plausible explanation, an old issue number, or a screenshot is not proof of
 a current behavior. State what was checked and what remains unknown.

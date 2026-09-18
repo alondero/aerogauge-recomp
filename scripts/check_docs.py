@@ -33,7 +33,6 @@ REQUIRED = ROOT_MARKDOWN + [
     ROOT / "docs" / "reference" / "audio.md",
     ROOT / "patches" / "README.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.md",
-    ROOT / ".github" / "ISSUE_TEMPLATE" / "reverse_engineering.md",
     ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.md",
 ]
 
