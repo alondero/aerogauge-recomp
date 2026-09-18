@@ -2,16 +2,19 @@ diff --git a/recompui/lib/FindFreetype.cmake b/recompui/lib/FindFreetype.cmake
 index bbb8d6a..dd60b44 100644
 --- a/recompui/lib/FindFreetype.cmake
 +++ b/recompui/lib/FindFreetype.cmake
-@@ -1,3 +1,3 @@
+@@ -1,5 +1,5 @@
  set(FREETYPE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/include)
 -set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release static/vs2015-2022/win64/freetype.lib")
 +set(FREETYPE_LIBRARIES "${CMAKE_CURRENT_SOURCE_DIR}/../freetype-windows-binaries/release dll/win64/freetype.lib")
  add_library(Freetype::Freetype STATIC IMPORTED)
+ set_target_properties(Freetype::Freetype PROPERTIES
+ 	IMPORTED_LOCATION ${FREETYPE_LIBRARIES}
 diff --git a/recompui/src/api/ui_api_events.cpp b/recompui/src/api/ui_api_events.cpp
-index 8ee95c5..161d82f 100644
+index 8ee95c5..6c0eafb 100644
 --- a/recompui/src/api/ui_api_events.cpp
 +++ b/recompui/src/api/ui_api_events.cpp
-@@ -23,7 +23,4 @@
+@@ -22,10 +22,7 @@
+ 
  #include "librecomp/overlays.hpp"
  #include "librecomp/helpers.hpp"
 -
@@ -20,18 +23,26 @@ index 8ee95c5..161d82f 100644
 -
 +#include "recompui/event_structs.h"
  struct QueuedCallback {
+     recompui::ResourceId resource;
+     recompui::Event event;
 diff --git a/recompui/src/base/ui_state.cpp b/recompui/src/base/ui_state.cpp
 index 277a421..c50d342 100644
 --- a/recompui/src/base/ui_state.cpp
 +++ b/recompui/src/base/ui_state.cpp
-@@ -44,3 +44,5 @@ void recompui::open_quit_game_prompt() {
+@@ -42,7 +42,9 @@ void recompui::open_quit_game_prompt() {
+         "Quit",
+         "Cancel",
          []() {
 -            ultramodern::quit();
 +            SDL_Event event{};
 +            event.type = SDL_QUIT;
 +            SDL_PushEvent(&event);
          },
-@@ -805,3 +807,12 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
+         []() {},
+         recompui::ButtonStyle::Danger,
+@@ -803,7 +805,16 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
+             }
+             else {
                  if (context_capturing_input) {
 -                    RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    // Hosts may synthesize the frontend's F16/F17 tab actions.
@@ -45,57 +56,448 @@ index 277a421..c50d342 100644
 +                        RmlSDL::InputEventHandler(ui_state->context, cur_event);
 +                    }
                  }
+             }
+         }
 diff --git a/recompui/src/config/ui_config.cpp b/recompui/src/config/ui_config.cpp
 index 6c84c05..1ad8f7b 100644
 --- a/recompui/src/config/ui_config.cpp
 +++ b/recompui/src/config/ui_config.cpp
-@@ -161,3 +161,5 @@ namespace recompui {
+@@ -159,7 +159,9 @@ namespace recompui {
+             if (ultramodern::is_game_started()) {
+                 recompui::open_quit_game_prompt();
              } else {
 -                ultramodern::quit();
 +                SDL_Event event{};
 +                event.type = SDL_QUIT;
 +                SDL_PushEvent(&event);
              }
+         });
+         auto close_button = config_modal->modal_root_context.create_element<IconButton>(header_right, "icons/X.svg", ButtonStyle::Basic);
+diff --git a/recompui/src/config/ui_config_option.cpp b/recompui/src/config/ui_config_option.cpp
+index 86428c9..90961c2 100644
+--- a/recompui/src/config/ui_config_option.cpp
++++ b/recompui/src/config/ui_config_option.cpp
+@@ -1,5 +1,7 @@
+ #include "ui_config_option.h"
+ 
++#include "elements/ui_icon_button.h"
++
+ namespace recompui {
+ 
+ constexpr float config_option_element_margin_vertical = 12.0f;
+@@ -10,9 +12,10 @@ ConfigOptionElement::ConfigOptionElement(
+     size_t option_index,
+     const recomp::config::Config *config,
+     set_option_value_t set_option_value,
+-    on_option_hover_t on_hover
++    on_option_hover_t on_hover,
++    uint32_t extra_events
+ ) :
+-    Element(rid, parent, Events(EventType::Hover, EventType::Focus), "div", false),
++    Element(rid, parent, Events(EventType::Hover, EventType::Focus) | extra_events, "div", false),
+     option_id(option_id),
+     option_index(option_index),
+     config(config),
+@@ -93,7 +96,11 @@ void ConfigOptionElement::update_hidden() {
+         set_enabled(false);
+     } else {
+         set_display(Display::Flex);
+-        set_enabled(true);
++        // Re-enable only the hidden-derived part of the disabled state: the
++        // options page calls update_disabled() before update_hidden() on
++        // creation, and an unconditional set_enabled(true) here clobbered a
++        // dependency-derived disable (e.g. a slider greyed out by a toggle).
++        set_enabled(!get_disabled());
+     }
+ }
+ 
+@@ -184,6 +191,144 @@ void ConfigOptionEnum::update_enum_disabled() {
+     }
+ };
+ 
++// ConfigOptionEnumCycler
++ConfigOptionEnumCycler::ConfigOptionEnumCycler(
++    ResourceId rid,
++    Element *parent,
++    std::string option_id,
++    size_t option_index,
++    const recomp::config::Config *config,
++    set_option_value_t set_option_value,
++    on_option_hover_t on_hover
++) : ConfigOptionElement(rid, parent, option_id, option_index, config, set_option_value, on_hover,
++                        Events(EventType::Hover, EventType::Focus, EventType::Navigate))
++{
++    ContextId context = recompui::get_current_context();
++    Element *wrapper = context.create_element<Element>(this, 0, "div", false);
++    wrapper->set_display(Display::Flex);
++    wrapper->set_flex_direction(FlexDirection::Row);
++    wrapper->set_align_items(AlignItems::Center);
++    wrapper->set_justify_content(JustifyContent::FlexStart);
++    wrapper->set_width(100.0f, Unit::Percent);
++    wrapper->set_gap(12.0f);
++
++    // Negates the extra padding that radio tabs automatically add.
++    name_label->set_margin_bottom(4.0f);
++
++    // Consume left/right on the cycler itself so navigating rotates the value
++    // instead of moving focus to a sibling option.
++    enable_focus();
++    set_nav_none(NavDirection::Left);
++    set_nav_none(NavDirection::Right);
++
++    prev_button = context.create_element<IconButton>(wrapper, "icons/ArrowLeft.svg",
++                                                     ButtonStyle::Secondary, IconButtonSize::Small);
++    prev_button->add_pressed_callback([this]() { cycle(-1); });
++
++    value_label = context.create_element<Label>(wrapper, "", theme::Typography::LabelMD);
++    value_label->set_min_width(200.0f);
++    value_label->set_max_width(200.0f);
++    value_label->set_text_align(TextAlign::Center);
++
++    next_button = context.create_element<IconButton>(wrapper, "icons/Arrow.svg",
++                                                     ButtonStyle::Secondary, IconButtonSize::Small);
++    next_button->add_pressed_callback([this]() { cycle(1); });
++
++    details_label = context.create_element<Label>(wrapper, "", theme::Typography::LabelXS);
++    details_label->set_color(theme::color::Primary);
++
++    update_value();
++    update_enum_details();
++    update_disabled();
++};
++
++void ConfigOptionEnumCycler::update_value() {
++    recomp::config::ConfigValueVariant value_variant = get_value();
++    uint32_t option_value = std::get<uint32_t>(value_variant);
++
++    auto &enum_opt = config->get_option_config<recomp::config::ConfigOptionEnum>(this->option_index);
++    for (uint32_t i = 0; i < enum_opt.options.size(); i++) {
++        if (enum_opt.options[i].value == option_value) {
++            value_label->set_text(enum_opt.options[i].name);
++            return;
++        }
++    }
++    value_label->set_text("");
++};
++
++void ConfigOptionEnumCycler::update_disabled() {
++    bool disabled = get_disabled();
++    set_enabled(!disabled);
++    prev_button->set_enabled(!disabled);
++    next_button->set_enabled(!disabled);
++};
++
++void ConfigOptionEnumCycler::update_enum_details() {
++    const std::string &enum_details = config->get_enum_option_details(option_index);
++    details_label->set_text(enum_details);
++};
++
++void ConfigOptionEnumCycler::process_event(const Event &e) {
++    switch (e.type) {
++    case EventType::Update:
++        // This element renders selected state purely from config state (no
++        // self-repainting widget underneath), so Value updates queued by the
++        // options page must re-run update_value().
++        update_value();
++        break;
++    case EventType::Navigate:
++        {
++            NavDirection dir = std::get<EventNavigate>(e.variant).direction;
++            if (dir == NavDirection::Left) {
++                cycle(-1);
++            }
++            else if (dir == NavDirection::Right) {
++                cycle(1);
++            }
++        }
++        break;
++    default:
++        ConfigOptionElement::process_event(e);
++        break;
++    }
++}
++
++void ConfigOptionEnumCycler::cycle(int direction) {
++    if (!is_enabled()) {
++        return;
++    }
++
++    auto &enum_opt = config->get_option_config<recomp::config::ConfigOptionEnum>(this->option_index);
++    const size_t count = enum_opt.options.size();
++    if (count == 0) {
++        return;
++    }
++
++    uint32_t option_value = std::get<uint32_t>(get_value());
++    size_t current = count;
++    for (size_t i = 0; i < count; i++) {
++        if (enum_opt.options[i].value == option_value) {
++            current = i;
++            break;
++        }
++    }
++    // Off-schema values (e.g. a stale json) snap to the first option.
++    if (current == count) {
++        current = 0;
++    }
++
++    size_t next = current;
++    for (size_t steps = 0; steps < count; steps++) {
++        next = (next + count + direction) % count;
++        if (!config->get_enum_option_disabled(option_index, uint32_t(next))) {
++            break;
++        }
++        // Else keep rotating past a disabled option.
++    }
++
++    set_option_value(this->option_id, enum_opt.options[next].value);
++}
++
+ // ConfigOptionNumber
+ ConfigOptionNumber::ConfigOptionNumber(
+     ResourceId rid,
+diff --git a/recompui/src/config/ui_config_option.h b/recompui/src/config/ui_config_option.h
+index 0561657..24aca07 100644
+--- a/recompui/src/config/ui_config_option.h
++++ b/recompui/src/config/ui_config_option.h
+@@ -35,12 +35,17 @@ namespace recompui {
+             size_t option_index,
+             const recomp::config::Config *config,
+             set_option_value_t set_option_value,
+-            on_option_hover_t on_hover
++            on_option_hover_t on_hover,
++            uint32_t extra_events = 0
+         );
+         virtual ~ConfigOptionElement() = default;
+         // required overrides
+         virtual void update_value() = 0;
+         virtual void update_disabled() = 0;
++        // Enum-only refinement hooks; no-ops on non-enum option elements so
++        // the options page can dispatch update events without type casts.
++        virtual void update_enum_details() {}
++        virtual void update_enum_disabled() {}
+         void update_hidden();
+         const std::string &get_option_id() { return option_id; }
+     };
+@@ -65,8 +70,40 @@ public:
+     void update_value() override;
+     void update_disabled() override;
+ 
+-    void update_enum_details();
+-    void update_enum_disabled();
++    void update_enum_details() override;
++    void update_enum_disabled() override;
++};
++
++// One-at-a-time enum picker: shows the selected value between two arrow
++// buttons; left/right input rotates through the options. Used by the options
++// page for enums with many entries, where a row of radio pills overflows.
++class IconButton;
++
++class ConfigOptionEnumCycler : public ConfigOptionElement {
++protected:
++    IconButton *prev_button = nullptr;
++    IconButton *next_button = nullptr;
++    Label *value_label = nullptr;
++    Label *details_label = nullptr;
++
++    void process_event(const Event &e) override;
++    std::string_view get_type_name() override { return "ConfigOptionEnumCycler"; }
++    void cycle(int direction);
++public:
++    ConfigOptionEnumCycler(
++        ResourceId rid,
++        Element *parent,
++        std::string option_id,
++        size_t option_index,
++        const recomp::config::Config *config,
++        set_option_value_t set_option_value,
++        on_option_hover_t on_hover
++    );
++
++    void update_value() override;
++    void update_disabled() override;
++
++    void update_enum_details() override;
+ };
+ 
+ class ConfigOptionNumber : public ConfigOptionElement {
+diff --git a/recompui/src/config/ui_config_page_options_menu.cpp b/recompui/src/config/ui_config_page_options_menu.cpp
+index 6ba64e2..431768c 100644
+--- a/recompui/src/config/ui_config_page_options_menu.cpp
++++ b/recompui/src/config/ui_config_page_options_menu.cpp
+@@ -1,5 +1,7 @@
+ #include "ui_config_page_options_menu.h"
+ 
++#include "elements/ui_icon_button.h"
++
+ 
+ namespace recompui {
+ 
+@@ -73,13 +75,11 @@ void ConfigPageOptionsMenu::perform_option_render_updates() {
+                     break;
+                 }
+                 case ConfigOptionUpdateType::EnumDetails: {
+-                    ConfigOptionEnum *enum_element = static_cast<ConfigOptionEnum*>(element);
+-                    enum_element->update_enum_details();
++                    element->update_enum_details();
+                     break;
+                 }
+                 case ConfigOptionUpdateType::EnumDisabled: {
+-                    ConfigOptionEnum *enum_element = static_cast<ConfigOptionEnum*>(element);
+-                    enum_element->update_enum_disabled();
++                    element->update_enum_disabled();
+                     break;
+                 }
+                 case ConfigOptionUpdateType::Value: {
+@@ -144,11 +144,20 @@ void ConfigPageOptionsMenu::render_confirmation_footer() {
+     apply_button->add_pressed_callback([this]() {
+         this->config->save_config();
+         this->apply_button->set_enabled(this->config->is_dirty());
++        this->queue_update();
+     });
+ }
+ 
+ void ConfigPageOptionsMenu::on_set_option_value(const std::string &option_id, recomp::config::ConfigValueVariant value) {
+     config->set_option_value(option_id, value);
++    if (config->requires_confirmation) {
++        // set_option_value only writes storage; without an explicit Value
++        // report the option element never re-renders (the Radio widget masked
++        // this by repainting itself on click; the cycler label renders purely
++        // from config state).
++        size_t option_index = config->get_config_schema().options_by_id.at(option_id);
++        config->report_config_option_update(option_index, recomp::config::ConfigOptionUpdateType::Value);
++    }
+     if (config->requires_confirmation && apply_button != nullptr) {
+         apply_button->set_enabled(config->is_dirty());
+     }
+@@ -186,14 +195,28 @@ void ConfigPageOptionsMenu::render_config_options() {
+             ConfigOptionElement *element = nullptr;
+             switch (config_option.type) {
+                 case recomp::config::ConfigOptionType::Enum: {
+-                    element = context.create_element<ConfigOptionEnum>(
+-                        body_left_scroll,
+-                        config_option.id,
+-                        i,
+-                        config,
+-                        bound_set_option_value,
+-                        bound_on_option_hover
+-                    );
++                    // A long row of radio pills overflows the option column, so
++                    // large enums get a one-at-a-time cycler instead.
++                    if (std::get<recomp::config::ConfigOptionEnum>(config_option.variant).options.size() > 4) {
++                        element = context.create_element<ConfigOptionEnumCycler>(
++                            body_left_scroll,
++                            config_option.id,
++                            i,
++                            config,
++                            bound_set_option_value,
++                            bound_on_option_hover
++                        );
++                    }
++                    else {
++                        element = context.create_element<ConfigOptionEnum>(
++                            body_left_scroll,
++                            config_option.id,
++                            i,
++                            config,
++                            bound_set_option_value,
++                            bound_on_option_hover
++                        );
++                    }
+                     break;
+                 }
+                 case recomp::config::ConfigOptionType::Number: {
 diff --git a/recompui/src/config/ui_config_tab_graphics.cpp b/recompui/src/config/ui_config_tab_graphics.cpp
-index 4fdf81f..ff84e45 100644
+index 4fdf81f..aa36abd 100644
 --- a/recompui/src/config/ui_config_tab_graphics.cpp
 +++ b/recompui/src/config/ui_config_tab_graphics.cpp
-@@ -28,4 +28,5 @@ namespace recompui {
+@@ -26,13 +26,15 @@ namespace recompui {
+         };
+ 
          enum class DownsamplingOption {
 -            Off = 0,
 +            Off = 1,
              X2 = 2,
 +            X3 = 3,
              X4 = 4,
-@@ -35,2 +36,3 @@ namespace recompui {
+         };
+         static EnumOptionVector downsampling_options = {
+             {DownsamplingOption::Off, "Off"},
              {DownsamplingOption::X2, "2x"},
 +            {DownsamplingOption::X3, "3x"},
              {DownsamplingOption::X4, "4x"},
-@@ -76,3 +78,3 @@ namespace recompui {
+         };
+ 
+@@ -74,7 +76,7 @@ namespace recompui {
+             {ultramodern::renderer::Antialiasing::None, "None"},
+             {ultramodern::renderer::Antialiasing::MSAA2X, "MSAA2X", "2X"},
              {ultramodern::renderer::Antialiasing::MSAA4X, "MSAA4X", "4X"},
 -            // {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X"},
 +            {ultramodern::renderer::Antialiasing::MSAA8X, "MSAA8X", "8X"},
          };
-@@ -231,3 +233,3 @@ namespace recompui {
-                 false,
--                true
-+                false
-             );
-@@ -349,3 +351,3 @@ namespace recompui {
+ 
+         static EnumOptionVector refresh_rate_options = {
+@@ -347,7 +349,7 @@ namespace recompui {
+                 "Selects the graphics API to use.",
+                 graphics_api_options,
                  ultramodern::renderer::GraphicsApi::Auto,
 -                true
 +                false
              );
-@@ -358,3 +360,3 @@ namespace recompui {
+ 
+             config.add_enum_option(
+@@ -356,7 +358,7 @@ namespace recompui {
+                 "Sets whether to use a high precision framebuffer.",
+                 hpfb_options,
                  ultramodern::renderer::HighPrecisionFramebuffer::Off,
 -                true
 +                false
              );
+ 
+             return config;
+diff --git a/recompui/src/elements/ui_slider.cpp b/recompui/src/elements/ui_slider.cpp
+index 7a50da4..e433ec7 100644
+--- a/recompui/src/elements/ui_slider.cpp
++++ b/recompui/src/elements/ui_slider.cpp
+@@ -11,6 +11,9 @@ namespace recompui {
+         if (step_value != 0.0) {
+             v = std::lround(v / step_value) * step_value;
+         }
++        // Clamp after step rounding: rounding can push the value outside
++        // [min_value, max_value] (e.g. min 1 with step 10 rounds 1 -> 0).
++        v = std::clamp(v, min_value, max_value);
+ 
+         if (value != v || setup) {
+             value = v;
+@@ -103,11 +106,15 @@ namespace recompui {
+         case EventType::Navigate:
+             {
+                 NavDirection dir = std::get<EventNavigate>(e.variant).direction;
+-                if (dir == NavDirection::Left) {
+-                    do_step(false);
+-                }
+-                else if (dir == NavDirection::Right) {
+-                    do_step(true);
++                // Left/right stepping is input, so it must respect the
++                // disabled state just like the click/drag path does.
++                if (is_enabled()) {
++                    if (dir == NavDirection::Left) {
++                        do_step(false);
++                    }
++                    else if (dir == NavDirection::Right) {
++                        do_step(true);
++                    }
+                 }
+             }
+             break;
 diff --git a/recompui/src/util/file.cpp b/recompui/src/util/file.cpp
 index 7ee84ed..340879c 100644
 --- a/recompui/src/util/file.cpp
 +++ b/recompui/src/util/file.cpp
-@@ -122,3 +122,6 @@ namespace recompui {
+@@ -120,7 +120,10 @@ namespace recompui {
+ #elif defined(__linux__) && defined(RECOMP_FLATPAK)
+         return "/app/bin";
  #else
 -        return "";
 +        char* base = SDL_GetBasePath();
@@ -103,3 +505,5 @@ index 7ee84ed..340879c 100644
 +        SDL_free(base);
 +        return result;
  #endif
+     }
+ 
