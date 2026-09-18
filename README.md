@@ -1,5 +1,7 @@
 # AeroGauge: Recompiled
 
+![AeroGauge: Recompiled running on PC](docs/aerogaugerecomp.jfif)
+
 AeroGauge: Recompiled is a PC version of the Nintendo 64 racing game AeroGauge.
 It runs your own copy of the game in a native window.
 
