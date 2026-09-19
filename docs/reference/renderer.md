@@ -50,6 +50,7 @@ will produce the same image.
 | Full-course geometry registration | aero_full_track.cpp | AeroGauge-specific transitional hook |
 | Widescreen HUD retagging and needle matrix shift | aero_hud_widescreen.c | AeroGauge-specific display-list rewrite |
 | Draw-distance replacement | aero_draw_distance.cpp | AeroGauge-specific native replacement |
+| Full-screen overscan removal | aero_scene_scissor.c | AeroGauge-specific scissor hook |
 | Headless software renderer | stub_renderer.cpp | Test and capture instrument, not the player renderer |
 | Window and input wiring | main.cpp and aero_menu.cpp | Port integration |
 
@@ -74,6 +75,39 @@ matrix. At 4:3 output, the adjustment is a no-op.
 These rules are specific to this ROM and its current display-list layout. The
 classification and matrix math have host tests. A change to the HUD hook must
 keep the ROM evidence, the guest-memory cursor rules, and the test together.
+
+### Full-screen overscan
+
+The USA ROM's full-screen race viewport has scale and translation
+`(640,480,511)` in quarter-pixel units, covering 320 by 240 pixels. The
+scene scissor builder at `0x800227E4` adds 16-pixel horizontal and 8-pixel
+vertical insets, then subtracts one more pixel at the lower bounds. Its
+`ED040020 004BC39C` command clips drawing to `(16,8)..(303,231)`.
+The black framebuffer clear remains visible outside that rectangle. RT64
+widens the projection but scales these margins with the output, making them
+particularly noticeable on ultrawide screens. The original hardware motive
+for these margins has not been established.
+
+[aero_scene_scissor.c](../../src/aero_scene_scissor.c) changes this command
+to `(0,0)..(320,240)`, with exclusive lower bounds. It runs on the game thread
+immediately after the command store at `0x800229C4`, using `s0` for the
+descriptor and `v1` for the command. It validates guest ranges, full-screen
+scale/translation, and the original command before writing two 32-bit words.
+Unexpected inputs, split-screen views, and custom crops are left intact.
+Camera matrices and viewport data do not change: the newly exposed area
+shows additional world geometry at the existing scale. This is enabled by
+default and needs no new RT64 patch or aspect setting.
+
+When that builder also emits a solid background clear, the companion hook
+after `0x80022B28` expands its fill rectangle to `(0,0)..(319,239)`. Fill-cycle
+lower bounds are inclusive. The original fill color is preserved, and the
+same full-screen descriptor and command checks guard the change.
+
+The `scene_scissor` regression test extracts the actual generated function
+and exercises its hooks with full-screen, split-screen, and custom-crop
+descriptors. ROM-derived output stays in the build directory. A future
+named source implementation of this builder can replace the register-based
+hook without changing the clipping contract.
 
 ### HUD hook contract
 
