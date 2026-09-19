@@ -12,6 +12,13 @@ control-binding page.
 The gamepad path uses SDL's standard game-controller mapping. A connected
 controller without a rumble motor can still provide input.
 
+The host hands the runtime a normalized stick value, not an N64-scale one.
+`ultramodern`'s `convert_to_n64_range` maps that input through the N64 stick
+octagon, whose cardinal inradius is 82, so the port scales a full-deflection
+stick by that radius for it to reach the translated game as +-80. Any other
+divisor shrinks the whole analog range that the game's steering and its own
+menu thresholds are calibrated against, with no error and no log line.
+
 ## Input ownership
 
 The input path is:

@@ -599,10 +599,14 @@ static bool input_get_input(int controller_num, uint16_t* buttons, float* x, flo
     if (sx == 0) sx = held_sx;                                  // env stick fills in when live stick idle
     if (sy == 0) sy = held_sy;
     if (buttons) *buttons = b;
-    // ultramodern does stick_x = (int8_t)(127 * x), so divide by 127 (NOT N64_STICK_MAX) to
-    // preserve our authentic +-80 range through that re-scale instead of re-expanding to +-127.
-    if (x) *x = sx / 127.0f;
-    if (y) *y = sy / 127.0f;
+    // ultramodern's convert_to_n64_range() maps this normalized input through the N64 stick
+    // octagon, whose cardinal inradius is r0 = 82 (ultramodern/src/input.cpp, called by
+    // osContGetReadData). Dividing by r0 makes a full-deflection +-N64_STICK_MAX arrive at the
+    // ROM as +-80. Dividing by 127 lost ~35% of the range: a full stick read back as 51, which
+    // left the ROM's menus (they need +-41 after the ROM's own +-7 deadzone in func_80009494)
+    // reachable only past ~93% of physical deflection.
+    if (x) *x = sx / 82.0f;
+    if (y) *y = sy / 82.0f;
     return true;
 }
 static ultramodern::input::connected_device_info_t input_device_info(int controller_num) {
