@@ -257,6 +257,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         add_executable(test_scene_scissor tests/test_scene_scissor.c
             src/aero_scene_scissor.c ${SCISSOR_TEST_FUNCS})
         target_include_directories(test_scene_scissor PRIVATE ${N64MR}/N64Recomp/include)
+        target_compile_options(test_scene_scissor PRIVATE -fno-strict-aliasing)
         if(NOT WIN32)
             target_link_libraries(test_scene_scissor PRIVATE m)
         endif()
