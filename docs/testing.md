@@ -41,6 +41,7 @@ The current CMake file registers these tests:
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | live_config_updates | Host | Runtime headers; no ROM |
+| graphics_config_threadsafe | Host | Runtime source from the initialized submodule; no ROM |
 | user_data_dir | Host | No ROM |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
 | scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |

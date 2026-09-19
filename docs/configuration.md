@@ -289,7 +289,9 @@ thread. This can make a settings change briefly block the event loop. The
 [deferred graphics write issue](https://github.com/alondero/aerogauge-recomp/issues/26)
 tracks changing that behavior.
 
-The runtime's live graphics configuration also has an open
-[thread-safety issue](https://github.com/alondero/aerogauge-recomp/issues/25).
-Until that is resolved, treat live configuration changes as a main-branch
-engineering feature, not as a safe place to add cross-thread reads.
+The runtime's live graphics configuration is safe to read from any thread. Local
+runtime patch 0018 makes `ultramodern::renderer::get_graphics_config()` return a
+snapshot copy taken while the runtime's configuration mutex is held, so a
+menu-thread `set_graphics_config()` cannot change a configuration a game, VI, or
+graphics thread is reading. See the
+[patch inventory](../patches/README.md).

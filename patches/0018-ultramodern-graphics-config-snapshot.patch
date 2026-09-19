@@ -1,0 +1,45 @@
+diff --git a/ultramodern/include/ultramodern/config.hpp b/ultramodern/include/ultramodern/config.hpp
+index 2f22456..d21b365 100644
+--- a/ultramodern/include/ultramodern/config.hpp
++++ b/ultramodern/include/ultramodern/config.hpp
+@@ -82,7 +82,10 @@ namespace ultramodern {
+             auto operator<=>(const GraphicsConfig& rhs) const = default;
+         };
+ 
+-        const GraphicsConfig& get_graphics_config();
++        // Local patch 0018: returns a snapshot copy. set_graphics_config() can replace the
++        // stored config from another thread at any moment, so a reference into the shared
++        // state cannot be read safely after the accessor returns.
++        GraphicsConfig get_graphics_config();
+         void set_graphics_config(const GraphicsConfig& new_config);
+ 
+         NLOHMANN_JSON_SERIALIZE_ENUM(ultramodern::renderer::Resolution, {
+diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
+index d8b6275..c4d082b 100644
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -335,7 +335,7 @@ std::atomic_uint32_t display_refresh_rate = 60;
+ std::atomic<float> resolution_scale = 1.0f;
+ 
+ uint32_t ultramodern::get_target_framerate(uint32_t original) {
+-    auto& config = ultramodern::renderer::get_graphics_config();
++    auto config = ultramodern::renderer::get_graphics_config();
+ 
+     switch (config.rr_option) {
+         case ultramodern::renderer::RefreshRate::Original:
+diff --git a/ultramodern/src/renderer_context.cpp b/ultramodern/src/renderer_context.cpp
+index a6af900..98d988e 100644
+--- a/ultramodern/src/renderer_context.cpp
++++ b/ultramodern/src/renderer_context.cpp
+@@ -48,7 +48,10 @@ void ultramodern::renderer::set_graphics_config(const GraphicsConfig& config) {
+     ultramodern::trigger_config_action();
+ }
+ 
+-const ultramodern::renderer::GraphicsConfig& ultramodern::renderer::get_graphics_config() {
++// Local patch 0018: return a copy made under the lock instead of a reference. The previous
++// reference let the mutex release before the caller touched the object, so a live
++// set_graphics_config() (menu thread) raced the game, VI, and graphics threads reading it.
++ultramodern::renderer::GraphicsConfig ultramodern::renderer::get_graphics_config() {
+     std::lock_guard<std::mutex> lock(graphic_config_mutex);
+     return graphic_config;
+ }

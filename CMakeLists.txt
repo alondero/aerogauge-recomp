@@ -361,6 +361,24 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_user_data_dir PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME user_data_dir COMMAND test_user_data_dir)
+
+    # Live graphics-configuration handoff (issue #25). Patch 0018 makes the runtime's accessor
+    # return a snapshot copy instead of an unlocked reference. This links the dependency's
+    # renderer_context.cpp so a return to the reference shape fails the test's compile-time
+    # check, and hammers set/get from several threads so a torn copy fails at run time too.
+    # Needs neither ROM nor renderer; ThreadSanitizer reports the same defect directly.
+    add_executable(test_graphics_config_threadsafe
+        tests/test_graphics_config_threadsafe.cpp
+        ${N64MR}/ultramodern/src/renderer_context.cpp)
+    target_include_directories(test_graphics_config_threadsafe PRIVATE
+        ${N64MR}/N64Recomp/include ${N64MR}/ultramodern/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
+    target_compile_options(test_graphics_config_threadsafe PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(test_graphics_config_threadsafe PRIVATE -Wl,--gc-sections)
+    find_package(Threads REQUIRED)
+    target_link_libraries(test_graphics_config_threadsafe PRIVATE Threads::Threads)
+    add_test(NAME graphics_config_threadsafe COMMAND test_graphics_config_threadsafe)
+    set_tests_properties(graphics_config_threadsafe PROPERTIES TIMEOUT 60)
     if(WIN32)
         # Full-game audio regression for the aspMain "Unhandled jump target" crash
         # (2026-07-17): 60 s headless warp race with music; pre-fix this crashed on the
