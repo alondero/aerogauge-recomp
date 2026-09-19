@@ -42,14 +42,15 @@ The current CMake file registers these tests:
 | live_config_updates | Host | Runtime headers; no ROM |
 | user_data_dir | Host | No ROM |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
+| scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |
 | audio_intro_playback | End to end | Windows desktop, ROM, executable, and usable audio device |
 | haptics_race_e2e | End to end | Windows, ROM, executable, gdb.exe, and a run that reaches the race |
 | turbo_boost_e2e | End to end | Windows, ROM, executable, and gdb.exe |
 | audio_task_crash | End to end | Windows, ROM, executable; headless audio path |
 | play_logging_quiet | End to end | Windows, ROM, executable, and a working RT64 graphics device |
 
-The ROM-backed test is only added when RecompiledFuncs exists at configure
-time. Re-run CMake after generating the functions if it is missing from
+The ROM-backed tests are only added when RecompiledFuncs exists at configure
+time. Re-run CMake after generating the functions if they are missing from
 CTest. The Windows tests are only added on Windows. play_logging_quiet is
 also only added when the ROM exists during configuration.
 

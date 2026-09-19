@@ -36,6 +36,20 @@ ignored = [
     "guPerspectiveF",
 ]
 
+# Remove the full-screen scene's overscan scissor after the ROM emits it.
+# s0 = viewport descriptor, v1 = just-written command. The port hook validates
+# both; sub-viewports and custom crops retain their original clipping.
+[[patches.hook]]
+func = "func_800227E4"
+before_vram = 0x800229C8
+text = "extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);"
+
+# The optional solid scene background must cover the same expanded area.
+[[patches.hook]]
+func = "func_800227E4"
+before_vram = 0x80022B2C
+text = "extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);"
+
 # Developer warp menu hook (src/aero_warp.c; see docs/reference/runtime.md). Hooked at the entry of the top-level
 # per-frame scene driver func_80015C8C (called every frame from the main game thread's
 # loop func_800658FC): it copies the scene request 0x8013FF84 into the current scene

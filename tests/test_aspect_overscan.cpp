@@ -1,11 +1,13 @@
 // Spec for RT64's overscan-tolerant full-width check (patch 0011).
 //
-// AeroGauge renders its 3D scene inside an overscan border -- scissor/viewport
+// Unmodified AeroGauge clips its 3D scene inside an overscan border -- scissor
 // (64,32)..(1212,924) of a (0,0)..(1280,960) framebuffer (10.2 fixed-point, i.e.
 // game-space x 16..303 of 320). RT64's automatic aspect widening required the
 // projection to cover the framebuffer's exact full width, so such scenes were never
 // widened (pillarboxed under AspectRatio::Expand). coversWidthWithOverscan accepts a
 // small symmetric border while still excluding split-screen sub-viewports.
+// The port now removes the full-screen scene scissor via aero_scene_scissor.c;
+// these cases retain coverage of RT64's inset-projection detection.
 //
 // Standalone host test. From the repo root:
 //   g++ -std=c++20 -w -I lib/rt64/src/contrib/hlslpp/include \
