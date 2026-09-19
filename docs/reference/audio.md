@@ -24,6 +24,14 @@ state must survive across submitted buffers. The audio module also has a
 headless virtual AI FIFO so a no-window test can exercise game-side audio
 backpressure without requiring an audio device.
 
+Both host build scripts apply patch 0013: non-graphics RSP tasks execute on
+the submitting thread before the game can reuse the task descriptor and
+command buffer. A failed task still signals SP completion instead of exiting
+the process. Omitting this patch on Linux allowed an audio-task failure to
+terminate the game during Time Trial's Controller Pak check. The
+`rsp_task_submission` test exercises the production submission code, including
+task failure followed by another successful submission.
+
 The ROM has separate paths for sequenced music and short sound clips. Both
 paths eventually submit M_AUDTASK work to the same generated aspMain output.
 The sequenced music loader waits for the message belonging to its own PI DMA
