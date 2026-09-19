@@ -31,6 +31,7 @@ The current CMake file registers these tests:
 | --- | --- | --- |
 | audio_playback_buffering | Host | SDL2 test libraries; no ROM |
 | controller_accessories | Host | No ROM |
+| input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
 | eeprom_exit_flush | Runtime host | Built N64ModernRuntime |
 | rsp_task_submission | Runtime host | Patched N64ModernRuntime; no ROM or audio device |
 | hud_shift_scale | Host | No ROM |

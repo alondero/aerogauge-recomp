@@ -338,6 +338,24 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     )
     add_test(NAME live_config_updates COMMAND test_live_config)
 
+    # Host stick mapping (src/aero_input.h) round-tripped through the runtime's own
+    # convert_to_n64_range(), so a changed divisor cannot silently shrink the analog range the
+    # ROM's menus and steering are tuned for. Needs no ROM, SDL, or renderer; links the
+    # dependency source under test and stubs its unrelated SI entry points.
+    add_executable(test_input_scaling tests/test_input_scaling.cpp
+        ${N64MR}/ultramodern/src/input.cpp)
+    target_include_directories(test_input_scaling PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${N64MR}/N64Recomp/include ${N64MR}/ultramodern/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
+    target_compile_options(test_input_scaling PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(test_input_scaling PRIVATE -Wl,--gc-sections)
+    if(NOT WIN32)
+        target_link_libraries(test_input_scaling PRIVATE m)
+    endif()
+    add_test(NAME input_stick_scaling COMMAND test_input_scaling)
+    set_tests_properties(input_stick_scaling PROPERTIES TIMEOUT 10)
+
     # Single per-user data folder: graphics.json, saves, and RT64 logs.
     add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
     target_include_directories(test_user_data_dir PRIVATE
