@@ -42,6 +42,7 @@
 #include "aero_audio.h"
 #include "aero_config.h"
 #include "aero_menu.h"
+#include "aero_input.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 // ultramodern's native VI API, used by the host-owned scanout path.
 extern "C" void osViSwapBuffer(uint8_t* rdram, int32_t frameBufPtr);
@@ -387,8 +388,8 @@ static void update_gfx_stub(void* /*gfx_data*/) {
 // Threading: SDL events pump on the MAIN thread (update_gfx_stub); get_input/poll_input are
 // called on the GAME thread (osContStartReadData). So the main thread SAMPLES SDL state into
 // one atomic snapshot each frame (input_sample()), and the game thread only READS the
-// snapshot -- no cross-thread SDL calls, no lock. Snapshot layout (uint32_t):
-//   [15:0] = N64 button mask, [23:16] = stick_x (int8), [31:24] = stick_y (int8).
+// snapshot -- no cross-thread SDL calls, no lock. src/aero_input.h owns the packed
+// layout and the conversions; tests/test_input_scaling.cpp pins them.
 //
 // Port 0 is reported connected UNCONDITIONALLY (input_device_info below) even with no physical
 // pad: the keyboard is a valid input device, and the ROM's object-slot gate (func_8007A8A0)
@@ -406,10 +407,9 @@ enum {
     N64_CU      = 0x0008, N64_CD     = 0x0004, N64_CL    = 0x0002, N64_CR    = 0x0001,
 };
 
-// N64 hardware stick maxes at roughly +-80 after calibration; games are tuned for that range,
-// so we scale full deflection to +-80 (faithfulness) rather than the full int8 +-127.
-static constexpr int   N64_STICK_MAX   = 80;
-static constexpr int   PAD_AXIS_DEADZONE = 8000;   // ~24% of int16 range (SDL recommended ~8000)
+// The N64 stick range, the SDL deadzone, and the conversion into the runtime's
+// normalized input space live in src/aero_input.h so a host test can pin them.
+// See tests/test_input_scaling.cpp.
 static constexpr int   PAD_TRIG_THRESH   = 8000;   // analog trigger -> digital
 static constexpr int   PAD_CSTICK_THRESH = 12000;  // right-stick -> C-buttons
 
@@ -444,14 +444,6 @@ static void rumble_apply() {
     if (on || was_on)
         SDL_GameControllerRumble(g_pad, motors.low, motors.high, on ? 150 : 0);
     was_on = on;
-}
-
-static int8_t pad_axis_to_n64(int v) {              // int16 SDL axis -> int8 N64 stick (deadzoned)
-    if (v > -PAD_AXIS_DEADZONE && v < PAD_AXIS_DEADZONE) return 0;
-    float f = v / 32767.0f;
-    if (f >  1.0f) f =  1.0f;
-    if (f < -1.0f) f = -1.0f;
-    return (int8_t)(f * N64_STICK_MAX);
 }
 
 // Sample SDL keyboard + gamepad on the MAIN thread and publish the atomic snapshot.
@@ -499,8 +491,8 @@ static void input_sample() {
         if (ry >  PAD_CSTICK_THRESH) b |= N64_CD;
         if (ry < -PAD_CSTICK_THRESH) b |= N64_CU;
         // Left analog stick -> N64 stick (SDL Y is +down, N64 stick_y is +up -> negate).
-        sx =  pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTX));
-        sy = -pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTY));
+        sx =  aero_pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTX));
+        sy = -aero_pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTY));
     }
 
     // Keyboard fallback (always sampled; OR'd with the pad). Arrow keys steer; racing essentials
@@ -545,9 +537,7 @@ static void input_sample() {
         f7_prev = f7; f8_prev = f8;
     }
 
-    uint32_t snap = (uint16_t)b
-                  | ((uint32_t)(uint8_t)(int8_t)sx << 16)
-                  | ((uint32_t)(uint8_t)(int8_t)sy << 24);
+    uint32_t snap = aero_input_pack(b, (int8_t)sx, (int8_t)sy);
     g_input_snapshot.store(snap, std::memory_order_relaxed);
 }
 
@@ -588,25 +578,19 @@ static bool input_get_input(int controller_num, uint16_t* buttons, float* x, flo
     const uint16_t held_buttons = use_after ? (uint16_t)(after >> 32) : g_held_buttons;
     const int8_t held_sx = use_after ? (int8_t)(after >> 48) : g_held_sx;
     const int8_t held_sy = use_after ? (int8_t)(after >> 56) : g_held_sy;
-    uint16_t b  = (uint16_t)(snap & 0xFFFF) | held_buttons;     // env mask always OR'd (harness knob)
-    if (g_pulse_period > 0) {                                   // scripted pulse (harness knob)
-        if (vi >= g_pulse_start && ((vi - g_pulse_start) % g_pulse_period) < g_pulse_duty
-            && (g_pulse_count == 0 || (vi - g_pulse_start) / g_pulse_period < g_pulse_count))
-            b |= g_pulse_buttons;
-    }
-    int8_t   sx = (int8_t)((snap >> 16) & 0xFF);
-    int8_t   sy = (int8_t)((snap >> 24) & 0xFF);
+    uint16_t b  = aero_input_snapshot_buttons(snap) | held_buttons;  // env mask always OR'd
+    if (aero_input_pulse_active(vi, g_pulse_period, g_pulse_duty, g_pulse_start,
+                                g_pulse_count))
+        b |= g_pulse_buttons;
+    int8_t   sx = aero_input_snapshot_stick_x(snap);
+    int8_t   sy = aero_input_snapshot_stick_y(snap);
     if (sx == 0) sx = held_sx;                                  // env stick fills in when live stick idle
     if (sy == 0) sy = held_sy;
     if (buttons) *buttons = b;
-    // ultramodern's convert_to_n64_range() maps this normalized input through the N64 stick
-    // octagon, whose cardinal inradius is r0 = 82 (ultramodern/src/input.cpp, called by
-    // osContGetReadData). Dividing by r0 makes a full-deflection +-N64_STICK_MAX arrive at the
-    // ROM as +-80. Dividing by 127 lost ~35% of the range: a full stick read back as 51, which
-    // left the ROM's menus (they need +-41 after the ROM's own +-7 deadzone in func_80009494)
-    // reachable only past ~93% of physical deflection.
-    if (x) *x = sx / 82.0f;
-    if (y) *y = sy / 82.0f;
+    // The runtime takes a normalized value, not an N64 one; src/aero_input.h owns that
+    // conversion, including why the divisor is the octagon's inradius rather than 127.
+    if (x) *x = aero_n64_stick_to_normalized(sx);
+    if (y) *y = aero_n64_stick_to_normalized(sy);
     return true;
 }
 static ultramodern::input::connected_device_info_t input_device_info(int controller_num) {
