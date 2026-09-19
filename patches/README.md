@@ -19,7 +19,7 @@ platform, and ownership question.
 | [0010](0010-rt64-viewproj-decompose-axis-aligned-pivot.patch) | RT64 | Windows, Linux | View and projection decomposition behavior used by HUD work. |
 | [0011](0011-rt64-aspect-adjust-overscan-inset-viewport.patch) | RT64 | Windows, Linux | Aspect and overscan viewport handling. |
 | [0012](0012-librecomp-pi-dma-completion-osiomesg.patch) | N64ModernRuntime | Windows, Linux | PI DMA completion message behavior. |
-| [0013](0013-ultramodern-sp-task-synchronous-failsoft.patch) | N64ModernRuntime | Windows only | Synchronous non-graphics RSP task handling and fail-soft behavior. Linux parity is not established. |
+| [0013](0013-ultramodern-sp-task-synchronous-failsoft.patch) | N64ModernRuntime | Windows, Linux | Execute non-graphics RSP tasks before the game reuses their descriptor and signal completion even after a failed task. Required on Linux too: asynchronous audio failure can terminate the game during the Time Trial Pak check. |
 | [0014](0014-librecomp-flush-eeprom-on-exit.patch) | N64ModernRuntime | Windows, Linux | EEPROM flush before the current process-exit path. |
 | [0015](0015-runtime-host-config-storage.patch) | N64ModernRuntime | Windows, Linux | Host-owned configuration storage used by the settings integration. |
 | [0016](0016-recompfrontend-integration.patch) | RecompFrontend | Windows, Linux | SDL, assets, settings, and frontend integration. |
@@ -31,7 +31,7 @@ The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
-| Linux | 0001, 0007, 0012, 0014, 0015, 0017, 0016, 0006, 0008, 0009, 0010, 0011 |
+| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0016, 0006, 0008, 0009, 0010, 0011 |
 | Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0016, 0006, 0008, 0009, 0010, 0011, 0005, 0004 |
 
 Keep this inventory, [BUILDING.md](../BUILDING.md), and both host scripts in

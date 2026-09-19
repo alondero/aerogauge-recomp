@@ -81,8 +81,7 @@ jobs:
       - name: Reset submodules before patching
         # Defensive: a previous run that patched partially would otherwise
         # leave the next apply failing with "patch failed: ...". The Linux
-        # build script then re-applies the pinned set (0001, 0007, 0012,
-        # 0006, 0008, 0009, 0010, 0011) idempotently.
+        # build script then re-applies its pinned patch sequence idempotently.
         run: |
           git -C lib/N64ModernRuntime checkout -- .
           git -C lib/RecompFrontend checkout -- .
@@ -98,6 +97,11 @@ jobs:
         env:
           ROM_FILENAME: ${{ env.ROM_FILENAME }}
         run: bash build.sh
+
+      - name: Verify audio task submission
+        run: |
+          cmake --build build --target test_rsp_submission -j2
+          ctest --test-dir build -R '^rsp_task_submission$' --output-on-failure --no-tests=error
 
       - name: Remove ROM before packaging
         if: always()
@@ -184,8 +188,7 @@ jobs:
         shell: pwsh
         # Defensive: a previous run that patched partially would otherwise
         # leave the next apply failing with "patch failed: ...". The Windows
-        # build script then re-applies the pinned set (0001, 0007, 0012,
-        # 0013, 0006, 0008, 0009, 0005, 0010, 0011, 0004) idempotently.
+        # build script then re-applies its pinned patch sequence idempotently.
         # autocrlf=false also neutralises CRLF the Windows runner's git
         # might inject.
         run: |
@@ -203,6 +206,14 @@ jobs:
         env:
           ROM_FILENAME: ${{ env.ROM_FILENAME }}
         run: ./build.ps1 -RomPath "$env:ROM_FILENAME"
+
+      - name: Verify audio task submission
+        shell: pwsh
+        run: |
+          cmake --build build --target test_rsp_submission -j2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build -R '^rsp_task_submission$' --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Remove ROM before packaging
         if: always()

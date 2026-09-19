@@ -118,7 +118,8 @@ The output program is `build\aerogauge_modern.exe` on Windows and
 The patch files are the source of truth for local dependency changes. See the
 [patch inventory](patches/README.md) for their purpose and application order.
 The host scripts are the executable build contract. Linux does not use the
-Windows-only patches 0013, 0005, or 0004.
+Windows-only patches 0005 or 0004. Patch 0013 fixes audio task submission on
+both supported platforms.
 
 If a patch no longer applies to its pinned commit, stop and review the
 dependency change. Do not edit a patched submodule and leave the change

@@ -235,6 +235,20 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_test(NAME eeprom_exit_flush COMMAND test_eeprom_flush)
     set_tests_properties(eeprom_exit_flush PROPERTIES TIMEOUT 30)
 
+    # Use production submission code so an omitted runtime patch fails on
+    # either host, without requiring a ROM, audio device, or renderer.
+    add_executable(test_rsp_submission tests/test_rsp_submission.cpp
+        ${N64MR}/ultramodern/src/events.cpp)
+    target_include_directories(test_rsp_submission PRIVATE
+        ${N64MR}/N64Recomp/include ${N64MR}/ultramodern/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
+    target_compile_options(test_rsp_submission PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(test_rsp_submission PRIVATE -Wl,--gc-sections)
+    # MinGW's unwind sections otherwise retain unrelated renderer/thread code.
+    set_property(TARGET test_rsp_submission PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    add_test(NAME rsp_task_submission COMMAND test_rsp_submission)
+    set_tests_properties(rsp_task_submission PROPERTIES TIMEOUT 10)
+
     if(TARGET RecompiledFuncs)
         # This extractor is part of the required regression suite. A missing or
         # unusable interpreter must fail configure instead of silently omitting
