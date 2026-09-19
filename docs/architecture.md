@@ -108,7 +108,7 @@ pinned public submodules:
 
 | Dependency | Local changes |
 | --- | --- |
-| N64ModernRuntime | Scheduler and VI behavior, save-state thread-context relink, PI completion messages, synchronous non-graphics RSP handling, EEPROM flush on exit |
+| N64ModernRuntime | Scheduler and VI behavior, save-state thread-context relink, PI completion messages, synchronous non-graphics RSP handling, EEPROM flush on exit, snapshot reads of the live graphics configuration |
 | RT64 | Angular-velocity-aware matching, sky backdrop handling, split-screen wide viewport handling, view/projection decomposition pivot, overscan aspect detection |
 | RT64's Plume submodule | MinGW Direct3D 12 ABI compatibility |
 

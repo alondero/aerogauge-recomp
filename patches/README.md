@@ -24,6 +24,7 @@ platform, and ownership question.
 | [0015](0015-runtime-host-config-storage.patch) | N64ModernRuntime | Windows, Linux | Host-owned configuration storage used by the settings integration. |
 | [0016](0016-recompfrontend-integration.patch) | RecompFrontend | Windows, Linux | SDL, assets, settings, and frontend integration. |
 | [0017](0017-runtime-game-presentation.patch) | N64ModernRuntime | Windows, Linux | Port-owned game presentation after the runtime update. |
+| [0018](0018-ultramodern-graphics-config-snapshot.patch) | N64ModernRuntime | Windows, Linux | Return the graphics configuration by value. A live `set_graphics_config()` from the menu thread otherwise raced the game, VI, and graphics threads that read the accessor's reference after its mutex was released. |
 
 ## Application order
 
@@ -31,8 +32,8 @@ The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
-| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0016, 0006, 0008, 0009, 0010, 0011 |
-| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0016, 0006, 0008, 0009, 0010, 0011, 0005, 0004 |
+| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0006, 0008, 0009, 0010, 0011 |
+| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0006, 0008, 0009, 0010, 0011, 0005, 0004 |
 
 Keep this inventory, [BUILDING.md](../BUILDING.md), and both host scripts in
 agreement. The documentation checker validates patch hunk counts, but only a

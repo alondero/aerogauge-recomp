@@ -67,8 +67,12 @@ unsafe.
 The [patch inventory](../../patches/README.md) lists every runtime patch, its
 host coverage, and its purpose. Patch 0001 also exposes a diagnostic
 thread-trace hook; its names are compatibility details of the local patch, not
-a model for a new runtime API. The exact application order is part of
-[BUILDING](../../BUILDING.md).
+a model for a new runtime API. Patch 0018 makes the graphics-config accessor
+return a snapshot copy instead of an unlocked reference, so the graphics
+thread, the VI callback, and the game thread can each read the live
+configuration while the settings menu replaces it. That is a repair of a
+runtime synchronization defect, not an API shape to copy elsewhere. The exact
+application order is part of [BUILDING](../../BUILDING.md).
 
 ## Failure and shutdown
 

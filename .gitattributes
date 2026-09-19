@@ -1,0 +1,4 @@
+# Patch files are unified diffs against pinned dependency commits. A blank source
+# line appears in a hunk as a context line holding only the required leading space,
+# so trailing-whitespace checks do not apply to them.
+patches/*.patch -whitespace

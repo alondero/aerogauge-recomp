@@ -236,7 +236,7 @@ public:
 
         app = std::make_unique<RT64::Application>(appCore, appConfig);
 
-        auto& cur_config = ultramodern::renderer::get_graphics_config();
+        auto cur_config = ultramodern::renderer::get_graphics_config();
         set_application_user_config(app.get(), cur_config);
         app->userConfig.developerMode = debug;
         // Keep display-list branch behavior stable for the current texture path.
@@ -548,7 +548,7 @@ private:
 // Read swapchain dimensions under the same lock as the HUD helper below.
 extern "C" uint32_t aero_ws_get_output_aspect_bits(void) {
     float aspect = 4.0f / 3.0f;
-    const auto& cfg = ultramodern::renderer::get_graphics_config();
+    const auto cfg = ultramodern::renderer::get_graphics_config();
     auto* active_app = g_aero_active_app.load(std::memory_order_acquire);
     if (cfg.ar_option == ultramodern::renderer::AspectRatio::Expand &&
         active_app && active_app->sharedQueueResources) {
@@ -569,7 +569,7 @@ extern "C" uint32_t aero_ws_get_output_aspect_bits(void) {
 extern "C" uint32_t aero_ws_get_hud_rect_aspect_bits(void) {
     const float source = 4.0f / 3.0f;
     float aspect = source;
-    const auto& cfg = ultramodern::renderer::get_graphics_config();
+    const auto cfg = ultramodern::renderer::get_graphics_config();
     RT64::Application* active_app = g_aero_active_app.load(std::memory_order_acquire);
     if (cfg.ar_option == ultramodern::renderer::AspectRatio::Expand &&
         active_app != nullptr && active_app->sharedQueueResources) {

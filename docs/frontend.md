@@ -57,17 +57,19 @@ callback and the menu share a lock in the current integration. Running a
 blocking action while that lock is held can block rendering or deadlock.
 
 See [Architecture](architecture.md) and [Configuration](configuration.md).
-The known departures from the intended boundary are tracked in
-the [synchronous graphics-write issue](https://github.com/alondero/aerogauge-recomp/issues/26)
-and the [live-configuration thread-safety issue](https://github.com/alondero/aerogauge-recomp/issues/25).
+The known departure from the intended boundary is tracked in
+the [synchronous graphics-write issue](https://github.com/alondero/aerogauge-recomp/issues/26).
 No current issue changes the ownership rule: JSON and SDL actions still belong
-on the SDL main thread.
+on the SDL main thread. Cross-thread *reads* of the live configuration are safe,
+because patch 0018 makes the runtime hand back a snapshot copy rather than an
+unlocked reference; see the [patch inventory](../patches/README.md).
 
 ## Dependency boundary
 
 Patch 0015 gives the port ownership of JSON storage. Patch 0016 contains both
 generic frontend changes and AeroGauge integration. Patch 0017 preserves the
-port's direct-game presentation path after the runtime update.
+port's direct-game presentation path after the runtime update. Patch 0018 makes
+the live configuration readable from any thread.
 
 The generic parts of patch 0016 are candidates for an upstream proposal, but no
 upstream contribution has been accepted in this branch. The settings frontend
