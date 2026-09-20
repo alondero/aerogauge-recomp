@@ -133,6 +133,7 @@ PATCHES=(
     "lib/rt64:0009-rt64-widescreen-split-subviewport.patch"
     "lib/rt64:0010-rt64-viewproj-decompose-axis-aligned-pivot.patch"
     "lib/rt64:0011-rt64-aspect-adjust-overscan-inset-viewport.patch"
+    "lib/rt64:0023-rt64-adreno-endian-swap.patch"
 )
 for entry in "${PATCHES[@]}"; do
     sub="${entry%%:*}"

@@ -161,6 +161,7 @@ try {
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0009-rt64-widescreen-split-subviewport.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0010-rt64-viewproj-decompose-axis-aligned-pivot.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0011-rt64-aspect-adjust-overscan-inset-viewport.patch' },
+        @{ Sub = 'lib/rt64';                   Patch = 'patches/0023-rt64-adreno-endian-swap.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0005-rt64-mingw-gcc-compat.patch' },
         @{ Sub = 'lib/rt64/src/contrib/plume'; Patch = 'patches/0004-plume-d3d12-mingw-com-abi-struct-return.patch' }
     )

@@ -148,10 +148,42 @@ or viewport behavior needs a small renderer test and a proposal to RT64. A
 toolchain compatibility patch should be removed when the pinned upstream
 supports the same toolchain.
 
+### Adreno compute-pipeline rejection
+
+The Adreno 750 system Vulkan driver (driver version `0x802FA029`, Android 16)
+returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for a compute shader
+that contains the 16-bit byte swap `((i << 8) & 0xFF00) | ((i >> 8) & 0xFF)`,
+even though the SPIR-V is valid. The reduced reproducer is a compute shader
+whose whole body is that expression; dropping either mask, changing the second
+mask, or replacing the `|` with `^` or `+` makes the driver accept the same
+pipeline, and the 32-bit swap is not affected.
+
+Five RT64 compute pipelines hit this: the framebuffer change-detection and
+writeback shaders built in `rt64_shader_library.cpp`, which reach the swap
+through `EndianSwapUINT`. Plume's `VulkanComputePipeline` constructor logged the
+failure and returned early, leaving the object's `VkPipeline` at
+`VK_NULL_HANDLE`, and `NativeTarget::copyFromRAM` then passed that null handle
+to the driver. The tombstone recorded SIGSEGV with fault address `0x8` inside
+`qglinternal::vkCmdBindPipeline`, called from
+`rt64_native_target.cpp:195`. A failed compute-pipeline creation is still only
+logged, so a future rejected shader would present as a driver crash rather than
+a clean startup failure.
+
+[Patch 0023](../../patches/0023-rt64-adreno-endian-swap.patch) spells the swap
+with XOR. The two masked fields occupy disjoint bit ranges, so the value is
+identical on every driver, and the Adreno compiler accepts it.
+`tests/test_shader_endian_swap.py` proves that equivalence over the full 16-bit
+domain and compiles the helper through dxc to assert the rejected opcode is
+absent from the emitted SPIR-V.
+
 ## Renderer-specific failure modes
 
 - If the RT64 device cannot start, run the headless path to separate host
   setup from game display-list production.
+- If a shader fails to create a pipeline on one driver while the same build
+  works elsewhere, reduce the shader to the smallest expression that driver
+  rejects before changing the pipeline layout, the device features, or the
+  queue setup.
 - If a frame is empty, inspect the task's display-list pointer, ucode, and
   RDRAM contents before changing RT64.
 - If a HUD element is misplaced, compare the original coordinates, the

@@ -35,6 +35,16 @@ frame rate without MSAA. Raise them in settings if your device has headroom.
 
 The Pixel 5's system Adreno driver lacks features RT64 requires, as documented
 by the [Lamborghini port](https://github.com/alondero/automobililamborghini-recomp/blob/main/docs/android.md).
+
+A modern Adreno system driver can run the game. The Adreno 750 system driver
+(v0762.41) used to return `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines`
+for the RT64 framebuffer compute shaders that contain the 16-bit byte swap.
+[Patch 0023](../patches/0023-rt64-adreno-endian-swap.patch) spells that swap in
+a form the driver accepts; the value is unchanged. The
+[renderer reference](reference/renderer.md#adreno-compute-pipeline-rejection)
+has the reduction. Prefer the system driver and import Turnip when graphics
+initialization fails.
+
 The launcher can import an AdrenoTools-compatible Mesa Turnip ZIP. Driver code
 stays private to AeroGauge; importing it does not modify Android or other apps.
 Use a trusted driver compatible with your Qualcomm GPU. Turnip is not a Mali
@@ -140,13 +150,23 @@ launcher imported the verified USA ROM and a Mesa Turnip driver ZIP, the game
 rendered menus and a race, touch steering and simultaneous A/B/Z input worked,
 the secondary-finger Menu action opened while steering and accelerating, Android
 Back and Exit to launcher worked, and the nearby-devices permission prompt was
-shown. The signed APK installed cleanly. A physical Bluetooth controller,
-stock-driver failure messaging after the final install, Home/screen-lock resume,
-and an in-place signed update with existing saves still need a device run before
-claiming universal hardware coverage.
+shown. The signed APK installed cleanly.
+
+A second acceptance run used the debug APK on a Galaxy Z Fold 6 (Android 16,
+API 36, Adreno 750, system driver v0762.41) with patch 0023. The build without
+that patch killed `:game` within two seconds of the first display list, logging
+five `vkCreateComputePipelines` failures and faulting inside `vkCmdBindPipeline`.
+With the patch the same run logged no pipeline failures, `:game` held one PID
+across a 60-second hold with touch input, `/data/tombstones` gained no entry, and
+the title screen and touch overlay rendered correctly while the log showed scene
+transitions and a course load.
+
+A physical Bluetooth controller, stock-driver failure messaging after the final
+install, Home/screen-lock resume, and an in-place signed update with existing
+saves still need a device run before claiming universal hardware coverage.
 
 The Android platform boundary lives in `src/android/`, the launcher/input UI
-in `android/app/`, and dependency changes in patches 0019–0022. The game process
+in `android/app/`, and dependency changes in patches 0019–0023. The game process
 uses the normal input snapshot and save paths. Java publishes touch samples
 atomically; SDL and game threads retain their existing ownership. Backgrounding
 releases touch input and waits at the VI callback boundary; SDL owns audio and
