@@ -1,5 +1,22 @@
 # Testing
 
+## Android checks
+
+Run `python -B tests/test_android_build.py` for patch-series idempotence,
+desktop-prefix compatibility and preservation of conflicting local edits.
+The ROM-import test uses the real Java import class with your local ROM:
+
+```sh
+javac -d build-android/tests android/app/src/main/java/io/github/alondero/aerogaugerecomp/RomImport.java tests/android/RomImportTest.java
+java -cp build-android/tests io.github.alondero.aerogaugerecomp.RomImportTest "AeroGauge (USA).z64"
+```
+
+It verifies all three byte orders and that corrupt, short, oversized and
+interrupted imports preserve the installed file. No ROM data is embedded.
+Run `android/gradlew -p android :app:lintDebug` for Android static checks after
+preparing dependencies. See [Android acceptance checks](android.md#acceptance-checks)
+for the required device workflows; record actual outcomes and untested cases.
+
 The test suite has three levels:
 
 1. host tests that use synthetic data and do not need a ROM;

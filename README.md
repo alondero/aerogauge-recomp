@@ -16,11 +16,16 @@ Release targets are:
 
 - Windows 10 or later, 64-bit, with Direct3D 12 support.
 - Linux, 64-bit, with Vulkan support.
+- Android 9 or later, ARM64, with a compatible Vulkan driver. See
+  [Android setup](docs/android.md) for touch controls, ROM import, and GPU drivers.
 
 macOS is not a supported target in this branch. A build that compiles on
 another system is not proof that the game runs there.
 
 ## Run a release
+
+On Android, install the APK and use **Import ROM** in the app, then **Play
+AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
 
 1. Download the archive for your system from
    [GitHub Releases](https://github.com/alondero/aerogauge-recomp/releases).

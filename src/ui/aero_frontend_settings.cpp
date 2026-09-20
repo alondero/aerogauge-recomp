@@ -181,6 +181,14 @@ void create_settings() {
     graphics.add_enum_option("window_size", "Window size",
         "Windowed size, applied with the Apply button. Pick a common resolution; a size typed directly into graphics.json shows as Custom and is kept unless you pick a preset.",
         window_preset_options, preset_from_size(port::window_size().width, port::window_size().height));
+#if defined(__ANDROID__)
+    // These desktop controls cannot change an Android-owned surface or open
+    // a desktop filesystem dialog. Keep the shared schema for saved settings.
+    for (const char* id : {"wm_option", "window_size", "api_option", "texture_pack", "texture_dump"})
+        graphics.update_option_disabled(id, true);
+    graphics.update_option_description("api_option", "Android uses Vulkan. Choose a GPU driver in the launcher.");
+    graphics.update_option_description("wm_option", "Android manages the fullscreen display.");
+#endif
 
     auto& enhancements = settings::create_config_tab("Enhancements", "enhancements", false);
     enhancements.external_storage = true;

@@ -34,6 +34,9 @@
 #include "aero_config.h"
 #include "aero_hud_widescreen.h"
 #include "aero_paths.h"
+#if defined(__ANDROID__)
+#include "android/aero_android.h"
+#endif
 
 
 namespace {
@@ -260,6 +263,11 @@ public:
         if (setup_result != ultramodern::renderer::SetupResult::Success) {
             std::fprintf(stderr, "[rt64] RT64::Application::setup FAILED (SetupResult=%d)\n",
                          (int)setup_result);
+#if defined(__ANDROID__)
+            // RT64's partially initialized teardown is not safe on every driver.
+            // Report the failure before destroying the incomplete application.
+            aero::android::startup_error("This GPU driver cannot start AeroGauge. On Adreno devices, import a compatible Mesa Turnip ZIP in Graphics & storage. You can also select the system driver or export diagnostics below.");
+#endif
             app = nullptr;
             return;
         }
@@ -615,6 +623,9 @@ create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window
                       bool developer_mode) {
     auto ctx = std::make_unique<RT64Context>(rdram, window_handle, developer_mode);
     if (!ctx->valid()) {
+#if defined(__ANDROID__)
+        aero::android::startup_error("This GPU driver cannot start AeroGauge. On Adreno devices, try importing a compatible Mesa Turnip ZIP in Graphics & storage. You can also select the system driver or export diagnostics below.");
+#endif
         return nullptr;
     }
     return ctx;

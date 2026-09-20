@@ -85,3 +85,14 @@ nextsessionprompt.md
 verify_*/
 # Host-compiled unit-test binaries
 tests/*.exe
+
+# Android build products and signing material
+/build-android/
+/android/.gradle/
+/android/app/build/
+/android/build/
+/android/local.properties
+/dist/
+*.jks
+*.keystore
+*.apk

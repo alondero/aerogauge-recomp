@@ -2,8 +2,10 @@
 
 ## Status
 
-The shared RecompFrontend settings screen is part of the Windows and Linux
-build paths. It needs a normal window and graphics device.
+The shared RecompFrontend settings screen is part of the Windows, Linux, and
+Android game paths. Android presents it from the in-game menu and omits the
+desktop-only window, API, and developer-tool controls. It still needs a
+graphics device.
 
 Headless test runs do not show the menu.
 

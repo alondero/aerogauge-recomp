@@ -11,6 +11,7 @@ The files live in the application directory:
 | --- | --- |
 | Windows | %LOCALAPPDATA%/AeroGaugeRecomp |
 | Linux | $XDG_CONFIG_HOME/AeroGaugeRecomp, or ~/.config/AeroGaugeRecomp |
+| Android | App-private `files/AeroGaugeRecomp` (use the launcher’s save backup action) |
 | Portable mode | The current working directory, when portable.txt exists there |
 
 Portable mode is enabled by creating an empty file named portable.txt in the
@@ -43,9 +44,10 @@ The normal file contains the following keys. Enum values are case-sensitive.
 | draw_distance_scale | 0, or a number from 1 to 10000 | 100 | Far-plane multiplier |
 | full_track | true or false | true | Register all course geometry |
 
-The current settings menu exposes the most common graphics settings on the
-supported Windows and Linux paths. Some keys, including the 3P/4P fog and sky
-options, are currently easiest to edit by hand.
+The current settings menu exposes the common graphics settings on the supported
+Windows, Linux, and Android paths. Android omits desktop-only window, API, and
+texture-path controls. Some keys, including the 3P/4P fog and sky options, are
+currently easiest to edit by hand.
 
 The draw-distance scale has two special values:
 

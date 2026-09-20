@@ -17,6 +17,11 @@ namespace paths {
 inline constexpr const char* kAppFolderName = "AeroGaugeRecomp";
 
 inline std::filesystem::path app_data_dir() {
+#if defined(__ANDROID__)
+    if (const char* storage = std::getenv("AERO_ANDROID_DATA_DIR")) {
+        return std::filesystem::path{storage} / kAppFolderName;
+    }
+#endif
     std::error_code ec;
     if (std::filesystem::exists("portable.txt", ec)) {
         return std::filesystem::current_path();
