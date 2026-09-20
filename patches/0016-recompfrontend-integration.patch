@@ -507,3 +507,16 @@ index 7ee84ed..340879c 100644
  #endif
      }
  
+diff --git a/recompui/src/renderer/rt64_render_context.cpp b/recompui/src/renderer/rt64_render_context.cpp
+--- a/recompui/src/renderer/rt64_render_context.cpp
++++ b/recompui/src/renderer/rt64_render_context.cpp
+@@ -274,6 +274,8 @@
+     app = std::make_unique<RT64::Application>(appCore, appConfig);
+ 
+     // Set initial user config settings based on the current settings.
+-    auto& cur_config = ultramodern::renderer::get_graphics_config();
++    // Local patch 0016: get_graphics_config() hands back a snapshot copy (patch 0018),
++    // so this binds by value rather than to a reference into the runtime.
++    const auto cur_config = ultramodern::renderer::get_graphics_config();
+     set_application_user_config(app.get(), cur_config);
+     app->userConfig.developerMode = debug;
