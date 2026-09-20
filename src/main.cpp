@@ -311,7 +311,6 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         uint32_t flags = SDL_WINDOW_RESIZABLE;
 #if defined(__ANDROID__)
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-        SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 #if defined(__linux__)
         flags |= SDL_WINDOW_VULKAN;
@@ -379,6 +378,12 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 aero::menu::update();
                 boot_summary_and_exit();
             }
+#if defined(__ANDROID__)
+            else if ((event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
+                     (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_AC_BACK)) {
+                aero::android::controller_back();
+            }
+#endif
             else if (aero::menu::handle_event(event)) {
                 continue;
             }

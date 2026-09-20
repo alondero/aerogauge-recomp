@@ -2,10 +2,14 @@ package io.github.alondero.aerogaugerecomp;
 
 import android.app.AlertDialog;
 import android.os.Bundle;
+import android.os.Looper;
 import android.system.Os;
 import android.view.*;
 import android.widget.*;
 import org.libsdl.app.SDLActivity;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 public final class GameActivity extends SDLActivity {
     static native void nativeTouch(int buttons, int x, int y);
@@ -28,6 +32,10 @@ public final class GameActivity extends SDLActivity {
             librariesReady = true;
         } catch (Exception error) {
             DriverImport.releaseGameLock();
+            try {
+                Files.write(new File(getFilesDir(), "startup-error.txt").toPath(),
+                    ("Cannot start graphics: " + error.getMessage()).getBytes(StandardCharsets.UTF_8));
+            } catch (Exception ignored) { }
             throw new IllegalStateException("Cannot start graphics: " + error.getMessage(), error);
         }
     }
@@ -62,7 +70,11 @@ public final class GameActivity extends SDLActivity {
         super.onPause();
     }
     @Override public void onBackPressed() { showActions(); }
-    void showActions() {
+    public void showActions() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread(this::showActions);
+            return;
+        }
         if (controls != null) controls.release();
         nativeBackground(true);
         new AlertDialog.Builder(this).setTitle("AeroGauge")

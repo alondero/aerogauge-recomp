@@ -24,18 +24,24 @@ final class DriverImport {
     // separate game process might still load them. Process death releases it.
     private static DriverLock gameLock;
 
-    static AutoCloseable storageLock(Context context) throws Exception { return new DriverLock(context); }
+    static AutoCloseable storageLock(Context context) throws Exception {
+        return new DriverLock(context, "Close the running game before changing saves.");
+    }
 
     private static final class DriverLock implements AutoCloseable {
         private final FileChannel channel;
         private final FileLock lock;
 
         DriverLock(Context context) throws Exception {
+            this(context, "Close the running game before changing GPU drivers.");
+        }
+
+        DriverLock(Context context, String busyMessage) throws Exception {
             channel = FileChannel.open(new File(context.getFilesDir(), "gpu-driver.lock").toPath(),
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             try {
                 lock = channel.tryLock();
-                if (lock == null) throw new Exception("Close the running game before changing GPU drivers");
+                if (lock == null) throw new Exception(busyMessage);
             } catch (Exception error) {
                 channel.close();
                 throw error;
@@ -51,7 +57,7 @@ final class DriverImport {
         File[] directories = context.getFilesDir().listFiles();
         if (directories == null) return;
         for (File directory : directories) {
-            if (!directory.isDirectory() || !directory.getName().matches("gpu-driver-[0-9]+") || directory.equals(selected)) continue;
+            if (!directory.isDirectory() || !directory.getName().startsWith("gpu-driver-") || directory.equals(selected)) continue;
             File[] files = directory.listFiles();
             if (files != null) for (File file : files) file.delete();
             if (!directory.delete()) android.util.Log.w("AeroGauge", "Could not remove obsolete driver " + directory.getName());

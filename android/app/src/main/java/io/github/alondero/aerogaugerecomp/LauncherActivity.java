@@ -166,25 +166,25 @@ public final class LauncherActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if (request == RESTORE) {
+            new AlertDialog.Builder(this).setTitle("Restore saves?")
+                .setMessage("This replaces the current AeroGauge EEPROM and Controller Pak files. Continue only if this backup is yours.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Restore", (dialog, which) -> work(() -> {
+                    try (InputStream input = getContentResolver().openInputStream(uri);
+                         AutoCloseable lock = DriverImport.storageLock(this)) {
+                        SaveTransfer.restore(this, input);
+                    }
+                    return "Saves restored. Launch the game to continue.";
+                })).show();
+            return;
+        }
         work(() -> {
             if (request == ROM) {
                 try (InputStream input = getContentResolver().openInputStream(uri)) { RomImport.install(input, getFilesDir()); }
                 return "USA ROM verified. Ready to race!";
             }
             if (request == DRIVER) return "Driver ready: " + DriverImport.install(this, uri);
-            if (request == RESTORE) {
-                runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Restore saves?")
-                    .setMessage("This replaces the current AeroGauge EEPROM and Controller Pak files. Continue only if this backup is yours.")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Restore", (dialog, which) -> work(() -> {
-                        try (InputStream input = getContentResolver().openInputStream(uri);
-                             AutoCloseable lock = DriverImport.storageLock(this)) {
-                            SaveTransfer.restore(this, input);
-                        }
-                        return "Saves restored. Launch the game to continue.";
-                    })).show());
-                return "";
-            }
             if (request == BACKUP) { exportSaves(uri); return "Save backup exported. Keep it somewhere safe."; }
             if (request == LOG) {
                 File log = new File(getFilesDir(), "native.log");
@@ -215,8 +215,7 @@ public final class LauncherActivity extends Activity {
     }
     private void prepareGameAfterPermissions() {
         work(() -> {
-            copyAsset("assets");
-            copyAsset("aerogauge.syms.toml");
+            copyGameAssetsIfNeeded();
             LauncherActivity activity = current;
             if (activity != null) activity.runOnUiThread(() -> {
                 if (activity.resumed && !activity.isFinishing() && !activity.isDestroyed())
@@ -224,6 +223,16 @@ public final class LauncherActivity extends Activity {
             });
             return "Your game is ready.";
         });
+    }
+    private void copyGameAssetsIfNeeded() throws Exception {
+        long packageStamp = getPackageManager().getPackageInfo(getPackageName(), 0).lastUpdateTime;
+        android.content.SharedPreferences preferences = getSharedPreferences("player", 0);
+        File symbols = new File(getFilesDir(), "aerogauge.syms.toml");
+        File assets = new File(getFilesDir(), "assets");
+        if (preferences.getLong("assets_stamp", 0) == packageStamp && assets.isDirectory() && symbols.isFile()) return;
+        copyAsset("assets");
+        copyAsset("aerogauge.syms.toml");
+        preferences.edit().putLong("assets_stamp", packageStamp).apply();
     }
     private void copyAsset(String path) throws Exception {
         String[] children = getAssets().list(path);

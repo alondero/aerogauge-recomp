@@ -3,6 +3,7 @@
 #include "aero_config.h"
 #include "aero_menu.h"
 #include <jni.h>
+#include <SDL_system.h>
 #include <atomic>
 #include <algorithm>
 #include <cstdio>
@@ -88,6 +89,27 @@ void handle_event(const SDL_Event& event) {
         aero_flush_eeprom();
         aero::config::flush_config_writes();
     }
+}
+
+void controller_back() {
+    // Back closes the settings page first, then opens the Android action sheet.
+    // This gives controller-only players a reliable route back to the launcher.
+    if (aero::menu::captures_input()) {
+        SDL_Event close{};
+        close.type = SDL_KEYDOWN;
+        close.key.keysym.sym = SDLK_ESCAPE;
+        aero::menu::handle_event(close);
+        return;
+    }
+    JNIEnv* environment = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (!environment || !activity) return;
+    jclass type = environment->GetObjectClass(activity);
+    jmethodID show_actions = type ? environment->GetMethodID(type, "showActions", "()V") : nullptr;
+    if (show_actions) environment->CallVoidMethod(activity, show_actions);
+    if (environment->ExceptionCheck()) environment->ExceptionClear();
+    if (type) environment->DeleteLocalRef(type);
+    environment->DeleteLocalRef(activity);
 }
 
 void sample_touch(uint16_t& buttons, int& x, int& y) {

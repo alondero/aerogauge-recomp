@@ -138,8 +138,10 @@ alone does not establish device compatibility.
 The checked-in acceptance run used a Pixel 5 on Android 13 (API 33). The
 launcher imported the verified USA ROM and a Mesa Turnip driver ZIP, the game
 rendered menus and a race, touch steering and simultaneous A/B/Z input worked,
-the graphics overlay opened, and the signed APK installed cleanly. A physical
-Bluetooth controller, stock-driver failure messaging, Home/screen-lock resume,
+the secondary-finger Menu action opened while steering and accelerating, Android
+Back and Exit to launcher worked, and the nearby-devices permission prompt was
+shown. The signed APK installed cleanly. A physical Bluetooth controller,
+stock-driver failure messaging after the final install, Home/screen-lock resume,
 and an in-place signed update with existing saves still need a device run before
 claiming universal hardware coverage.
 
