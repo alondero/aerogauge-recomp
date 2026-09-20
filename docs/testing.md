@@ -4,6 +4,10 @@
 
 Run `python -B tests/test_android_build.py` for patch-series idempotence,
 desktop-prefix compatibility and preservation of conflicting local edits.
+Run `python -B tests/test_shader_endian_swap.py` for the Adreno byte-swap
+regression: it mirrors the shipped and rejected spellings over the full 16-bit
+domain and compiles the helper through dxc to confirm the rejected opcode is
+absent. It skips the compile leg when the dxc submodule is not initialized.
 The ROM-import test uses the real Java import class with your local ROM:
 
 ```sh
