@@ -5,9 +5,14 @@
 Run `python -B tests/test_android_build.py` for patch-series idempotence,
 desktop-prefix compatibility and preservation of conflicting local edits.
 Run `python -B tests/test_shader_endian_swap.py` for the Adreno byte-swap
-regression: it mirrors the shipped and rejected spellings over the full 16-bit
-domain and compiles the helper through dxc to confirm the rejected opcode is
-absent. It skips the compile leg when the dxc submodule is not initialized.
+regression. It checks that the expression patch 0023 removes and the expression
+it adds are bit-identical over the full 16-bit domain, that the removed one
+compiles to `OpBitwiseOr` while the added one compiles to `OpBitwiseXor` at both
+optimization levels the build uses, and that the checked-out `FbCommon.hlsli` no
+longer contains the rejected spelling. The compile checks need the dxc
+submodule. An initialized `lib/rt64` submodule that still uses the rejected
+spelling fails this test rather than skipping it, because the supported build
+scripts apply patch 0023 before compiling.
 The ROM-import test uses the real Java import class with your local ROM:
 
 ```sh
