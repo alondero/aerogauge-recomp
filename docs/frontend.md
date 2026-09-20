@@ -56,13 +56,17 @@ code directly. They capture values and queue a main-thread action. The render
 callback and the menu share a lock in the current integration. Running a
 blocking action while that lock is held can block rendering or deadlock.
 
-See [Architecture](architecture.md) and [Configuration](configuration.md).
-The known departure from the intended boundary is tracked in
-the [synchronous graphics-write issue](https://github.com/alondero/aerogauge-recomp/issues/26).
-No current issue changes the ownership rule: JSON and SDL actions still belong
-on the SDL main thread. Cross-thread *reads* of the live configuration are safe,
-because patch 0018 makes the runtime hand back a snapshot copy rather than an
-unlocked reference; see the [patch inventory](../patches/README.md).
+Disk I/O is not part of that lock any more. The port configuration layer records
+a change in memory and a background worker coalesces the changes and writes the
+file after a short debounce, so a menu action or hotkey never blocks the event
+loop on the filesystem. [Configuration](configuration.md) owns the debounce and
+flush contract, including the flush on the quit path.
+
+See [Architecture](architecture.md). The ownership rule is unchanged: JSON and
+SDL actions still belong on the SDL main thread. Cross-thread *reads* of the live
+configuration are safe, because patch 0018 makes the runtime hand back a snapshot
+copy rather than an unlocked reference; see the
+[patch inventory](../patches/README.md).
 
 ## Dependency boundary
 

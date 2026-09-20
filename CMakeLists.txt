@@ -29,6 +29,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
 
+# std::thread, std::mutex and std::condition_variable are used by the port itself
+# (src/main.cpp, src/aero_config.cpp), not only by dependencies. Resolve the
+# thread library once here and link it explicitly below rather than relying on a
+# transitive pthread from a subproject.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 # --- RT64 renderer (default presenter; hard build dependency) ---
 # lib/rt64 is a pinned git submodule; RT64 is always compiled in and is the
 # default presenter at runtime (AERO_HEADLESS=1 selects the headless software
@@ -186,6 +193,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_link_libraries(aerogauge_modern PRIVATE
         librecomp
         ultramodern
+        Threads::Threads
     )
     # Host unit tests (pure math/classification, no ROM or runtime needed). Run with
     # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
@@ -336,6 +344,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/ultramodern/include
         ${N64MR}/thirdparty
     )
+    # aero_config starts a std::thread for the debounced persistence worker.
+    target_link_libraries(test_live_config PRIVATE Threads::Threads)
     add_test(NAME live_config_updates COMMAND test_live_config)
 
     # Host stick mapping (src/aero_input.h) round-tripped through the runtime's own
@@ -375,7 +385,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
     target_compile_options(test_graphics_config_threadsafe PRIVATE -ffunction-sections -fdata-sections)
     target_link_options(test_graphics_config_threadsafe PRIVATE -Wl,--gc-sections)
-    find_package(Threads REQUIRED)
     target_link_libraries(test_graphics_config_threadsafe PRIVATE Threads::Threads)
     add_test(NAME graphics_config_threadsafe COMMAND test_graphics_config_threadsafe)
     set_tests_properties(graphics_config_threadsafe PROPERTIES TIMEOUT 60)

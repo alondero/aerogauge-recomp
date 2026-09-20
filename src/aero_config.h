@@ -6,6 +6,7 @@
 #ifndef AERO_CONFIG_H
 #define AERO_CONFIG_H
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -35,8 +36,31 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics();
 ultramodern::renderer::GraphicsConfig current_graphics();
 void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live = true);
 
-// Persist the given config (full overwrite of graphics.json).
+// Persist the given config (full overwrite of graphics.json, synchronous).
+// Startup only: the live setters below queue a debounced background write.
+// Drains the queue before overwriting, so it carries the same "not from the
+// persistence worker" restriction as flush_config_writes().
 void save_graphics(const ultramodern::renderer::GraphicsConfig& cfg);
+
+// Block until every queued persistence write has reached the file. The live
+// setters return after recording the change in memory; a worker thread coalesces
+// those records and writes them once the edits stop for a short window. Call this
+// on the quit path so nothing is lost. Safe from any thread except the persistence
+// worker itself; a no-op when nothing is pending.
+//
+// If the writer thread could not be created, this writes the queue itself rather
+// than returning with it unwritten. That blocks the calling thread, which is the
+// right trade when the alternative is losing the change.
+//
+// This does not cover an abnormal exit. The crash handler ends the process from a
+// signal/exception context where taking a lock is not safe, so a crash discards
+// whatever was still inside the debounce window.
+void flush_config_writes();
+
+// Files the deferred writer has written, across both JSON files. Counts the
+// background worker and the inline fallback above; the synchronous startup writes
+// are not counted. Monotonic; diagnostics and the coalescing test only.
+uint64_t config_write_count();
 
 // Persist a runtime window-mode change (F11/menu) in the main-thread snapshot.
 void update_saved_window_mode(ultramodern::renderer::WindowMode wm);

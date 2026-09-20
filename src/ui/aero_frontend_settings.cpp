@@ -99,9 +99,10 @@ void save_graphics() {
     // preset resolves at Apply time. Custom (or an unknown value) keeps the
     // live size, so a discarded pick can never clobber a custom resolution.
     const uint32_t picked_preset = std::get<uint32_t>(page.get_option_value("window_size"));
-    // JSON I/O and SDL window calls are main-thread operations. The current
-    // lock also means a blocking action can delay rendering; see docs/frontend.md
-    // (## Ownership and threads) before changing this boundary.
+    // SDL window calls and the live config snapshot are main-thread operations;
+    // the JSON write they trigger is queued for the background writer. The
+    // current lock still means a blocking action can delay rendering; see
+    // docs/frontend.md (## Ownership and threads) before changing this boundary.
     enqueue([edited, before = seeded, pack, dump, picked_preset] {
         auto cfg = aero::config::current_graphics();
         // Merge only edited fields: F11 may have changed the window mode since

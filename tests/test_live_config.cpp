@@ -55,6 +55,10 @@ int main() {
     set_environment("AERO_DRAW_DISTANCE_SCALE", nullptr);
     set_environment("AERO_FULL_TRACK", nullptr);
     set_environment("AERO_EASY_TURBO", nullptr);
+    // Park the background writer for the whole test (a flush still writes
+    // immediately), so "not written yet" and "written" are both deterministic
+    // instead of racing the debounce window.
+    set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", "60000");
 
     auto cfg = aero::config::load_and_apply_graphics();
     expect(std::filesystem::exists(config_path), "first load creates graphics.json");
@@ -86,6 +90,13 @@ int main() {
     expect(aero::config::current_graphics().msaa_option ==
                ultramodern::renderer::Antialiasing::MSAA4X,
            "graphics menu changes update the main-thread snapshot");
+    // The menu path must not touch the file itself: the change is live in memory
+    // but still queued, so a menu click never blocks the event loop on disk I/O.
+    expect(read_json(config_path).at("msaa_option") == "MSAA2X",
+           "graphics menu change is not written synchronously");
+    aero::config::flush_config_writes();
+    expect(read_json(config_path).at("msaa_option") == "MSAA4X",
+           "flush persists the queued graphics menu change");
     expect(read_json(config_path).at("texture_pack") == "manual-texture-pack",
            "graphics menu changes preserve unrelated hand edits");
 
@@ -110,6 +121,12 @@ int main() {
            "texture-path menu selections update live");
 
     aero::config::update_saved_window_mode(ultramodern::renderer::WindowMode::Fullscreen);
+    // Every edit above (a burst of menu/hotkey actions) is still in memory only;
+    // a single flush has to coalesce and persist all of it.
+    expect(read_json(config_path).at("full_track") == true &&
+               read_json(enhancements_path).at("easy_turbo_boost") == false,
+           "live setters do not write synchronously");
+    aero::config::flush_config_writes();
     const nlohmann::json persisted = read_json(config_path);
     const nlohmann::json persisted_enhancements = read_json(enhancements_path);
     expect(persisted.at("wm_option") == "Fullscreen", "fullscreen selection persists");
@@ -148,9 +165,62 @@ int main() {
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
            "window size survives a reload through graphics.json");
 
+    // If graphics.json disappears while the game runs, the next write rebuilds from
+    // the last complete document this module wrote plus the change that triggered it.
+    // Writing only the changed keys would silently drop every other live setting --
+    // and, because only the startup load writes a whole document, a base captured at
+    // startup would resurrect a value the user has since changed.
+    aero::config::set_draw_distance_scale(5.0f);
+    aero::config::flush_config_writes();
+    std::error_code removed;
+    std::filesystem::remove(config_path, removed);
+    aero::config::set_widescreen_fog_match(true);
+    aero::config::flush_config_writes();
+    const nlohmann::json rebuilt = read_json(config_path);
+    expect(rebuilt.at("widescreen_fog_match") == true,
+           "deleted-file rebuild applies the queued change");
+    expect(rebuilt.at("draw_distance_scale") == 5.0f && rebuilt.at("wm_option") == "Fullscreen",
+           "deleted-file rebuild keeps settings the queued change did not mention");
+
+    // Coalescing: a rapid run of edits must reach disk as one write per file, not
+    // one write per edit. The counter is the only way to observe that; the file
+    // contents look the same either way.
+    const uint64_t writes_before_burst = aero::config::config_write_count();
+    for (int i = 1; i <= 20; ++i) {
+        aero::config::set_draw_distance_scale(float(i));
+        aero::config::set_full_track(i % 2 == 0);
+    }
+    aero::config::set_easy_turbo_boost(true);
+    aero::config::flush_config_writes();
+    expect(aero::config::config_write_count() == writes_before_burst + 2,
+           "a burst of edits coalesces into one write per file");
+    expect(aero::config::draw_distance_scale() == 20.0f && aero::config::full_track(),
+           "the coalesced burst settles on its final values");
+    expect(read_json(config_path).at("draw_distance_scale") == 20.0f,
+           "the coalesced burst persists its final values");
+
+    // A batch that throws while serializing must not kill the writer. The thread is
+    // detached, so an escaping exception would terminate the process; nlohmann's
+    // dump() raises on a string that is not UTF-8, which the texture path can carry
+    // through from the caller. The failed batch is dropped, but the file must not be
+    // left truncated and later changes must still land.
+    const uint64_t writes_before_failure = aero::config::config_write_count();
+    aero::config::set_texture_pack_path(std::string("\xff\xfe not utf-8", 14));
+    aero::config::flush_config_writes();
+    expect(aero::config::config_write_count() == writes_before_failure,
+           "a batch that cannot be serialized is not counted as written");
+    expect(read_json(config_path).at("draw_distance_scale") == 20.0f,
+           "a failed serialization leaves the existing file intact");
+    aero::config::set_window_size({1280, 720});
+    aero::config::flush_config_writes();
+    expect(read_json(config_path).at("window_width") == 1280,
+           "the writer still persists changes after a failed batch");
+
+    aero::config::flush_config_writes();
     std::error_code error;
     std::filesystem::remove_all(directory, error);
     set_environment("AERO_GRAPHICS_CONFIG", nullptr);
     set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
+    set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", nullptr);
     return failures == 0 ? 0 : 1;
 }

@@ -6,9 +6,10 @@
 // live graphics state.
 //
 // This is intentionally a narrow integration layer. The shared settings
-// overlay is built on the Windows and Linux paths. Menu writes are
-// synchronous today, so any future scheduling change must preserve main-thread
-// ownership and define the lock boundary explicitly.
+// overlay is built on the Windows and Linux paths. No disk I/O runs under the
+// frontend lock: the configuration layer records changes in memory and a
+// background worker coalesces and writes them, so the queued actions drained by
+// update() only touch in-memory config state and the SDL window.
 
 #include "aero_menu.h"
 #include "aero_config.h"

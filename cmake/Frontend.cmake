@@ -43,10 +43,21 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
-target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64)
+# aero_config starts a std::thread for the debounced persistence worker
+# (Threads::Threads is resolved once in the top-level CMakeLists.txt).
+target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads)
 if(WIN32)
     target_compile_definitions(test_frontend_settings PRIVATE SDL_MAIN_HANDLED NOMINMAX)
     target_link_libraries(test_frontend_settings PRIVATE SDL2 shell32)
+    # This test links RT64 and recompui, so it needs the same runtime DLLs the
+    # game target copies. Without them CTest exits 0xC0000135 (DLL not found)
+    # unless those directories happen to be on PATH.
+    add_custom_command(TARGET test_frontend_settings POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+            ${AERO_DXC_ROOT}/bin/x64/dxcompiler.dll
+            "${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/freetype-windows-binaries/release dll/win64/freetype.dll"
+            $<TARGET_FILE_DIR:test_frontend_settings>)
 else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
 endif()

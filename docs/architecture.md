@@ -61,6 +61,7 @@ important ownership rules for this repository are:
 | Game thread(s) | Run generated game functions and port hooks at their documented game boundaries | Treat native thread contexts as guest memory that can be restored |
 | VI callback | Observes VI timing, framebuffer swaps, scene changes, and test limits | Become a second graphics owner |
 | Graphics thread | Receives a graphics task and sends its display list to RT64 or the headless renderer | Mutate game logic to make a capture look right |
+| Config write worker | Coalesces queued settings changes and rewrites graphics.json and enhancements.json | Touch SDL, guest memory, live renderer state, or the main-thread config snapshot |
 | Audio path | Runs the generated audio microcode and queues PCM | Assume a missing host audio device means the game has no audio work |
 | Save worker | Publishes EEPROM file updates through the runtime | Be used as a general-purpose port-state store |
 | RT64 internal threads | Interpret display lists and present frames | Be given SDL window ownership |
@@ -121,7 +122,8 @@ until the patch, build scripts, tests, and stable reference agree.
 
 The most important native pieces are:
 
-- aero_config owns persistent JSON settings and the main-thread snapshot.
+- aero_config owns persistent JSON settings, the main-thread snapshot, and the
+  debounced background writer that persists settings changes off the main thread.
 - aero_menu owns the RecompFrontend settings overlay and its main-thread
   action queue. The same code is built on the Windows and Linux paths.
 - aero_audio connects generated aspMain output to SDL audio. Headless runs use
@@ -223,9 +225,16 @@ windowed load during live rendering as unsafe until the open issue is fixed.
 
 ## Failure and shutdown model
 
-The headless smoke path may end the process with _Exit after flushing EEPROM.
-This avoids tearing down runtime memory while generated game threads still
-exist. It is suitable for a bounded test, not proof that normal game-thread
-shutdown is solved. The window close path uses the same current process-exit
-model. A future graceful-shutdown change needs an explicit runtime decision and
-thread join test.
+The headless smoke path may end the process with _Exit after flushing EEPROM and
+any queued settings write. The settings flush is explicit because _Exit skips
+static destruction, which would otherwise discard a change still inside the
+config write worker's debounce window. Avoiding the unwind also keeps runtime
+memory alive while generated game threads still exist. It is suitable for a
+bounded test, not proof that normal game-thread shutdown is solved. The window
+close path uses the same current process-exit model. A future graceful-shutdown
+change needs an explicit runtime decision and thread join test.
+
+The crash handler is the deliberate exception: it ends the process from a signal
+or exception context where taking the settings lock is not safe, so a crash
+discards any change still inside the debounce window. That is a property of the
+deferred writer, not something the flush path can cover.
