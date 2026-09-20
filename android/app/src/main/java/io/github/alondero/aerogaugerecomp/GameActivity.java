@@ -41,7 +41,8 @@ public final class GameActivity extends SDLActivity {
     }
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        if (mLayout == null || !librariesReady) return;
+        if (!librariesReady) { finish(); return; }
+        if (mLayout == null) return;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         controls = new TouchControls(this, getSharedPreferences("player", 0).getInt("touch", 0));
         mLayout.addView(controls, new android.widget.RelativeLayout.LayoutParams(-1, -1));

@@ -102,8 +102,9 @@ void controller_back() {
         return;
     }
     JNIEnv* environment = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    if (!environment) return;
     jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
-    if (!environment || !activity) return;
+    if (!activity) return;
     jclass type = environment->GetObjectClass(activity);
     jmethodID show_actions = type ? environment->GetMethodID(type, "showActions", "()V") : nullptr;
     if (show_actions) environment->CallVoidMethod(activity, show_actions);
