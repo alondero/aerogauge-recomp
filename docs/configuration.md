@@ -186,6 +186,7 @@ $env:NAME before running the executable.
 | --- | --- | --- | --- | --- | --- |
 | AERO_GRAPHICS_CONFIG | Launch or test; file path | Unset uses app data graphics.json; set replaces that path | Startup config load | Reads and may write the merged JSON; src/aero_config.cpp | AERO_GRAPHICS_CONFIG=tmp/graphics.json ./build/aerogauge_modern |
 | AERO_ENHANCEMENTS_CONFIG | Launch or test; file path | Unset uses app data enhancements.json; set replaces that path | Startup config load | Reads and may write the merged JSON; src/aero_config.cpp | AERO_ENHANCEMENTS_CONFIG=tmp/enhancements.json ./build/aerogauge_modern |
+| AERO_CONFIG_WRITE_DEBOUNCE_MS | Launch or test; integer milliseconds | Unset uses 250; a non-numeric value, a negative value, or an overflow falls back to 250; values above 60000 are clamped | Every queued settings write | Sets how long the background writer waits for edits to stop before rewriting graphics.json or enhancements.json; src/aero_config.cpp | AERO_CONFIG_WRITE_DEBOUNCE_MS=60000 ./build/aerogauge_modern |
 | AERO_PAK_PATH | Launch; file path | Unset uses the per-user saves path; set selects the Controller Pak image | Startup | Selects or creates the save-file parent; src/main.cpp and src/aero_pak.cpp | AERO_PAK_PATH=tmp/test.mpk ./build/aerogauge_modern |
 | AERO_CONTROLLER_PAK | Launch; 0 or another value | Enabled when unset; exactly 0 disables it | Startup | Controls virtual Controller Pak presence; src/main.cpp and src/aero_pak.cpp | AERO_CONTROLLER_PAK=0 ./build/aerogauge_modern |
 | AERO_RUMBLE | Launch; 0 or another value | Enabled when unset; exactly 0 disables rumble | Startup | Controls the normal rumble callback; src/main.cpp | AERO_RUMBLE=0 ./build/aerogauge_modern |
@@ -284,10 +285,33 @@ an individual key is missing or has the wrong type, that key keeps its
 default. A malformed JSON file is left untouched and defaults are used in
 memory. Fix or delete the malformed file yourself.
 
-The current settings menu writes graphics changes synchronously on the main
-thread. This can make a settings change briefly block the event loop. The
-[deferred graphics write issue](https://github.com/alondero/aerogauge-recomp/issues/26)
-tracks changing that behavior.
+A settings change is not written by the thread that drains the SDL event loop. A
+menu action or hotkey records the change in memory, and a background I/O worker
+writes it once the edits stop. Every change restarts a 250 ms window, so a run of
+clicks or a slider drag costs one file round trip instead of one per edit.
+
+The trade-off is latency against write volume. A window that restarts on every
+change means a continuously manipulated setting is not written until the user
+stops; a fixed-rate window would write on a bound instead, at the cost of one
+round trip per window during the same interaction. Continuous input is the case
+here, so the debounce wins, and the exit flush covers the rest.
+
+Both files are still written inline at startup, so they exist before the game
+starts. Pending writes are flushed on the normal exit paths, including the
+SDL_QUIT path and the headless VI cap.
+
+A crash does not flush. The crash handler ends the process from a signal or
+exception context where taking a lock is not safe, so a crash discards whatever
+was still inside the debounce window.
+
+The worker re-reads the file before merging, so a hand edit made while the game
+is running is preserved exactly as before. A malformed file is still left
+untouched.
+
+AERO_CONFIG_WRITE_DEBOUNCE_MS overrides the debounce window. It exists for tests
+that need to observe an unwritten change; a value of 0 writes as soon as the
+worker wakes. A malformed value, such as trailing characters or an overflow,
+falls back to the default rather than silently meaning something else.
 
 The runtime's live graphics configuration is safe to read from any thread. Local
 runtime patch 0018 makes `ultramodern::renderer::get_graphics_config()` return a

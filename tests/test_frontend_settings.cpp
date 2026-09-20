@@ -38,8 +38,10 @@ struct IsolatedConfig {
     bool had_previous_root = false;
     std::string previous_graphics_config;
     std::string previous_enhancements_config;
+    std::string previous_debounce;
     bool had_previous_graphics_config = false;
     bool had_previous_enhancements_config = false;
+    bool had_previous_debounce = false;
 
     IsolatedConfig() {
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -66,8 +68,15 @@ struct IsolatedConfig {
             previous_enhancements_config = previous;
             had_previous_enhancements_config = true;
         }
+        if (const char* previous = std::getenv("AERO_CONFIG_WRITE_DEBOUNCE_MS")) {
+            previous_debounce = previous;
+            had_previous_debounce = true;
+        }
         set_environment("AERO_GRAPHICS_CONFIG", nullptr);
         set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
+        // Park the background writer: the persistence checks below flush
+        // explicitly, so a file read can never race the debounce window.
+        set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", "60000");
     }
 
     ~IsolatedConfig() {
@@ -82,6 +91,8 @@ struct IsolatedConfig {
                         had_previous_graphics_config ? previous_graphics_config.c_str() : nullptr);
         set_environment("AERO_ENHANCEMENTS_CONFIG",
                         had_previous_enhancements_config ? previous_enhancements_config.c_str() : nullptr);
+        set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS",
+                        had_previous_debounce ? previous_debounce.c_str() : nullptr);
     }
 };
 
@@ -220,6 +231,8 @@ int main(int argc, char** argv) {
         require(!enhancements.is_config_option_disabled(
                     enhancements.get_config_schema().options_by_id.at("draw_distance")),
                 "multiplier still disabled after unlimited off");
+        // The Apply/enhancement actions above only queued their writes.
+        aero::config::flush_config_writes();
         const auto saved = read(path / "graphics.json");
         require(saved.at("future_option") == "preserve me", "unknown config key lost");
         require(saved.at("ds_option") == 4 && saved.at("api_option") == "Vulkan", "graphics persistence");
@@ -243,6 +256,8 @@ int main(int argc, char** argv) {
         require(!aero::config::current_graphics().developer_mode, "debug change escaped queue");
         flush();
         require(aero::config::current_graphics().developer_mode, "debug toggle apply");
+        // Drain the writer before IsolatedConfig tears the directory down.
+        aero::config::flush_config_writes();
         std::cout << "Frontend settings integration passed\n";
         return 0;
     } catch (const std::exception& error) {

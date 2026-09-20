@@ -125,6 +125,9 @@ static void thread_create_cb(uint8_t*, recomp_context*) {
 extern "C" void aero_flush_eeprom(); // runtime patch 0014
 [[noreturn]] static void boot_summary_and_exit() {
     aero_flush_eeprom();
+    // Settings changes are persisted by a debounced worker; _Exit below skips
+    // static destruction, so the pending write has to be drained explicitly.
+    aero::config::flush_config_writes();
     std::fprintf(stderr, "[probe] boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
                  g_threads.load(), g_vis.load(), (int)g_first_vi.load(), g_max_state.load(),
                  g_swaps.load());
