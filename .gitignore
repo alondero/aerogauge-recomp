@@ -71,6 +71,8 @@ CLAUDE.local.md
 nextsessionprompt.md
 .worktreeinclude
 /.codex/
+# Command Code session state and learned preferences (per-user, like the above)
+/.commandcode/
 
 # --- Game artefacts --------------------------------------------------------
 *.mpk

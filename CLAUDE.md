@@ -49,8 +49,13 @@ Run the smallest relevant check. Documentation changes require:
 
 ~~~text
 python -B scripts/check_docs.py
-git diff --check
+git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab diff --check
 ~~~
+
+The whitespace command spells the CI rule out because this repository's local
+git config sets core.whitespace=cr-at-eol, which hides the CR that terminates
+every line of the CRLF-dominant src/main.cpp. Add new lines to that file with
+LF endings, or CI reports each added line as trailing whitespace.
 
 Do not claim a build, game run, visual check, or reference-project playthrough
 unless it was actually performed. Do not commit ROM data or generated output.
