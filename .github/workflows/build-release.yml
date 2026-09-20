@@ -251,8 +251,81 @@ jobs:
           path: aerogauge-recomp-windows-x64.zip
           retention-days: 14
 
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Android signing configuration
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for key in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing $key. Configure Android release signing as described in docs/android.md."
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.jks"
+
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build python3
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+
+      - name: Fetch ROM from private assets repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.ROM_ASSETS_REPO }}
+          token: ${{ secrets.ROM_ASSETS_PAT }}
+          path: rom-assets
+
+      - name: Build and verify signed APK
+        env:
+          AERO_VERSION: ${{ inputs.tag }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          python3 scripts/build_android.py --release
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/aerogauge-recomp-android-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 dist/aerogauge-recomp-android-arm64.apk
+
+      - name: Remove private build inputs
+        if: always()
+        run: |
+          rm -f "$ROM_FILENAME" "$RUNNER_TEMP/android-release.jks"
+          rm -rf rom-assets
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aerogauge-recomp-android-arm64
+          path: dist/aerogauge-recomp-android-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -267,8 +340,9 @@ jobs:
           gh release create "${{ inputs.tag }}" \
             artifacts/aerogauge-recomp-linux-x64/aerogauge-recomp-linux-x64.zip \
             artifacts/aerogauge-recomp-windows-x64/aerogauge-recomp-windows-x64.zip \
+            artifacts/aerogauge-recomp-android-arm64/aerogauge-recomp-android-arm64.apk \
             --repo "${{ github.repository }}" \
             --title "${{ inputs.tag }}" \
             $( [ "${{ inputs.prerelease }}" = "true" ] && echo --prerelease ) \
             $( [ "${{ inputs.draft }}" = "true" ] && echo --draft ) \
-            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped copy of \`AeroGauge (USA).z64\` next to the executable — this project ships no game data.** See BUILDING.md."
+            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped copy of \`AeroGauge (USA).z64\` next to the desktop executable, or import it from the Android launcher — this project ships no game data.** See BUILDING.md and docs/android.md."

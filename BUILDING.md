@@ -13,10 +13,13 @@ committed or included in a release package.
 
 ## Supported build targets
 
+For the ARM64 Android APK, follow [Android building and signing](docs/android.md).
+
 | Host | Compiler | Renderer path | Status |
 | --- | --- | --- | --- |
 | 64-bit Windows | MinGW-w64 GCC and G++ | RT64 with Direct3D 12 | Supported |
 | 64-bit Linux | GCC and G++ | RT64 with Vulkan | Supported |
+| ARM64 Android | Android NDK 28 and Gradle | RT64 with Vulkan (system or imported driver) | Supported |
 | macOS | - | - | Not supported by this branch |
 
 The source tree does not provide the macOS window and input wiring. An upstream

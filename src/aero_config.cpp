@@ -531,6 +531,14 @@ ultramodern::renderer::GraphicsConfig default_graphics_config() {
     cfg.rr_manual_value = 60;
     cfg.ds_option = 1;
     cfg.developer_mode = false;
+#if defined(__ANDROID__)
+    // A conservative first launch avoids full-resolution MSAA on mobile GPUs.
+    cfg.res_option = ultramodern::renderer::Resolution::Original;
+    cfg.wm_option = ultramodern::renderer::WindowMode::Fullscreen;
+    cfg.api_option = ultramodern::renderer::GraphicsApi::Vulkan;
+    cfg.msaa_option = ultramodern::renderer::Antialiasing::None;
+    cfg.rr_option = ultramodern::renderer::RefreshRate::Original;
+#endif
     return cfg;
 }
 

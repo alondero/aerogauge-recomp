@@ -36,7 +36,9 @@
 #else
     #define AERO_CRASH_POSIX 1
     #include <csignal>
+    #if !defined(__ANDROID__)
     #include <execinfo.h>
+    #endif
     #include <unistd.h>
 #endif
 
@@ -471,7 +473,7 @@ LONG WINAPI win32_vectored_handler(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_CONTINUE_SEARCH;  // unreachable; final_dump_and_die is [[noreturn]]
 }
 
-#else // POSIX
+#elif !defined(__ANDROID__) // POSIX; Android retains debuggerd's native tombstones.
 
 void posix_signal_handler(int sig, siginfo_t* info, void* /*ucontext*/) {
     const char* reason = nullptr;
@@ -536,7 +538,7 @@ void install() {
     static std::atomic<bool> once{false};
     bool expected = false;
     if (!once.compare_exchange_strong(expected, true)) return;
-#if defined(AERO_CRASH_POSIX)
+#if defined(AERO_CRASH_POSIX) && !defined(__ANDROID__)
     // Install handlers BEFORE the syms file IO: a slow disk read of the
     // .toml must not race a fault on another thread that just started.
     install_posix();
@@ -550,6 +552,8 @@ void install() {
     std::fprintf(stderr, "[crash] native crash handler installed (%s)\n",
 #if defined(AERO_CRASH_WIN32)
                  "Win32 AddVectoredExceptionHandler"
+#elif defined(__ANDROID__)
+                 "Android debuggerd (OS-managed)"
 #else
                  "POSIX sigaction (with sigaltstack)"
 #endif
@@ -563,7 +567,7 @@ void install() {
     int n = 0;
 #if defined(AERO_CRASH_WIN32)
     n = (int)CaptureStackBackTrace(0, 64, (PVOID*)native_pcs, nullptr);
-#else
+#elif !defined(__ANDROID__)
     n = backtrace(native_pcs, 64);
 #endif
     final_dump_and_die(reason ? reason : "deliberate crash", 0,

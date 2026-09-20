@@ -44,6 +44,9 @@
 #include "aero_menu.h"
 #include "aero_input.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
+#if defined(__ANDROID__)
+#include "android/aero_android.h"
+#endif
 // ultramodern's native VI API, used by the host-owned scanout path.
 extern "C" void osViSwapBuffer(uint8_t* rdram, int32_t frameBufPtr);
 extern "C" void osViSetMode(uint8_t* rdram, int32_t mode_);
@@ -242,6 +245,9 @@ static void vi_pace_probe() {
 }
 
 static void vi_cb() {
+#if defined(__ANDROID__)
+    aero::android::wait_foreground();
+#endif
     vi_pace_probe();
     state_probe();
     menu_probe();
@@ -303,6 +309,9 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         // covers pads present before the event pump starts).
         for (int i = 0; i < SDL_NumJoysticks(); i++) input_open_controller(i);
         uint32_t flags = SDL_WINDOW_RESIZABLE;
+#if defined(__ANDROID__)
+        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+#endif
 #if defined(__linux__)
         flags |= SDL_WINDOW_VULKAN;
 #endif
@@ -357,6 +366,9 @@ static void update_gfx_stub(void* /*gfx_data*/) {
         SDL_Event event;
         aero::menu::update();
         while (SDL_PollEvent(&event)) {
+#if defined(__ANDROID__)
+            aero::android::handle_event(event);
+#endif
             // Play mode has no VI cap (see quit_after_vis), so closing the window is the
             // quit path: reuse the summary+_Exit teardown (game threads are torn down by
             // process exit; see boot_summary_and_exit's rationale).
@@ -366,6 +378,12 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 aero::menu::update();
                 boot_summary_and_exit();
             }
+#if defined(__ANDROID__)
+            else if ((event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
+                     (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_AC_BACK)) {
+                aero::android::controller_back();
+            }
+#endif
             else if (aero::menu::handle_event(event)) {
                 continue;
             }
@@ -540,6 +558,9 @@ static void input_sample() {
         f7_prev = f7; f8_prev = f8;
     }
 
+#if defined(__ANDROID__)
+    aero::android::sample_touch(b, sx, sy);
+#endif
     uint32_t snap = aero_input_pack(b, (int8_t)sx, (int8_t)sy);
     g_input_snapshot.store(snap, std::memory_order_relaxed);
 }
@@ -603,6 +624,9 @@ static ultramodern::input::connected_device_info_t input_device_info(int control
 }
 
 int main(int argc, char** argv) {
+#if defined(__ANDROID__)
+    if (!aero::android::initialize()) return 2;
+#endif
     // Deterministic lighting self-test: no ROM, no runtime -- exercises the swrender
     // light-decode + Lambert path on a synthetic display list and exits.
     if (std::getenv("AERO_LIGHTING_SELFTEST")) {

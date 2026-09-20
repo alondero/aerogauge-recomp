@@ -125,7 +125,9 @@ The most important native pieces are:
 - aero_config owns persistent JSON settings, the main-thread snapshot, and the
   debounced background writer that persists settings changes off the main thread.
 - aero_menu owns the RecompFrontend settings overlay and its main-thread
-  action queue. The same code is built on the Windows and Linux paths.
+  action queue. The same code is built on the Windows, Linux, and Android
+  paths; Android supplies a native lifecycle bridge and hides desktop-only
+  window controls.
 - aero_audio connects generated aspMain output to SDL audio. Headless runs use
   a virtual audio FIFO for game backpressure.
 - aero_pak provides one raw 32 KiB Controller Pak image for Controller 1.

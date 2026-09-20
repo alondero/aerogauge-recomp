@@ -28,6 +28,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
+if(ANDROID)
+    include(cmake/Android.cmake)
+endif()
 
 # std::thread, std::mutex and std::condition_variable are used by the port itself
 # (src/main.cpp, src/aero_config.cpp), not only by dependencies. Resolve the
@@ -175,7 +178,15 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
     endif()
 
-    add_executable(aerogauge_modern ${AERO_SOURCES})
+    if(ANDROID)
+        add_library(aerogauge_modern SHARED ${AERO_SOURCES} src/android/aero_android.cpp)
+        set_target_properties(aerogauge_modern PROPERTIES OUTPUT_NAME main)
+        target_link_libraries(aerogauge_modern PRIVATE SDL2::SDL2 SDL2main android log)
+        target_compile_definitions(aerogauge_modern PRIVATE PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
+        add_dependencies(aerogauge_modern aero_vulkan)
+    else()
+        add_executable(aerogauge_modern ${AERO_SOURCES})
+    endif()
     target_compile_options(aerogauge_modern PRIVATE
         -fno-strict-aliasing
         -fms-extensions
@@ -197,6 +208,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     )
     # Host unit tests (pure math/classification, no ROM or runtime needed). Run with
     # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
+    if(NOT ANDROID)
     enable_testing()
     add_executable(test_audio_playback tests/test_audio_playback.cpp)
     target_include_directories(test_audio_playback PRIVATE
@@ -409,6 +421,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         set_tests_properties(play_logging_quiet PROPERTIES TIMEOUT 180)
     endif()
 
+    endif() # Host regression executables are not APK payload.
     if(TARGET RecompiledFuncs)
         target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncs)
     endif()

@@ -16,6 +16,9 @@ Developers need clear build steps, evidence, and ownership.
 
 ## Player help
 
+- [Android](android.md) covers APK installation, ROM and GPU-driver import,
+  touch controls, save backups, building, and release signing.
+
 - [README](../README.md) covers supported systems, installation, controls,
   settings, saves, and known limits.
 - [Configuration](configuration.md) is for players who need to inspect or

@@ -126,7 +126,7 @@ bool handle_event(const SDL_Event& event) {
         return true;
     }
     const bool toggle = (event.type == SDL_KEYDOWN && !event.key.repeat &&
-                         (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_F10)) ||
+                         (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_F10 || event.key.keysym.sym == SDLK_AC_BACK)) ||
                         (event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK);
     if (toggle && ready) {
         if (captures_input()) request = Request::Close;
@@ -155,6 +155,9 @@ bool handle_event(const SDL_Event& event) {
 }
 
 void apply_window_settings() {
+#if defined(__ANDROID__)
+    return; // Android owns the full-screen surface and physical dimensions.
+#endif
     if (!window) return;
     const auto cfg = aero::config::current_graphics();
     const bool fullscreen = cfg.wm_option == ultramodern::renderer::WindowMode::Fullscreen;

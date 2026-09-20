@@ -28,11 +28,23 @@ platform, and ownership question.
 
 ## Application order
 
+Android additionally applies [0019](0019-rt64-android-cross-build.patch) to
+RT64, [0020](0020-plume-android-sdl-window.patch) to Plume,
+[0021](0021-sdl-android-usb-receiver.patch) to the pinned Android SDL source,
+and [0022](0022-recompfrontend-android.patch) to RecompFrontend. These adapt
+host shader generation, SDL Vulkan surfaces and loader dispatch, RGBA presentation,
+Android USB receiver registration, and frontend file-dialog/platform boundaries.
+They follow the same pinned sources as desktop and are based on the
+[Lamborghini Android implementation](https://github.com/alondero/automobililamborghini-recomp/tree/main/patches).
+RT64 and frontend presentation formats must change together. These are temporary
+platform compatibility patches; compare them with the pinned upstream before removal.
+
 The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
 | Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0006, 0008, 0009, 0010, 0011 |
+| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022; RT64: 0006, 0008, 0009, 0010, 0011, 0019; Plume: 0020; SDL: 0021 |
 | Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0006, 0008, 0009, 0010, 0011, 0005, 0004 |
 
 Keep this inventory, [BUILDING.md](../BUILDING.md), and both host scripts in

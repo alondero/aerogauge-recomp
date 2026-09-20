@@ -1,6 +1,8 @@
 # RecompFrontend's shader helpers consume DXC variables in the caller's scope.
 set(AERO_DXC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/src/contrib/dxc")
-if(WIN32)
+if(ANDROID)
+    set(DXC ${AERO_HOST_DXC})
+elseif(WIN32)
     set(DXC "${AERO_DXC_ROOT}/bin/x64/dxc.exe")
 elseif(APPLE)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
@@ -20,7 +22,11 @@ set(DXC_PS_OPTS "${DXC_COMMON_OPTS}" "-E" "PSMain" "-T ps_6_3")
 set(DXC_VS_OPTS "${DXC_COMMON_OPTS}" "-E" "VSMain" "-T vs_6_3" "-fvk-invert-y")
 set(RECOMP_FRONTEND_N64MODERNRUNTIME_PATH "${N64MR}" CACHE PATH "" FORCE)
 set(RECOMP_FRONTEND_RT64_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64" CACHE PATH "" FORCE)
-set(sdl2_SOURCE_DIR "${SDL2_WIN32_DEPS}")
+if(ANDROID)
+    set(sdl2_SOURCE_DIR "${AERO_ANDROID_DEPS}/SDL")
+else()
+    set(sdl2_SOURCE_DIR "${SDL2_WIN32_DEPS}")
+endif()
 add_subdirectory(lib/RecompFrontend)
 
 # These static libraries call into each other, including when the host omits
@@ -40,6 +46,7 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 
 # This host-only test exercises the settings adapter without a ROM or generated
 # game output.
+if(NOT ANDROID)
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
@@ -62,6 +69,7 @@ else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
 endif()
 add_test(NAME frontend_settings COMMAND test_frontend_settings)
+endif()
 
 # Release and source-build output needs the frontend assets and RmlUi fonts
 # beside the executable. Windows also needs the FreeType runtime DLL below.
