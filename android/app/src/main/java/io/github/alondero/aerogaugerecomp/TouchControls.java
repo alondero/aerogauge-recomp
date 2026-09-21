@@ -79,20 +79,25 @@ final class TouchControls extends View {
         }
         if (menu || hidden) return false; // SDL receives settings mouse/touch events.
         if (action == MotionEvent.ACTION_CANCEL) { release(); return true; }
+        // Retire a lifted pointer BEFORE rebuilding the mask: the sample published for this
+        // event must reflect the release, or the button stays latched until the next touch.
         if (action == MotionEvent.ACTION_DOWN) points.clear();
+        int lifted = -1;
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
+            lifted = event.getPointerId(index);
+            if (lifted == stickPointer) { stickPointer = -1; stickX = stickY = 0; }
+            points.remove(lifted);
+        }
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             int id = event.getPointerId(index);
             if (stickPointer == -1 && event.getX(index) < getWidth()*.42f && event.getY(index) > getHeight()*.40f) stickPointer = id;
         }
         for (int i = 0; i < event.getPointerCount(); i++) {
-            if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) && i == index) {
-                if (event.getPointerId(i) == stickPointer) { stickPointer = -1; stickX = stickY = 0; }
-            } else {
-                int id = event.getPointerId(i);
-                PointF point = points.get(id);
-                if (point == null) { point = new PointF(); points.put(id, point); }
-                point.set(event.getX(i), event.getY(i));
-            }
+            int id = event.getPointerId(i);
+            if (id == lifted) continue;
+            PointF point = points.get(id);
+            if (point == null) { point = new PointF(); points.put(id, point); }
+            point.set(event.getX(i), event.getY(i));
         }
         pressed = 0;
         for (int i = 0; i < points.size(); i++) {
@@ -104,8 +109,6 @@ final class TouchControls extends View {
                 stickY = length < .12f ? 0 : y/divisor;
             } else for (int b = 0; b < buttons.length; b++) if (buttons[b].contains(p.x, p.y)) pressed |= masks[b];
         }
-        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP)
-            points.remove(event.getPointerId(index));
         GameActivity.nativeTouch(pressed, Math.round(stickX*80), Math.round(stickY*80));
         if (action == MotionEvent.ACTION_UP) performClick();
         invalidate(); return true;
