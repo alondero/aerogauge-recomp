@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# update-notes.sh — replace the workflow's placeholder notes with the rich body.
+# update-notes.sh — replace the workflow's placeholder notes with the rich body
+# and set the human-facing release title.
 #
 # Usage: update-notes.sh <version> <notes-file>
 #   version:    e.g. v0.1.0
@@ -24,6 +25,13 @@ if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   echo "error: '${VERSION}' does not match v<MAJOR>.<MINOR>.<PATCH>" >&2
   exit 1
 fi
+
+# The workflow creates the release with `--title "${{ inputs.tag }}"`, so the
+# title is the bare tag (e.g. "v0.4.0") while every published release is titled
+# "<project> <version>". Set it here so the deterministic step owns the title
+# instead of relying on a manual rename after each build. Override with
+# RELEASE_TITLE for a one-off or a renamed project.
+RELEASE_TITLE="${RELEASE_TITLE:-AeroGauge Recompiled ${VERSION}}"
 
 # Refuse to push an empty file — easy mistake and gh release edit accepts it.
 if [[ ! -s "${NOTES_FILE}" ]]; then
@@ -51,8 +59,12 @@ if grep -E -q "<(PLACEHOLDER|PREV_VERSION|NEW_VERSION|RUN_ID|SHORT_SHA|YYYY-MM-D
 fi
 
 echo "→ Updating ${VERSION} notes from ${NOTES_FILE}"
-gh release edit "${VERSION}" --notes-file "${NOTES_FILE}"
+echo "→ Setting title: ${RELEASE_TITLE}"
+gh release edit "${VERSION}" \
+  --title "${RELEASE_TITLE}" \
+  --notes-file "${NOTES_FILE}"
 
 echo
-echo "✓ Notes updated. Verify with:"
+echo "✓ Notes and title updated. Verify with:"
+echo "    gh release view ${VERSION} --json name,body --jq '.name'"
 echo "    gh release view ${VERSION} --json body --jq '.body' | head -n 30"
