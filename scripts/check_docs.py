@@ -36,6 +36,14 @@ REQUIRED = ROOT_MARKDOWN + [
     ROOT / ".github" / "ISSUE_TEMPLATE" / "feature_request.md",
 ]
 
+RELEASE_VERIFY_SCRIPT = (
+    ROOT / ".claude" / "skills" / "release" / "scripts" / "verify-release.sh"
+)
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
+EXPECTED_ASSETS_RE = re.compile(
+    r"^[ \t]*EXPECTED_ASSETS=\((.*?)^[ \t]*\)", re.DOTALL | re.MULTILINE
+)
+
 LINK_RE = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
 SCRIPT_RE = re.compile(
     r"(?<![\w./-])"
@@ -227,6 +235,53 @@ def check_patch_hunks() -> list[str]:
     return errors
 
 
+def check_release_assets() -> list[str]:
+    # The Build & Release workflow uploads the release assets and
+    # verify-release.sh asserts they are present. If the two lists drift, the
+    # verifier silently stops checking the newest platform's artifact (the
+    # Android APK was missing from this list when the port first shipped), so
+    # fail the docs check whenever they disagree.
+    if not RELEASE_VERIFY_SCRIPT.is_file() or not RELEASE_WORKFLOW.is_file():
+        return []
+
+    verify_text = RELEASE_VERIFY_SCRIPT.read_text(encoding="utf-8")
+    block = EXPECTED_ASSETS_RE.search(verify_text)
+    if not block:
+        return [
+            f"{RELEASE_VERIFY_SCRIPT.relative_to(ROOT)}: EXPECTED_ASSETS array not found"
+        ]
+    expected = set(re.findall(r'"([^"]+)"', block.group(1)))
+
+    workflow_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    create = re.search(
+        r"gh release create(.*?)(?=\n[ \t]*(?:--|\$))", workflow_text, re.DOTALL
+    )
+    if not create:
+        return [
+            f"{RELEASE_WORKFLOW.relative_to(ROOT)}: 'gh release create' "
+            "asset list not found"
+        ]
+    uploaded = {
+        PurePosixPath(token).name
+        for token in re.findall(
+            r"^[ \t]*(artifacts/\S+)", create.group(1), flags=re.MULTILINE
+        )
+    }
+
+    errors: list[str] = []
+    for name in sorted(expected - uploaded):
+        errors.append(
+            f"{RELEASE_VERIFY_SCRIPT.relative_to(ROOT)}: EXPECTED_ASSETS checks "
+            f"{name}, which the release workflow does not upload"
+        )
+    for name in sorted(uploaded - expected):
+        errors.append(
+            f"{RELEASE_WORKFLOW.relative_to(ROOT)}: release workflow uploads "
+            f"{name}, which EXPECTED_ASSETS does not check"
+        )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
 
@@ -308,6 +363,7 @@ def main() -> int:
 
     errors.extend(check_patch_hunks())
     errors.extend(check_generated_syms())
+    errors.extend(check_release_assets())
 
     if errors:
         print("Documentation check failed:")
@@ -326,6 +382,8 @@ def main() -> int:
         print('Ran scripts/gen_syms_toml.py to check TOML sync with the tracked output.')
     else:
         print('Skipped TOML sync check (ROM not present).')
+    if RELEASE_VERIFY_SCRIPT.is_file() and RELEASE_WORKFLOW.is_file():
+        print('Checked release assets agree between the workflow and verify-release.sh.')
     return 0
 
 

@@ -48,4 +48,6 @@ unrendered template tokens.
 After the build finishes, use
 `.claude/skills/release/scripts/wait-for-build.sh <run-id>` and then
 `verify-release.sh`. Check the tag, release URL, draft and prerelease flags,
-and both platform archives.
+and all expected platform archives (Linux, Windows, and Android). If the
+workflow gains another asset, add it to `EXPECTED_ASSETS` in
+`verify-release.sh`; `scripts/check_docs.py` fails when the two disagree.
