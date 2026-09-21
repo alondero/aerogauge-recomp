@@ -115,6 +115,11 @@ LIBULTRA_NAMES = {
     0x8006FBC0: "osViSetEvent",
     # osViSetMode (0x70): next->modep=a0, next->state=1(MODE_SET), next->control=modep->ctrl@+4.
     0x8006FB50: "osViSetMode",
+    # osViSetSpecialFeatures (0x1C0): applies a0's OS_VI_* flags to next->control
+    # at +0xC, then sets state flag 0x8. Startup at 0x8001E528 calls it with 0x5A
+    # (gamma/dither off, divot/dither-filter on). Route to the runtime that owns
+    # scanout; the translated body would only update the unused guest context.
+    0x8006CAA0: "osViSetSpecialFeatures",
     # osViSwapBuffer (0x50): next->framep=a0, next->state|=0x10(FRAMEBUFFER_SET).
     0x8006FE80: "osViSwapBuffer",
     # osViGetCurrentFramebuffer (0x40): return __osViCurr->framep@+4.

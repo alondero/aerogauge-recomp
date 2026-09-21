@@ -282,6 +282,11 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             endif()
         endif()
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME vi_special_features
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vi_features.py
+                    --exe $<TARGET_FILE:aerogauge_modern>
+                    --repo ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(vi_special_features PROPERTIES TIMEOUT 100)
         set(SCISSOR_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/scene_scissor_test_funcs.c)
         add_custom_command(OUTPUT ${SCISSOR_TEST_FUNCS}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_scene_scissor_test.py
