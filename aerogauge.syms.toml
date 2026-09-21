@@ -954,7 +954,7 @@ functions = [
     { name = "func_8006C738", vram = 0x8006c738, size = 0xc8 },
     { name = "osGetTime", vram = 0x8006c800, size = 0x234 },
     { name = "func_8006CA34", vram = 0x8006ca34, size = 0x6c },
-    { name = "func_8006CAA0", vram = 0x8006caa0, size = 0x1c0 },
+    { name = "osViSetSpecialFeatures", vram = 0x8006caa0, size = 0x1c0 },
     { name = "osViBlack", vram = 0x8006cc60, size = 0x70 },
     { name = "func_8006CCD0", vram = 0x8006ccd0, size = 0x30 },
     { name = "func_8006CD00", vram = 0x8006cd00, size = 0x1c },

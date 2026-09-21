@@ -71,6 +71,7 @@ The current CMake file registers these tests:
 | user_data_dir | Host | No ROM |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
 | scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |
+| vi_special_features | End to end | Python 3, ROM, executable, and a working RT64 graphics device |
 | audio_intro_playback | End to end | Windows desktop, ROM, executable, and usable audio device |
 | haptics_race_e2e | End to end | Windows, ROM, executable, gdb.exe, and a run that reaches the race |
 | turbo_boost_e2e | End to end | Windows, ROM, executable, and gdb.exe |
@@ -90,6 +91,11 @@ The CTest wrappers use these skip behaviors:
   executable is absent. Treat that notice as a skipped test in reports.
 - play_logging_quiet has no automatic no-GPU skip. It needs both its RT64 leg
   and its headless leg to reach their expected log markers.
+- vi_special_features has no automatic no-GPU skip. It runs 1800 VIs with
+  isolated portable storage and checks the live VI control word during startup
+  and a race. Run it directly with
+  `python -B tests/test_vi_features.py --exe build/aerogauge_modern.exe --repo .`
+  (omit `.exe` on Linux). A software-renderer run cannot validate this path.
 
 ## Standalone host tests
 

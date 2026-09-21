@@ -60,6 +60,30 @@ reduced to a small renderer test and proposed upstream.
 
 ## AeroGauge display-list behavior
 
+### VI colour correction
+
+The USA ROM disables VI gamma correction and gamma dithering. Its startup
+function at `0x8001E4E0` calls `osViSetSpecialFeatures(0x5A)` at `0x8001E528`.
+The callee at `0x8006CAA0` also enables divot and dither filtering, producing
+control word `0x13012` from the mode's `0x311E`. These are OS feature flags;
+their bit positions differ from the VI control-register bits.
+
+The symbol generator must identify this callee as `osViSetSpecialFeatures`
+so N64Recomp routes it through librecomp to ultramodern's live VI state.
+Leaving it as a translated function only updates the unused guest
+`__osViNext` context. RT64 then receives `0x311E` and applies unwanted gamma
+brightening during presentation. No renderer brightness adjustment is needed:
+the game already specifies the correct behaviour through the public VI API.
+
+The ROM's guest VI context in ares v147 reads `0x13012` as well. Its MMIO
+readback reports `0x3012` because that version's
+[VI register reader](https://github.com/ares-emulator/ares/blob/v147/ares/n64/vi/io.cpp)
+returns only the low 16 control bits. Compare gamma bits or the guest context
+when using that emulator as a reference. The `vi_special_features` test
+checks RT64's live register input during startup and after entering a race.
+
+### HUD display lists
+
 The race HUD is emitted by a shared 2D dispatcher, not by one static draw call
 per element. The dispatcher walks object lists and calls handlers indirectly.
 The display-list cursor is passed through a guest-memory holder, and the
