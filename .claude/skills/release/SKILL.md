@@ -13,9 +13,9 @@ the only variable part is the release-notes body. The release scripts in
 fills in the prose.
 
 The expected output is a published GitHub release for the requested tag with
-`draft: false, prerelease: false`, the workflow's two build artifacts attached,
-and a rich release-notes body replacing the `Automated build from commit ...`
-placeholder.
+`draft: false, prerelease: false`, the workflow's three build artifacts (Linux,
+Windows, and Android) attached, and a rich release-notes body replacing the
+`Automated build from commit ...` placeholder.
 
 ## Prerequisites
 
@@ -110,7 +110,9 @@ Checks, in order:
 2. Release accessible via `gh api .../releases/tags/<version>` (not 404)
 3. `html_url` ends with `releases/tag/<version>` (NOT `untagged-<id>`)
 4. `isDraft: false`, `isPrerelease: false`
-5. Both expected assets uploaded (`aerogauge-recomp-{linux,windows}-x64.zip`)
+5. All expected assets uploaded
+   (`aerogauge-recomp-{linux,windows}-x64.zip` and
+   `aerogauge-recomp-android-arm64.apk`)
 
 If any check fails, prints a diagnostic and exits non-zero. Common failures:
 

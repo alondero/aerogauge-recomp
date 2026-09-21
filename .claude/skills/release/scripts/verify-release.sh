@@ -16,6 +16,7 @@ VERSION="$1"
 EXPECTED_ASSETS=(
   "aerogauge-recomp-linux-x64.zip"
   "aerogauge-recomp-windows-x64.zip"
+  "aerogauge-recomp-android-arm64.apk"
 )
 
 PASS=0
