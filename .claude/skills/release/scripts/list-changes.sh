@@ -56,9 +56,27 @@ echo
 #     jq's `\(.author.login)` crashed on null authors)
 echo "### Merged PRs since ${BASE_TAG}"
 echo
-PRS="$(gh pr list --state merged --base main --limit 200 --json number,title,mergedAt,author \
-       --jq --arg base "${BASE_DATE_ISO}" \
-       '[.[] | select(.mergedAt >= $base)] | sort_by(.mergedAt) | .[] | "- **PR #\(.number)** (\(.mergedAt[:10])) — \(.title) — _@\(.author.login // "ghost")_"')"
+# Stage `gh` output through a temp file before handing it to `jq`:
+#   1. `gh --jq` takes a single jq program and has no `--arg`, so the old
+#      `--jq --arg base ... '<program>'` form never parsed — gh consumed
+#      `--arg` as the program and rejected the rest as stray arguments. The
+#      external `jq` here receives the date as a real `--arg`.
+#   2. On Windows, `gh ... --json ... | jq` can hand jq a buffer of leading
+#      NULs; writing to a file and reading it back avoids the pipe.
+# jq is a native binary on Windows and will not translate an MSYS path, so
+# convert the temp dir with cygpath when it exists.
+TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+if command -v cygpath >/dev/null 2>&1; then
+  TMP_BASE="$(cygpath -w "${TMP_BASE}" 2>/dev/null || printf '%s' "${TMP_BASE}")"
+fi
+PRS_JSON="${TMP_BASE}/agprs.$$.json"
+ISSUES_JSON="${TMP_BASE}/agiss.$$.json"
+trap 'rm -f "${PRS_JSON}" "${ISSUES_JSON}"' EXIT
+gh pr list --state merged --base main --limit 200 \
+  --json number,title,mergedAt,author > "${PRS_JSON}"
+PRS="$(jq -r --arg base "${BASE_DATE_ISO}" \
+  '[.[] | select(.mergedAt >= $base)] | sort_by(.mergedAt) | .[] | "- **PR #\(.number)** (\(.mergedAt[:10])) — \(.title) — _@\(.author.login // "ghost")_"' \
+  "${PRS_JSON}")"
 if [[ -n "${PRS}" ]]; then
   echo "${PRS}"
 else
@@ -71,9 +89,11 @@ echo
 # release window, paginate manually (rare for a single release cycle).
 echo "### Closed issues since ${BASE_TAG}"
 echo
-ISSUES="$(gh issue list --state closed --limit 200 --json number,title,closedAt \
-          --jq --arg base "${BASE_DATE_ISO}" \
-          '[.[] | select(.closedAt >= $base)] | sort_by(.closedAt) | .[] | "- **#\(.number)** (\(.closedAt[:10])) — \(.title)"')"
+gh issue list --state closed --limit 200 \
+  --json number,title,closedAt > "${ISSUES_JSON}"
+ISSUES="$(jq -r --arg base "${BASE_DATE_ISO}" \
+  '[.[] | select(.closedAt >= $base)] | sort_by(.closedAt) | .[] | "- **#\(.number)** (\(.closedAt[:10])) — \(.title)"' \
+  "${ISSUES_JSON}")"
 if [[ -n "${ISSUES}" ]]; then
   echo "${ISSUES}"
 else
