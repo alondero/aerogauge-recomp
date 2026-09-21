@@ -282,7 +282,12 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        # v3 is unmaintained and fails its own bootstrap against the current
+        # SDK repository: it runs `sdkmanager tools`, and the legacy `tools`
+        # package no longer exists, so the job dies before installing anything.
+        # v4.0.2 fixed exactly that ("Fix for removed tools package"), and
+        # v4 defaults to a current cmdline-tools.
+        uses: android-actions/setup-android@v4
 
       - name: Install build dependencies
         run: |
