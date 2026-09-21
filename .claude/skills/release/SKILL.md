@@ -13,9 +13,10 @@ the only variable part is the release-notes body. The release scripts in
 fills in the prose.
 
 The expected output is a published GitHub release for the requested tag with
-`draft: false, prerelease: false`, the workflow's three build artifacts (Linux,
-Windows, and Android) attached, and a rich release-notes body replacing the
-`Automated build from commit ...` placeholder.
+`draft: false, prerelease: false`, titled `AeroGauge Recompiled <version>`, the
+workflow's three build artifacts (Linux, Windows, and Android) attached, and a
+rich release-notes body replacing the `Automated build from commit ...`
+placeholder.
 
 ## Prerequisites
 
@@ -125,9 +126,15 @@ If any check fails, prints a diagnostic and exits non-zero. Common failures:
 ./.claude/skills/release/scripts/update-notes.sh <version> <path-to-notes.md>
 ```
 
-`gh release edit <version> --notes-file <path>` — replaces the workflow's
-placeholder notes with the rich body. The notes file should match the
-template in `references/release-notes-template.md`.
+`gh release edit <version> --title <title> --notes-file <path>` — replaces the
+workflow's placeholder notes with the rich body **and** sets the human-facing
+release title. The notes file should match the template in
+`references/release-notes-template.md`.
+
+The workflow always creates the release with `--title` set to the bare tag, so
+without this step the release is titled `v0.1.0` instead of
+`AeroGauge Recompiled v0.1.0`. The script applies the project prefix; export
+`RELEASE_TITLE` to override it for a one-off.
 
 ## Variable parts (handled by Claude)
 
