@@ -1,0 +1,181 @@
+diff --git a/recompinput/include/recompinput/profiles.h b/recompinput/include/recompinput/profiles.h
+index 45bedd1..ea433f1 100644
+--- a/recompinput/include/recompinput/profiles.h
++++ b/recompinput/include/recompinput/profiles.h
+@@ -32,7 +32,7 @@ namespace recompinput {
+     namespace profiles {
+         constexpr int controls_config_version = 3;
+ 
+-        recompinput::InputField& get_input_binding(int profile_index, GameInput input, size_t binding_index);
++        recompinput::InputField get_input_binding(int profile_index, GameInput input, size_t binding_index);
+         void set_input_binding(int profile_index, recompinput::GameInput input, size_t binding_index, recompinput::InputField value);
+         void clear_input_binding(int profile_index, GameInput input);
+         void reset_input_binding(int profile_index, InputDevice device, GameInput input);
+diff --git a/recompinput/src/input_binding.cpp b/recompinput/src/input_binding.cpp
+index 45d55a7..0b422eb 100644
+--- a/recompinput/src/input_binding.cpp
++++ b/recompinput/src/input_binding.cpp
+@@ -3,9 +3,12 @@
+ #include "input_state.h"
+ #include "players.h"
+ #include "profiles.h"
++#include <mutex>
+ 
+ namespace recompinput {
+ 
++    static std::recursive_mutex binding_mutex;
++
+     static struct {
+         bool active = false;
+         // Designates when binding has been cancelled or completed and the event queue should be purged/ignored.
+@@ -28,24 +31,28 @@ namespace recompinput {
+     } BindingState;
+ 
+     void binding::start_scanning(int player_index, recompinput::GameInput game_input, int binding_index, recompinput::InputDevice device) {
+-        BindingState.active = true;
+-        BindingState.skip_events = false;
++        std::lock_guard lock(binding_mutex);
+         BindingState.player_index = player_index;
+         BindingState.game_input = game_input;
+         BindingState.binding_index = binding_index;
+         BindingState.device = device;
++        BindingState.skip_events = false;
++        BindingState.active = true;
+     }
+ 
+     void binding::stop_scanning() {
++        std::lock_guard lock(binding_mutex);
+         BindingState.reset();
+         BindingState.skip_events = true;
+     }
+ 
+     bool binding::is_binding() {
++        std::lock_guard lock(binding_mutex);
+         return BindingState.active;
+     }
+ 
+     bool binding::is_controller_being_bound(SDL_JoystickID joystick_id) {
++        std::lock_guard lock(binding_mutex);
+         if (BindingState.device != InputDevice::Controller) {
+             return false;
+         }
+@@ -66,6 +73,7 @@ namespace recompinput {
+     }
+ 
+     void binding::set_scanned_input(recompinput::InputField value) {
++        std::lock_guard lock(binding_mutex);
+         profiles::set_input_binding(
+             profiles::get_input_profile_for_player(BindingState.player_index, BindingState.device),
+             BindingState.game_input,
+@@ -76,18 +84,22 @@ namespace recompinput {
+     }
+ 
+     recompinput::InputDevice binding::get_scanning_device() {
++        std::lock_guard lock(binding_mutex);
+         return BindingState.device;
+     }
+ 
+     bool binding::should_skip_events() {
++        std::lock_guard lock(binding_mutex);
+         return BindingState.skip_events;
+     }
+ 
+     void binding::stop_skipping_events() {
++        std::lock_guard lock(binding_mutex);
+         BindingState.skip_events = false;
+     }
+ 
+     recompinput::GameInput binding::get_scanning_game_input() {
++        std::lock_guard lock(binding_mutex);
+         return BindingState.game_input;
+     }
+ }
+diff --git a/recompinput/src/profiles.cpp b/recompinput/src/profiles.cpp
+index c89956e..e3a714d 100644
+--- a/recompinput/src/profiles.cpp
++++ b/recompinput/src/profiles.cpp
+@@ -1,6 +1,7 @@
+ #include <filesystem>
+ #include <fstream>
+ #include <iomanip>
++#include <mutex>
+ #include <string>
+ #include "recompinput/profiles.h"
+ #include "./json.h"
+@@ -22,6 +23,7 @@ static std::vector<InputProfile> input_profiles{};
+ static std::array<std::pair<int, int>, recompinput::max_num_players_supported> players_input_profile_indices{};
+ static std::unordered_map<std::string, int> input_profile_key_index_map{};
+ static std::vector<int> input_profile_custom_indices[static_cast<size_t>(recompinput::InputDevice::COUNT)]{};
++static std::mutex input_profiles_mutex;
+ 
+ 
+ struct Controller {
+@@ -53,19 +55,17 @@ static const std::array n64_button_values = {
+ using json = nlohmann::json;
+ 
+ namespace recompinput {
+-    // Due to an RmlUi limitation this can't be const. Ideally it would return a const reference or even just a straight up copy.
+-    recompinput::InputField& profiles::get_input_binding(int profile_index, GameInput input, size_t binding_index) {
++    recompinput::InputField profiles::get_input_binding(int profile_index, GameInput input, size_t binding_index) {
++        std::lock_guard lock(input_profiles_mutex);
+         input_mapping& cur_input_mapping = input_profiles[profile_index].mappings.at(static_cast<size_t>(input));
+         if (binding_index < cur_input_mapping.size()) {
+             return cur_input_mapping[binding_index];
+         }
+-        else {
+-            static recompinput::InputField dummy_field = {};
+-            return dummy_field;
+-        }
++        return {};
+     }
+ 
+     void profiles::set_input_binding(int profile_index, GameInput input, size_t binding_index, InputField value) {
++        std::lock_guard lock(input_profiles_mutex);
+         input_mapping& cur_input_mapping = input_profiles[profile_index].mappings.at(static_cast<size_t>(input));
+         if (binding_index < cur_input_mapping.size()) {
+             cur_input_mapping[binding_index] = value;
+@@ -381,9 +381,15 @@ namespace recompinput {
+                     return;
+                 }
+ 
+-                const input_mapping_array &mappings = input_profiles[profile_index].mappings;
+                 for (size_t i = 0; i < n64_button_values.size(); i++) {
+-                    cur_buttons |= recompinput::get_input_digital(player_index, mappings[(size_t)(GameInput::N64_BUTTON_START) + i]) ? n64_button_values[i] : 0;
++                    const auto game_input = static_cast<GameInput>((size_t)(GameInput::N64_BUTTON_START) + i);
++                    for (size_t binding_index = 0; binding_index < recompinput::num_bindings_per_input; binding_index++) {
++                        cur_buttons |= recompinput::get_input_digital(
++                            player_index,
++                            profiles::get_input_binding(profile_index, game_input, binding_index))
++                            ? n64_button_values[i]
++                            : 0;
++                    }
+                 }
+             };
+ 
+@@ -392,9 +398,23 @@ namespace recompinput {
+                     return;
+                 }
+ 
+-                const input_mapping_array &mappings = input_profiles[profile_index].mappings;
+-                cur_x += recompinput::get_input_analog(player_index, mappings[(size_t)GameInput::X_AXIS_POS]) - recompinput::get_input_analog(player_index, mappings[(size_t)GameInput::X_AXIS_NEG]);
+-                cur_y += recompinput::get_input_analog(player_index, mappings[(size_t)GameInput::Y_AXIS_POS]) - recompinput::get_input_analog(player_index, mappings[(size_t)GameInput::Y_AXIS_NEG]);
++                float x_pos = 0.0f, x_neg = 0.0f, y_pos = 0.0f, y_neg = 0.0f;
++                for (size_t binding_index = 0; binding_index < recompinput::num_bindings_per_input; binding_index++) {
++                    x_pos += recompinput::get_input_analog(
++                        player_index,
++                        profiles::get_input_binding(profile_index, GameInput::X_AXIS_POS, binding_index));
++                    x_neg += recompinput::get_input_analog(
++                        player_index,
++                        profiles::get_input_binding(profile_index, GameInput::X_AXIS_NEG, binding_index));
++                    y_pos += recompinput::get_input_analog(
++                        player_index,
++                        profiles::get_input_binding(profile_index, GameInput::Y_AXIS_POS, binding_index));
++                    y_neg += recompinput::get_input_analog(
++                        player_index,
++                        profiles::get_input_binding(profile_index, GameInput::Y_AXIS_NEG, binding_index));
++                }
++                cur_x += std::clamp(x_pos, 0.0f, 1.0f) - std::clamp(x_neg, 0.0f, 1.0f);
++                cur_y += std::clamp(y_pos, 0.0f, 1.0f) - std::clamp(y_neg, 0.0f, 1.0f);
+             };
+             
+             int profile_index_cont = players::is_single_player_mode() ? profiles::get_sp_controller_profile_index() : players_input_profile_indices[player_index].first;

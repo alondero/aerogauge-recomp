@@ -289,14 +289,14 @@ void create_settings() {
     namespace port = aero::config;
     configure_controls();
     // The port does not implement all of the shared General page's audio,
-    // gyro, and mouse services, so keep that page hidden while exposing the
-    // game-specific Controls page below.
+    // gyro, and mouse services, so keep that page hidden. Create Graphics
+    // before the game-specific Controls page so Controls is the second tab.
     auto& general = settings::create_general_tab({.has_rumble_strength = false,
         .has_gyro_sensitivity = false, .has_mouse_sensitivity = false});
     general.external_storage = true;
     settings::set_tab_visible("general", false);
-    settings::create_controls_tab();
     auto& graphics = settings::create_graphics_tab();
+    settings::create_controls_tab();
     graphics.external_storage = true;
     graphics.set_load_callback(seed_graphics);
     graphics.set_save_callback(save_graphics);

@@ -13,6 +13,7 @@
 // See docs/architecture.md, docs/testing.md, and docs/reference/runtime.md.
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -21,8 +22,10 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "librecomp/game.hpp"
 #include "librecomp/rsp.hpp"
@@ -45,6 +48,7 @@
 #include "aero_input.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 #include "recompinput/input_events.h"
+#include "recompinput/input_binding.h"
 #include "recompinput/input_state.h"
 #include "recompinput/profiles.h"
 #if defined(__ANDROID__)
@@ -85,15 +89,19 @@ static std::atomic<bool> g_first_vi{false};
 static std::atomic<int>  g_max_state{0};
 static std::atomic<int>  g_swaps{0};
 static SDL_GameController* g_pad = nullptr;
-static std::atomic<bool> g_controller_attached{false};
-static std::atomic<SDL_JoystickID> g_controller_instance{-1};
 static std::atomic<bool> g_window_close_requested{false};
-static std::atomic<bool> g_f10_requested{false};
+static std::atomic<bool> g_menu_toggle_requested{false};
+static constexpr size_t kScancodeWords = (SDL_NUM_SCANCODES + 63) / 64;
+static std::mutex g_menu_toggle_bindings_mutex;
+static std::array<uint64_t, kScancodeWords> g_custom_keyboard_toggle_scancodes{};
+static uint32_t g_custom_controller_toggle_buttons = 0;
 static std::atomic<bool> g_fullscreen_requested{false};
 #if defined(__ANDROID__)
 static std::atomic<bool> g_android_back_requested{false};
 static std::atomic<Uint32> g_android_lifecycle_event{0};
 #endif
+static std::mutex g_removed_controller_mutex;
+static std::vector<SDL_GameController*> g_removed_controllers;
 
 // AERO_CRASH_TEST: when set, the test thread's 2 s sleep must outlast
 // boot_summary_and_exit() so its deliberate crash fires. Disable the VI cap.
@@ -295,8 +303,10 @@ static void message_box_stub(const char* msg) {
 // Input callbacks are defined below in the input section; the window/pump callbacks
 // above use these declarations.
 static void sample_input();
+static void refresh_menu_toggle_bindings();
 static void developer_input_tick();
-static void register_initial_controller(int joystick_index);
+static void release_removed_controllers();
+static void release_all_controller_handles();
 static void refresh_rumble_controller();
 static void rumble_apply();  // rumble-pak sink; defined in the input section below
 static int sdl_event_filter(void*, SDL_Event*);
@@ -320,13 +330,18 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
                          SDL_GetError());
             return ultramodern::renderer::WindowHandle{};
         }
-        // RecompFrontend owns input state after startup. Register pads that were
-        // already present because SDL only reports newly-added devices through
-        // the event queue.
-        for (int i = 0; i < SDL_NumJoysticks() &&
-             !g_controller_attached.load(std::memory_order_acquire); i++)
-            register_initial_controller(i);
         SDL_SetEventFilter(sdl_event_filter, nullptr);
+        // RecompFrontend opens controllers, enables sensors, and registers their
+        // profiles while consuming ADDED events. SDL does not enqueue ADDED for
+        // devices present before initialization, so replay those notifications
+        // through the same owner instead of opening a second port-local handle.
+        for (int i = 0; i < SDL_NumJoysticks(); i++) {
+            if (!SDL_IsGameController(i)) continue;
+            SDL_Event event{};
+            event.type = SDL_CONTROLLERDEVICEADDED;
+            event.cdevice.which = i;
+            SDL_PushEvent(&event);
+        }
         uint32_t flags = SDL_WINDOW_RESIZABLE;
 #if defined(__ANDROID__)
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -386,6 +401,7 @@ static void update_gfx_stub(void* /*gfx_data*/) {
     if (aero_rt64::enabled()) {
         aero::menu::update();
         recompinput::handle_events();
+        refresh_menu_toggle_bindings();
 #if defined(__ANDROID__)
         if (g_android_back_requested.exchange(false, std::memory_order_acq_rel)) {
             aero::android::controller_back();
@@ -397,23 +413,22 @@ static void update_gfx_stub(void* /*gfx_data*/) {
             aero::android::handle_event(event);
         }
 #endif
-        if (g_f10_requested.exchange(false, std::memory_order_acq_rel)) {
-            SDL_Event event{};
-            event.type = SDL_KEYDOWN;
-            event.key.keysym.sym = SDLK_F10;
-            aero::menu::handle_event(event);
+        if (g_menu_toggle_requested.exchange(false, std::memory_order_acq_rel)) {
+            aero::menu::toggle();
         }
         if (g_fullscreen_requested.exchange(false, std::memory_order_acq_rel)) {
             aero::menu::toggle_fullscreen();
         }
         if (g_window_close_requested.exchange(false, std::memory_order_acq_rel)) {
             std::fprintf(stderr, "[probe] window closed; quitting\n");
+            release_all_controller_handles();
             aero::menu::update();
             boot_summary_and_exit();
         }
         recompinput::poll_inputs();
         sample_input();
         developer_input_tick();
+        release_removed_controllers();
         refresh_rumble_controller();
         rumble_apply();
     }
@@ -454,22 +469,49 @@ static std::atomic<uint32_t> g_input_snapshot{0};
 // Events outside RecompFrontend's generic input contract remain port
 // responsibilities. Filtering them before they enter the queue preserves the
 // existing close/F10/Android behavior without a second SDL polling loop.
+static bool is_fixed_keyboard_menu_toggle(const SDL_KeyboardEvent& event) {
+    return event.keysym.sym == SDLK_ESCAPE || event.keysym.sym == SDLK_F10 ||
+           event.keysym.sym == SDLK_AC_BACK;
+}
+
+static bool is_fixed_controller_menu_toggle(const SDL_ControllerButtonEvent& event) {
+    return event.button == SDL_CONTROLLER_BUTTON_BACK;
+}
+
+static bool is_custom_controller_menu_toggle(const SDL_ControllerButtonEvent& event) {
+    if (event.button < 0 || event.button >= 32) return false;
+    std::lock_guard lock(g_menu_toggle_bindings_mutex);
+    return (g_custom_controller_toggle_buttons &
+            (uint32_t(1) << event.button)) != 0;
+}
+
+static bool is_custom_keyboard_menu_toggle(const SDL_KeyboardEvent& event) {
+    const int scancode = event.keysym.scancode;
+    if (scancode < 0 || scancode >= SDL_NUM_SCANCODES) return false;
+    const uint64_t mask = uint64_t(1) << (scancode % 64);
+    std::lock_guard lock(g_menu_toggle_bindings_mutex);
+    return (g_custom_keyboard_toggle_scancodes[scancode / 64] & mask) != 0;
+}
+
 static int sdl_event_filter(void*, SDL_Event* event) {
 #if defined(__ANDROID__)
     if (event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_TERMINATING) {
         g_android_lifecycle_event.store(event->type, std::memory_order_release);
     }
 #endif
-    if (event->type == SDL_CONTROLLERDEVICEADDED) {
-        bool expected = false;
-        if (!g_controller_attached.compare_exchange_strong(
-                expected, true, std::memory_order_acq_rel)) {
-            return 0;
+    const bool binding = recompinput::binding::is_binding();
+    if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
+        // The frontend opens controller handles while consuming ADDED events,
+        // but does not close them when removing its state. Defer the close to
+        // update_gfx_stub, where SDL calls are on the owning thread.
+        std::lock_guard lock(g_removed_controller_mutex);
+        if (SDL_GameController* controller =
+                recompinput::get_controller_from_joystick_id(event->cdevice.which)) {
+            if (std::find(g_removed_controllers.begin(), g_removed_controllers.end(), controller) ==
+                g_removed_controllers.end()) {
+                g_removed_controllers.push_back(controller);
+            }
         }
-    } else if (event->type == SDL_CONTROLLERDEVICEREMOVED &&
-               g_controller_instance.load(std::memory_order_acquire) == event->cdevice.which) {
-        g_controller_attached.store(false, std::memory_order_release);
-        g_controller_instance.store(-1, std::memory_order_release);
     }
     if (event->type == SDL_QUIT ||
         (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_CLOSE)) {
@@ -477,14 +519,35 @@ static int sdl_event_filter(void*, SDL_Event* event) {
         return 0;
     }
 #if defined(__ANDROID__)
-    if ((event->type == SDL_CONTROLLERBUTTONDOWN && event->cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
-        (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_AC_BACK)) {
+    if (!binding &&
+        ((event->type == SDL_CONTROLLERBUTTONDOWN && event->cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
+         (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_AC_BACK))) {
         g_android_back_requested.store(true, std::memory_order_release);
         return 0;
     }
 #endif
-    if (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_F10) {
-        g_f10_requested.store(true, std::memory_order_release);
+    if (!binding &&
+        ((event->type == SDL_KEYDOWN && is_fixed_keyboard_menu_toggle(event->key)) ||
+         (event->type == SDL_KEYUP && is_fixed_keyboard_menu_toggle(event->key)) ||
+         (event->type == SDL_CONTROLLERBUTTONDOWN && is_fixed_controller_menu_toggle(event->cbutton)) ||
+         (event->type == SDL_CONTROLLERBUTTONUP && is_fixed_controller_menu_toggle(event->cbutton)))) {
+        if ((event->type == SDL_KEYDOWN && !event->key.repeat) ||
+            event->type == SDL_CONTROLLERBUTTONDOWN) {
+            g_menu_toggle_requested.store(true, std::memory_order_release);
+        }
+        return 0;
+    }
+    if (!binding &&
+        ((event->type == SDL_KEYDOWN && is_custom_keyboard_menu_toggle(event->key)) ||
+         (event->type == SDL_KEYUP && is_custom_keyboard_menu_toggle(event->key)) ||
+         (event->type == SDL_CONTROLLERBUTTONDOWN && is_custom_controller_menu_toggle(event->cbutton)) ||
+         (event->type == SDL_CONTROLLERBUTTONUP && is_custom_controller_menu_toggle(event->cbutton)))) {
+        if ((event->type == SDL_KEYDOWN && !event->key.repeat) ||
+            event->type == SDL_CONTROLLERBUTTONDOWN) {
+            g_menu_toggle_requested.store(true, std::memory_order_release);
+        }
+        // Configurable toggles are consumed here so RecompFrontend cannot
+        // open the same menu a second time.
         return 0;
     }
     if (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_F8 &&
@@ -523,54 +586,60 @@ static void sample_input() {
     uint16_t buttons = 0;
     float normalized_x = 0.0f;
     float normalized_y = 0.0f;
-    bool custom_toggle_down = false;
-    const Uint8* keyboard = SDL_GetKeyboardState(nullptr);
-    const int keyboard_profile = recompinput::profiles::get_sp_keyboard_profile_index();
-    if (keyboard != nullptr && keyboard_profile >= 0) {
-        for (size_t i = 0; i < recompinput::num_bindings_per_input; i++) {
-            const auto& field = recompinput::profiles::get_input_binding(
-                keyboard_profile, recompinput::GameInput::TOGGLE_MENU, i);
-            if (field.input_type == recompinput::InputType::Keyboard &&
-                field.input_id != SDL_SCANCODE_ESCAPE &&
-                field.input_id != SDL_SCANCODE_F10 &&
-                field.input_id >= 0 && field.input_id < SDL_NUM_SCANCODES &&
-                keyboard[field.input_id]) {
-                custom_toggle_down = true;
-            }
-        }
-    }
-    static bool custom_toggle_was_down = false;
-    if (custom_toggle_down && !custom_toggle_was_down) {
-        aero::menu::toggle();
-    }
-    custom_toggle_was_down = custom_toggle_down;
+#if defined(__ANDROID__)
+    int touch_x = 0, touch_y = 0;
+    uint16_t touch_buttons = 0;
+#endif
 
     if (!aero::menu::captures_input()) {
         recompinput::profiles::get_n64_input(0, &buttons, &normalized_x, &normalized_y);
 #if defined(__ANDROID__)
-        uint16_t touch_buttons = 0;
-        int touch_x = 0, touch_y = 0;
         aero::android::sample_touch(touch_buttons, touch_x, touch_y);
-        buttons |= touch_buttons;
-        if (normalized_x == 0.0f) {
-            normalized_x = aero_n64_stick_to_normalized(static_cast<int8_t>(touch_x));
-        }
-        if (normalized_y == 0.0f) {
-            normalized_y = aero_n64_stick_to_normalized(static_cast<int8_t>(touch_y));
-        }
 #endif
     }
 
-    const float n64_scale = static_cast<float>(N64_STICK_MAX) /
-                            ULTRAMODERN_STICK_INRADIUS;
-    const auto to_n64 = [n64_scale](float value) -> int8_t {
-        const float clamped = std::clamp(value * n64_scale,
-                                         -static_cast<float>(N64_STICK_MAX),
-                                         static_cast<float>(N64_STICK_MAX));
-        return static_cast<int8_t>(clamped);
-    };
-    g_input_snapshot.store(aero_input_pack(buttons, to_n64(normalized_x), to_n64(normalized_y)),
+#if defined(__ANDROID__)
+    const auto sampled = aero_sample_input(buttons, normalized_x, normalized_y,
+                                           touch_buttons, touch_x, touch_y);
+#else
+    const auto sampled = aero_sample_input(buttons, normalized_x, normalized_y);
+#endif
+    g_input_snapshot.store(aero_input_pack(sampled.buttons, sampled.stick_x, sampled.stick_y),
                            std::memory_order_relaxed);
+}
+
+static void refresh_menu_toggle_bindings() {
+    std::lock_guard lock(g_menu_toggle_bindings_mutex);
+    std::array<uint64_t, kScancodeWords> keyboard{};
+    uint32_t controller = 0;
+    const int keyboard_profile = recompinput::profiles::get_sp_keyboard_profile_index();
+    if (keyboard_profile >= 0) {
+        for (size_t i = 0; i < recompinput::num_bindings_per_input; i++) {
+            const auto field = recompinput::profiles::get_input_binding(
+                keyboard_profile, recompinput::GameInput::TOGGLE_MENU, i);
+            if (field.input_type == recompinput::InputType::Keyboard &&
+                field.input_id != SDL_SCANCODE_ESCAPE &&
+                field.input_id != SDL_SCANCODE_F10 &&
+                field.input_id >= 0 && field.input_id < SDL_NUM_SCANCODES) {
+                keyboard[field.input_id / 64] |= uint64_t(1) << (field.input_id % 64);
+            }
+        }
+    }
+    const int controller_profile = recompinput::profiles::get_sp_controller_profile_index();
+    if (controller_profile >= 0) {
+        for (size_t i = 0; i < recompinput::num_bindings_per_input; i++) {
+            const auto field = recompinput::profiles::get_input_binding(
+                controller_profile, recompinput::GameInput::TOGGLE_MENU, i);
+            if (field.input_type == recompinput::InputType::ControllerDigital &&
+                field.input_id != SDL_CONTROLLER_BUTTON_BACK &&
+                field.input_id >= 0 && field.input_id < 32) {
+                controller |= uint32_t(1) << field.input_id;
+            }
+        }
+    }
+    for (size_t i = 0; i < kScancodeWords; i++)
+        g_custom_keyboard_toggle_scancodes[i] = keyboard[i];
+    g_custom_controller_toggle_buttons = controller;
 }
 
 static void developer_input_tick() {
@@ -594,32 +663,65 @@ static void developer_input_tick() {
     f8_prev = f8;
 }
 
-static void register_initial_controller(int joystick_index) {
-    if (!SDL_IsGameController(joystick_index)) return;
-    SDL_GameController* controller = SDL_GameControllerOpen(joystick_index);
+static void close_controller_handle_locked(SDL_GameController* controller) {
     if (controller == nullptr) return;
-    SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
-    recompinput::add_controller_state(SDL_JoystickInstanceID(joystick), controller);
-    if (g_pad == nullptr) {
-        g_pad = controller;
-        g_controller_instance.store(SDL_JoystickInstanceID(joystick), std::memory_order_release);
-        g_controller_attached.store(true, std::memory_order_release);
+    if (controller == g_pad) {
+        aero::haptics::stop();
+        g_pad = nullptr;
+    }
+    if (SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller))
+        recompinput::remove_controller_state(SDL_JoystickInstanceID(joystick));
+    SDL_GameControllerClose(controller);
+}
+
+static void release_removed_controllers() {
+    std::lock_guard lock(g_removed_controller_mutex);
+    for (SDL_GameController* controller : g_removed_controllers)
+        close_controller_handle_locked(controller);
+    g_removed_controllers.clear();
+}
+
+static void release_all_controller_handles() {
+    std::lock_guard lock(g_removed_controller_mutex);
+    for (SDL_GameController* controller : g_removed_controllers)
+        close_controller_handle_locked(controller);
+    g_removed_controllers.clear();
+
+    std::vector<SDL_GameController*> controllers;
+    recompinput::collect_all_controller_states(controllers);
+    for (SDL_GameController* controller : controllers)
+        close_controller_handle_locked(controller);
+}
+
+static void close_detached_rumble_controller() {
+    std::lock_guard lock(g_removed_controller_mutex);
+    std::vector<SDL_GameController*> detached;
+    recompinput::collect_detached_controller_states(detached);
+    for (SDL_GameController* controller : detached) {
+        g_removed_controllers.erase(
+            std::remove(g_removed_controllers.begin(), g_removed_controllers.end(), controller),
+            g_removed_controllers.end());
+        close_controller_handle_locked(controller);
+    }
+    if (g_pad != nullptr && !SDL_GameControllerGetAttached(g_pad)) {
+        SDL_GameController* controller = g_pad;
+        g_removed_controllers.erase(
+            std::remove(g_removed_controllers.begin(), g_removed_controllers.end(), controller),
+            g_removed_controllers.end());
+        close_controller_handle_locked(controller);
     }
 }
 
 static void refresh_rumble_controller() {
+    close_detached_rumble_controller();
     if (g_pad != nullptr && SDL_GameControllerGetAttached(g_pad)) return;
     g_pad = nullptr;
-    g_controller_instance.store(-1, std::memory_order_release);
-    g_controller_attached.store(false, std::memory_order_release);
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
         if (!SDL_IsGameController(i)) continue;
         const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
         SDL_GameController* controller = SDL_GameControllerFromInstanceID(id);
         if (controller != nullptr && SDL_GameControllerGetAttached(controller)) {
             g_pad = controller;
-            g_controller_instance.store(id, std::memory_order_release);
-            g_controller_attached.store(true, std::memory_order_release);
             return;
         }
     }

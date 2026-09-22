@@ -1,6 +1,7 @@
 #ifndef AERO_INPUT_H
 #define AERO_INPUT_H
 
+#include <algorithm>
 #include <cstdint>
 
 // Host input math shared by src/main.cpp (the SDL sampler and the runtime input callback) and
@@ -43,6 +44,43 @@ static inline int8_t aero_pad_axis_to_n64(int v) {
     if (f >  1.0f) f =  1.0f;
     if (f < -1.0f) f = -1.0f;
     return (int8_t)(f * N64_STICK_MAX);
+}
+
+// RecompFrontend reports analog input in normalized units. Store the calibrated
+// N64 value in the cross-thread snapshot; input_get_input() normalizes it again
+// for ultramodern's controller conversion.
+static inline int8_t aero_normalized_stick_to_n64(float value) {
+    if (value > 1.0f) value = 1.0f;
+    if (value < -1.0f) value = -1.0f;
+    return static_cast<int8_t>(value * N64_STICK_MAX);
+}
+
+// Android's Java touch overlay already publishes calibrated N64 stick units.
+static inline int8_t aero_touch_axis_to_n64(int value) {
+    return static_cast<int8_t>(std::clamp(value, -N64_STICK_MAX, N64_STICK_MAX));
+}
+
+struct AeroSampledInput {
+    uint16_t buttons;
+    int8_t stick_x;
+    int8_t stick_y;
+};
+
+// Merge normalized frontend axes with the already-calibrated Android touch axes before the
+// snapshot crosses to the game thread. Touch only supplies an axis when the frontend has none.
+static inline AeroSampledInput aero_sample_input(uint16_t frontend_buttons,
+                                                  float normalized_x,
+                                                  float normalized_y,
+                                                  uint16_t touch_buttons = 0,
+                                                  int touch_x = 0,
+                                                  int touch_y = 0) {
+    const bool use_touch_x = normalized_x == 0.0f && touch_x != 0;
+    const bool use_touch_y = normalized_y == 0.0f && touch_y != 0;
+    return {
+        static_cast<uint16_t>(frontend_buttons | touch_buttons),
+        use_touch_x ? aero_touch_axis_to_n64(touch_x) : aero_normalized_stick_to_n64(normalized_x),
+        use_touch_y ? aero_touch_axis_to_n64(touch_y) : aero_normalized_stick_to_n64(normalized_y),
+    };
 }
 
 // N64 stick value -> the normalized value the runtime input callback must return.

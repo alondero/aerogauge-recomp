@@ -158,6 +158,16 @@ int main(int argc, char** argv) {
                     controller_profile, recompinput::GameInput::A, 0) ==
                     recompinput::InputField::controller_digital(SDL_CONTROLLER_BUTTON_A),
                 "controller defaults not configured");
+        const auto keyboard_a = recompinput::profiles::get_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0);
+        recompinput::profiles::set_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0, recompinput::InputField::keyboard(SDL_SCANCODE_Z));
+        require(recompinput::profiles::get_input_binding(
+                    keyboard_profile, recompinput::GameInput::A, 0) ==
+                    recompinput::InputField::keyboard(SDL_SCANCODE_Z),
+                "synchronized binding update not visible");
+        recompinput::profiles::set_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0, keyboard_a);
         require(recompinput::get_game_input_description(recompinput::GameInput::A) ==
                     "Accelerates during a race and confirms menu choices.",
                 "control descriptions not configured");

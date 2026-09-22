@@ -39,7 +39,7 @@ Java_io_github_alondero_aerogaugerecomp_GameActivity_nativeRequestQuit(JNIEnv*, 
 
 extern "C" JNIEXPORT void JNICALL
 Java_io_github_alondero_aerogaugerecomp_GameActivity_nativeTouch(JNIEnv*, jclass, jint buttons, jint x, jint y) {
-    touch.store(aero_input_pack(uint16_t(buttons), std::clamp(int(x), -N64_STICK_MAX, N64_STICK_MAX), std::clamp(int(y), -N64_STICK_MAX, N64_STICK_MAX)));
+    touch.store(aero_input_pack(uint16_t(buttons), aero_touch_axis_to_n64(x), aero_touch_axis_to_n64(y)));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -95,10 +95,7 @@ void controller_back() {
     // Back closes the settings page first, then opens the Android action sheet.
     // This gives controller-only players a reliable route back to the launcher.
     if (aero::menu::captures_input()) {
-        SDL_Event close{};
-        close.type = SDL_KEYDOWN;
-        close.key.keysym.sym = SDLK_ESCAPE;
-        aero::menu::handle_event(close);
+        aero::menu::toggle();
         return;
     }
     JNIEnv* environment = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
