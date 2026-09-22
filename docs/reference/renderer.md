@@ -48,6 +48,7 @@ will produce the same image.
 | Rectangle alignment and wide scissor commands | RT64 extended GBI plus the HUD hook | Upstream command support; AeroGauge classification is project-specific |
 | Texture packs and dumps | RT64, configured by the port | Upstream-supported path; the port's file settings are local |
 | Full-course geometry registration | aero_full_track.cpp | AeroGauge-specific transitional hook |
+| Racer-shadow depth comparison | rt64_renderer.cpp | AeroGauge-specific root display-list correction |
 | Widescreen HUD retagging and needle matrix shift | aero_hud_widescreen.c | AeroGauge-specific display-list rewrite |
 | Draw-distance replacement | aero_draw_distance.cpp | AeroGauge-specific native replacement |
 | Full-screen overscan removal | aero_scene_scissor.c | AeroGauge-specific scissor hook |
@@ -59,6 +60,32 @@ not belong in RT64. A general interpolation or viewport defect should be
 reduced to a small renderer test and proposed upstream.
 
 ## AeroGauge display-list behavior
+
+### Racer shadows and tunnel occlusion
+
+In the USA race display list, the course writes depth with render modes
+`C8112078` and `C8110038`. The root list then sets geometry mode `00002000`
+and render mode `00504240` for eight racer-shadow display lists. Those shadow
+settings disable both `G_ZBUFFER` and `Z_CMP`, so their dark quads can blend over
+a tunnel wall even when the racers are behind it. The following car-mesh mode is
+`00552078`; later HUD passes also use `00504240` and must not be changed.
+
+The game-specific correction in [rt64_renderer.cpp](../../src/rt64_renderer.cpp)
+recognizes that exact shadow setup between the depth-writing course and car
+meshes. On the graphics thread, before RT64 consumes the current frame's root
+list, it enables `G_ZBUFFER` and `Z_CMP` for the shadow pass while leaving depth
+writes off. The scanner reads host-order 32-bit display-list words from the
+8-byte-aligned task address in 8 MiB RDRAM. It stops at `G_ENDDL` or the car
+mode and leaves the list intact if the expected commands are absent. A future
+named game-source patch to the shadow-list builder should replace this RDRAM
+bridge.
+
+The diagnostic capture is an unpaused replay of a saved Bikini Island tunnel
+race: the original player renderer shows moving dark flecks on the lower-right
+wall; the corrected player renderer hides them. With the course display list
+temporarily omitted, the racer shadows still draw, confirming that the pass
+was not disabled. A visible racer-shadow-on-road view would further check how
+the depth comparison behaves on the course surface.
 
 ### VI colour correction
 
