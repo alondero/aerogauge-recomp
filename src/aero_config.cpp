@@ -605,7 +605,8 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
                              WindowSize size,
                              std::string texture_pack,
                              std::string texture_dump,
-                             bool apply_live) {
+                             bool apply_live,
+                             std::optional<bool> force_full_lod) {
     const auto before = g_current_graphics;
     g_current_graphics = cfg;
 
@@ -641,6 +642,15 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
             g_texture_dump = std::move(texture_dump);
             updates["texture_dump"] = g_texture_dump;
         }
+    }
+
+    // The Graphics page commits all of its options as one transaction. An
+    // environment override is read-only, and an unchanged value must not
+    // create a spurious dirty write when the user presses Apply.
+    if (force_full_lod && std::getenv("AERO_FORCE_FULL_LOD") == nullptr &&
+        g_force_full_lod.load() != *force_full_lod) {
+        g_force_full_lod.store(*force_full_lod);
+        updates["force_full_lod"] = *force_full_lod;
     }
 
     if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
@@ -795,7 +805,7 @@ void set_full_track(bool enabled) {
 
 bool force_full_lod() {
     if (const char* v = std::getenv("AERO_FORCE_FULL_LOD")) {
-        return v[0] != '0';
+        return v[0] == '1';
     }
     return g_force_full_lod.load();
 }

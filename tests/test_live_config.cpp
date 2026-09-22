@@ -54,6 +54,7 @@ int main() {
     set_environment("AERO_SKY_MATCH_1P", nullptr);
     set_environment("AERO_DRAW_DISTANCE_SCALE", nullptr);
     set_environment("AERO_FULL_TRACK", nullptr);
+    set_environment("AERO_FORCE_FULL_LOD", nullptr);
     set_environment("AERO_EASY_TURBO", nullptr);
     // Park the background writer for the whole test (a flush still writes
     // immediately), so "not written yet" and "written" are both deterministic
@@ -71,7 +72,22 @@ int main() {
     expect(aero::config::full_track(), "full course geometry defaults on");
     expect(aero::config::draw_distance_scale() == 100.0f,
            "draw distance defaults to 100x");
+    expect(!aero::config::force_full_lod(), "full LOD defaults off");
     expect(!aero::config::easy_turbo_boost(), "turbo assist defaults off");
+
+    // Boolean environment overrides follow the documented 0/1 contract. In
+    // particular, an empty value or words such as "false" must not enable it.
+    set_environment("AERO_FORCE_FULL_LOD", "");
+    expect(!aero::config::force_full_lod(), "empty full-LOD override stays off");
+    set_environment("AERO_FORCE_FULL_LOD", "false");
+    expect(!aero::config::force_full_lod(), "false full-LOD override stays off");
+    set_environment("AERO_FORCE_FULL_LOD", "off");
+    expect(!aero::config::force_full_lod(), "off full-LOD override stays off");
+    set_environment("AERO_FORCE_FULL_LOD", "1");
+    expect(aero::config::force_full_lod(), "one full-LOD override enables it");
+    set_environment("AERO_FORCE_FULL_LOD", "0");
+    expect(!aero::config::force_full_lod(), "zero full-LOD override disables it");
+    set_environment("AERO_FORCE_FULL_LOD", nullptr);
 
     // A menu action must not clobber an unrelated graphics.json hand edit made
     // while the game is running.
@@ -104,6 +120,7 @@ int main() {
     aero::config::set_widescreen_sky_match(false);
     aero::config::set_draw_distance_scale(10.0f);
     aero::config::set_full_track(false);
+    aero::config::set_force_full_lod(true);
     aero::config::set_easy_turbo_boost(true);
     aero::config::set_window_size({1920, 1080});
     aero::config::set_texture_pack_path("menu-texture-pack");
@@ -113,6 +130,7 @@ int main() {
     expect(aero::config::draw_distance_scale() == 10.0f,
            "draw-distance menu selection updates live");
     expect(!aero::config::full_track(), "full-track menu toggle updates live");
+    expect(aero::config::force_full_lod(), "full-LOD menu toggle updates live");
     expect(aero::config::easy_turbo_boost(), "turbo assist menu toggle updates live");
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
            "window-size menu selection updates live");
@@ -141,6 +159,7 @@ int main() {
     expect(persisted.at("draw_distance_scale") == 10.0f,
            "draw-distance menu selection persists");
     expect(persisted.at("full_track") == false, "full-track menu toggle persists");
+    expect(persisted.at("force_full_lod") == true, "full-LOD menu toggle persists");
     expect(!persisted.contains("easy_turbo_boost"),
            "turbo assist is not serialized into graphics.json");
     expect(persisted_enhancements.at("easy_turbo_boost") == true,
@@ -160,6 +179,8 @@ int main() {
            "widescreen toggles survive a reload through graphics.json");
     expect(aero::config::draw_distance_scale() == 10.0f && !aero::config::full_track(),
            "draw-distance and full-track selections survive a reload");
+    expect(aero::config::force_full_lod(),
+           "full-LOD selection survives a reload through graphics.json");
     expect(aero::config::easy_turbo_boost(),
            "turbo assist selection survives a reload through enhancements.json");
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
@@ -221,6 +242,7 @@ int main() {
     std::filesystem::remove_all(directory, error);
     set_environment("AERO_GRAPHICS_CONFIG", nullptr);
     set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
+    set_environment("AERO_FORCE_FULL_LOD", nullptr);
     set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", nullptr);
     return failures == 0 ? 0 : 1;
 }

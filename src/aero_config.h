@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "ultramodern/config.hpp"
@@ -77,7 +78,8 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
                              WindowSize size,
                              std::string texture_pack,
                              std::string texture_dump,
-                             bool apply_live = true);
+                             bool apply_live = true,
+                             std::optional<bool> force_full_lod = std::nullopt);
 
 // RT64 texture-replacement paths. Both are extra graphics.json string keys
 // (empty = feature off), overridable by env var for headless capture/testing:

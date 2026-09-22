@@ -123,9 +123,7 @@ void save_graphics() {
             }
         }
         const bool resized = size.width != live.width || size.height != live.height;
-        aero::config::apply_graphics_settings(cfg, size, pack, dump);
-        if (std::getenv("AERO_FORCE_FULL_LOD") == nullptr)
-            aero::config::set_force_full_lod(full_lod);
+        aero::config::apply_graphics_settings(cfg, size, pack, dump, true, full_lod);
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();
         refresh_settings();
     });
