@@ -138,11 +138,27 @@ int main(int argc, char** argv) {
         // every frame).
         flush();
         auto& graphics = recompui::config::get_graphics_config();
+        require(!aero::config::force_full_lod(), "full LOD must default off");
+        graphics.set_option_value("force_full_lod", true);
+        flush();
+        require(!aero::config::force_full_lod(), "LOD applied before Apply");
+        graphics.revert_temp_config();
+        require(!std::get<bool>(graphics.get_temp_option_value("force_full_lod")), "LOD discard failed");
+        graphics.set_option_value("force_full_lod", true);
+        graphics.save_config();
+        require(!aero::config::force_full_lod(), "LOD save escaped main-thread queue");
+        flush();
+        require(aero::config::force_full_lod(), "LOD Apply failed");
+        aero::config::flush_config_writes();
+        require(read(path / "graphics.json").at("force_full_lod") == true, "LOD persistence");
+        set_environment("AERO_FORCE_FULL_LOD", "0");
+        require(!aero::config::force_full_lod(), "LOD environment override");
+        set_environment("AERO_FORCE_FULL_LOD", nullptr);
         using namespace ultramodern::renderer;
         require(std::get<uint32_t>(graphics.get_option_value("ds_option")) == 3, "supersampling import");
         require(std::get<uint32_t>(graphics.get_option_value("msaa_option")) == uint32_t(Antialiasing::MSAA8X), "MSAA import");
         for (const char* key : {"api_option", "hpfb_option", "texture_pack",
-                               "texture_dump", "window_size"}) {
+                               "texture_dump", "window_size", "force_full_lod"}) {
             require(graphics.has_option(key), "missing graphics option");
         }
         // developer_mode moved to the Debug tab, which solely owns it.

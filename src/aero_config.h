@@ -117,6 +117,12 @@ void set_draw_distance_scale(float scale);
 bool full_track();
 void set_full_track(bool enabled);
 
+// Maximum car detail and no car distance rejection (default false).
+// graphics.json: force_full_lod; AERO_FORCE_FULL_LOD=1/0 overrides it.
+bool force_full_lod();
+void set_force_full_lod(bool enabled);
+extern "C" int aero_force_full_lod_enabled(void);
+
 // Player-directed Turbo + Boost Start assist (see src/aero_turbo_boost.c).
 // Persisted in enhancements.json (default false), overridable by AERO_EASY_TURBO=1/0.
 bool easy_turbo_boost();

@@ -166,6 +166,74 @@ classification bounds are recorded in the
 [HUD source header](../../src/aero_hud_widescreen.h) and tested by
 the [HUD host test](../../tests/test_hud_shift_scale.c).
 
+## Car detail and distance visibility
+
+Static disassembly of the supported USA ROM identifies two car detail paths
+and a separate distance rejection. These findings have not yet been validated
+with an in-game capture of a maximum-detail modification.
+
+`func_80007538`, called by the camera update at `0x800063B4`, walks the
+cars at `0x8013FFB0` with stride `0x20A0`; the count is the unsigned byte at
+`0x8013FC91`. It measures the distance between the car's render position
+at `car+0x4D0` and the camera eye at `camera+0xC4`.
+`func_80024240` returns the vector length and normalizes the vector in place.
+These are render-coordinate units: `func_8000908C` scales camera positions
+by five, and `func_80059DB0` does the same for car positions.
+
+| Condition | ROM behavior | Evidence |
+| --- | --- | --- |
+| Distance greater than 750 | Reject the car for this camera | Compare at `0x80007648`; float 750 at `0x800951B4` |
+| Distance less than 10 | Reject the car for this camera | Compare at `0x80007658` |
+| Normalized camera-forward dot car-direction less than 0.5 | Reject the car for this camera | Compare at `0x80007690` |
+| Otherwise, distance greater than 150 | Set bit `0x01` in byte `car+0x00` to select distant detail | Compare at `0x800076DC` |
+| Otherwise, distance at most 150 | Clear that detail bit | Path at `0x80007710` |
+
+The near and angle checks are independent of the far-distance check. Rejection
+sets bit `0x04` in byte `car+0x00` and publishes null entries in the camera's
+node-pointer array at `camera+0x1B8`. Acceptance clears that bit and publishes
+`car+0x498` and `car+0x1E78`. Changing only the projection cannot restore these
+missing entries. The 150 and 750 thresholds correspond to 30 and 150 units
+in the unscaled position coordinates, respectively; they are not metres.
+
+A detail-bit transition also sets bit `0x80` in byte `car+0x01`.
+`func_8005A034`, called at `0x800587F8` in the car update, checks this rebuild
+bit before updating model nodes, then clears it. Its detail selection uses:
+
+| Data | Near detail | Distant detail |
+| --- | --- | --- |
+| Part display-list pointer table | `0x8008F728` | `0x8008F7A4` |
+| Part transform table | `0x80098330` | `0x800984A4` |
+| Root material pointer table | `0x8008F820` | `0x8008F910` |
+
+Race-mode byte `0x8013FF90 == 5` bypasses the distance-based detail update
+and forces the distant path in the model selector. This is a race-mode byte,
+not the scene word at `0x8013FF80`. `func_8005A2D4` also selects part transforms
+using the detail bit and this mode override (see `0x8005A348`). A maximum-detail
+implementation must keep mesh and animated-part transform selection consistent.
+
+The optional Graphics setting **Force Full LOD** uses
+[aero_car_lod.c](../../src/aero_car_lod.c). At `0x80007648` it substitutes
+infinite far/detail comparison thresholds, preserving the actual distance and
+near/angular rejection. Before the rebuild gate at `0x8005A04C`, it clears the
+distant-detail bit when enabled and requests a rebuild if the flag or installed
+root mesh differs from the desired selection. Comparing the installed mesh
+also restores mode-5 distant detail when disabling, without a host-side state
+cache that could go stale after save-state loading. The two mode comparisons
+at `0x8005A0E0` and `0x8005A368` select near meshes and transforms when enabled.
+
+These game-thread hooks use the existing car-owned flag bytes and N64Recomp
+memory helpers, validate the car pointer and craft/part indices before memory
+writes, and retain no guest pointers across calls. The UI publishes an atomic
+setting, persisted as `force_full_lod` in graphics.json (default false);
+`AERO_FORCE_FULL_LOD=0/1` overrides it. Projection clipping remains independent.
+A future named source implementation of these selectors can replace the
+register hooks without changing the policy.
+
+The `car_lod` ROM-backed test exercises the generated routines and hooks for
+distance boundaries, retained culling, model transitions, ten craft IDs and
+mode-5 animated transforms. RT64 visual acceptance and performance checks with
+all racers visible remain separate from this synthetic-data regression.
+
 ## How to use an address
 
 Before adding a hook or native replacement:

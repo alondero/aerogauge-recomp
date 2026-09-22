@@ -23,7 +23,7 @@ The shared frontend has these pages:
 
 | Page | Options | Save behavior |
 | --- | --- | --- |
-| Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, and texture paths | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
+| Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
 
 F11 and Alt+Enter still switch fullscreen. The menu does not add a new control
@@ -41,6 +41,7 @@ disabled when one is present:
 - AERO_TEXTURE_PACK
 - AERO_TEXTURE_DUMP
 - AERO_FULL_TRACK
+- AERO_FORCE_FULL_LOD
 - AERO_EASY_TURBO
 - AERO_DRAW_DISTANCE_SCALE
 

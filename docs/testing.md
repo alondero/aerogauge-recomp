@@ -71,6 +71,7 @@ The current CMake file registers these tests:
 | user_data_dir | Host | No ROM |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
 | scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |
+| car_lod | ROM-backed | Generated car visibility, model and animation functions from the accepted ROM |
 | vi_special_features | End to end | Python 3, ROM, executable, and a working RT64 graphics device |
 | audio_intro_playback | End to end | Windows desktop, ROM, executable, and usable audio device |
 | haptics_race_e2e | End to end | Windows, ROM, executable, gdb.exe, and a run that reaches the race |
@@ -82,6 +83,14 @@ The ROM-backed tests are only added when RecompiledFuncs exists at configure
 time. Re-run CMake after generating the functions if they are missing from
 CTest. The Windows tests are only added on Windows. play_logging_quiet is
 also only added when the ROM exists during configuration.
+
+`car_lod` executes the generated routines with synthetic car/camera data. It
+checks original and forced distance boundaries, retained near/angular rejection,
+camera changes, model rebuilding on live toggles, all ten craft IDs and the
+mode-5 animated-transform override. `frontend_settings` checks the Graphics
+option's Apply/Discard, persistence and environment override. For visual
+acceptance, compare moving cars around the original LOD/cutoff distances in
+RT64, including split screen, and measure performance with all racers visible.
 
 The CTest wrappers use these skip behaviors:
 

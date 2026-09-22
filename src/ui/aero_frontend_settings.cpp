@@ -52,6 +52,7 @@ void seed_graphics() {
     seeded_dump = aero::config::texture_dump_dir();
     sync(page, "texture_pack", seeded_pack);
     sync(page, "texture_dump", seeded_dump);
+    sync(page, "force_full_lod", aero::config::force_full_lod());
     // Picker state for the (possibly JSON- or preset-edited) live size. The
     // picker itself applies with the page's Apply button; seeding only updates
     // the displayed value, so no change callback fires here.
@@ -95,6 +96,7 @@ void save_graphics() {
     edited.rr_manual_value = int(std::get<double>(page.get_option_value("rr_manual_value")));
     const auto pack = std::get<std::string>(page.get_option_value("texture_pack"));
     const auto dump = std::get<std::string>(page.get_option_value("texture_dump"));
+    const bool full_lod = std::get<bool>(page.get_option_value("force_full_lod"));
     // The window-size picker obeys this page's confirmation flow: the picked
     // preset resolves at Apply time. Custom (or an unknown value) keeps the
     // live size, so a discarded pick can never clobber a custom resolution.
@@ -103,7 +105,7 @@ void save_graphics() {
     // the JSON write they trigger is queued for the background writer. The
     // current lock still means a blocking action can delay rendering; see
     // docs/frontend.md (## Ownership and threads) before changing this boundary.
-    enqueue([edited, before = seeded, pack, dump, picked_preset] {
+    enqueue([edited, before = seeded, pack, dump, picked_preset, full_lod] {
         auto cfg = aero::config::current_graphics();
         // Merge only edited fields: F11 may have changed the window mode since
         // this confirmation-backed page was opened.
@@ -122,6 +124,8 @@ void save_graphics() {
         }
         const bool resized = size.width != live.width || size.height != live.height;
         aero::config::apply_graphics_settings(cfg, size, pack, dump);
+        if (std::getenv("AERO_FORCE_FULL_LOD") == nullptr)
+            aero::config::set_force_full_lod(full_lod);
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();
         refresh_settings();
     });
@@ -162,6 +166,11 @@ void create_settings() {
     graphics.external_storage = true;
     graphics.set_load_callback(seed_graphics);
     graphics.set_save_callback(save_graphics);
+    graphics.add_bool_option("force_full_lod", "Force Full LOD",
+        "Keep cars at maximum model detail and remove their distance cutoff. "
+        "The Draw distance setting still controls far clipping. May reduce performance.",
+        port::force_full_lod());
+    graphics.update_option_disabled("force_full_lod", std::getenv("AERO_FORCE_FULL_LOD") != nullptr);
     graphics.update_option_description("api_option", "Graphics backend. Changes take effect after restarting the application.");
     graphics.add_string_option("texture_pack", "Texture pack path (restart)", "Directory or .rtz archive. Leave empty for original textures. AERO_TEXTURE_PACK overrides this setting.", port::texture_pack_path());
     graphics.add_string_option("texture_dump", "Texture dump directory (restart)", "Output directory for RT64 texture dumps. Leave empty to disable. AERO_TEXTURE_DUMP overrides this setting.", port::texture_dump_dir());

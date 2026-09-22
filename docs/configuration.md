@@ -43,6 +43,7 @@ The normal file contains the following keys. Enum values are case-sensitive.
 | widescreen_sky_match | true or false | true | 3P/4P sky matching enhancement |
 | draw_distance_scale | 0, or a number from 1 to 10000 | 100 | Far-plane multiplier |
 | full_track | true or false | true | Register all course geometry |
+| force_full_lod | true or false | false | Maximum car model detail and no car distance cutoff |
 
 The current settings menu exposes the common graphics settings on the supported
 Windows, Linux, and Android paths. Android omits desktop-only window, API, and
@@ -53,6 +54,14 @@ The draw-distance scale has two special values:
 
 - 1 is the original game's far plane.
 - 0 means no finite far-plane clip.
+
+**Force Full LOD** is on the Graphics page and follows Apply/Discard. It keeps
+cars at their near-detail model and removes the separate 750-unit car cutoff.
+Near-camera and viewing-angle culling remain active. The projection still uses
+the Draw distance setting; use extended or unlimited distance for distant cars.
+This option does not change course geometry or texture mipmapping.
+`AERO_FORCE_FULL_LOD=1` or `0` overrides the saved value for a run and disables
+the menu control. More detailed distant cars can cost performance.
 
 The default of 100 is an enhancement, not a measured promise that every
 course is correct at every distance. Full-course geometry is also
@@ -95,6 +104,7 @@ setting, its value wins for that run.
 | AERO_SKY_MATCH_1P | 0 or 1 | Overrides the 3P/4P sky matching option |
 | AERO_DRAW_DISTANCE_SCALE | number | Overrides draw_distance_scale |
 | AERO_FULL_TRACK | 0 or 1 | Overrides full_track |
+| AERO_FORCE_FULL_LOD | 0 or 1 | Overrides force_full_lod |
 | AERO_EASY_TURBO | 0 or 1 | Overrides easy_turbo_boost |
 | AERO_HEADLESS | 1 | Skips the window and RT64 and uses the software test renderer |
 
@@ -199,6 +209,7 @@ $env:NAME before running the executable.
 | AERO_SKY_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each sky-policy query | Changes the 3P/4P sky branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_SKY_MATCH_1P=0 ./build/aerogauge_modern |
 | AERO_DRAW_DISTANCE_SCALE | Launch or test; number | Unset uses JSON, 100 by default; set wins and is clamped | Each guPerspectiveF replacement call | Changes the far-plane calculation; src/aero_config.cpp and src/aero_draw_distance.cpp | AERO_DRAW_DISTANCE_SCALE=1 ./build/aerogauge_modern |
 | AERO_FULL_TRACK | Launch or test; 0 or 1 | Unset uses JSON, true by default; set wins | Each full-track policy query | Enables or disables all-course registration; src/aero_config.cpp and src/aero_full_track.cpp | AERO_FULL_TRACK=0 ./build/aerogauge_modern |
+| AERO_FORCE_FULL_LOD | Launch or test; 0 or 1 | Unset uses JSON, false by default; set wins | Each car LOD hook | Forces near-detail car meshes and removes their distance cutoff; src/aero_car_lod.c | AERO_FORCE_FULL_LOD=1 ./build/aerogauge_modern |
 | AERO_EASY_TURBO | Launch or test; 0 or 1 | Unset uses JSON, false by default; set wins | First semantic input query | Enables the alternate Turbo and Boost Start input path; src/aero_config.cpp and src/aero_turbo_boost.c | AERO_EASY_TURBO=1 ./build/aerogauge_modern |
 | AERO_HEADLESS | Test or investigation; use 1 or any present value | Unset uses the RT64 window path when available | Startup | Skips the window and selects the software renderer; src/aero_rt64.h and src/main.cpp | AERO_HEADLESS=1 ./build/aerogauge_modern |
 

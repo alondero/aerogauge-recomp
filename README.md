@@ -67,6 +67,8 @@ The screen shows the active button prompts.
 
 The **Graphics** page controls resolution, widescreen display, HUD placement,
 presentation rate, anti-aliasing, window mode and size, and texture paths.
+**Force Full LOD** keeps cars at maximum model detail and removes their distance
+cutoff; the Draw distance setting still controls far clipping. It is off by default.
 Press **Apply** to keep graphics changes. Press **Discard** to cancel them.
 
 The **Enhancements** page controls draw distance, full-course geometry, and
