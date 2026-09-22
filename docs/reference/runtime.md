@@ -43,7 +43,7 @@ The current ownership model is:
 
 | Owner | Responsibility |
 | --- | --- |
-| SDL/main thread | Window events, keyboard and first gamepad sampling, window changes, and rumble requests |
+| SDL/main thread | Window events, RecompFrontend input-state updates, window changes, and rumble requests |
 | Game thread(s) | Translated game functions and game-boundary port hooks |
 | VI timing callback | Video timing observations, framebuffer events, and bounded test exit |
 | Graphics thread | Receives graphics tasks and invokes the renderer context |
@@ -51,9 +51,9 @@ The current ownership model is:
 | Runtime save service | EEPROM persistence and save-file coordination |
 | RT64 threads | Display-list interpretation and presentation after the port supplies a context |
 
-The main thread publishes a complete input snapshot. Game code reads that
-snapshot through the runtime callback. SDL calls should remain on the SDL
-thread unless the runtime explicitly documents otherwise.
+The main thread updates RecompFrontend's input state. Game code reads the
+profile mapping through the runtime callback. SDL calls should remain on the
+SDL thread unless the runtime explicitly documents otherwise.
 
 The current save-state hook runs on the game thread at a frame boundary. It
 copies guest RDRAM but cannot copy native register files, C stacks, or work

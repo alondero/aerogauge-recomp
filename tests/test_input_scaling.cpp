@@ -107,6 +107,43 @@ void check_sdl_axis_mapping() {
     assert(half > 0 && half < N64_STICK_MAX);
 }
 
+void check_normalized_sampling() {
+    // RecompFrontend reports normalized axes. The port snapshot stores the
+    // calibrated N64 value before input_get_input normalizes it again.
+    assert(aero_normalized_stick_to_n64(1.0f) == N64_STICK_MAX);
+    assert(aero_normalized_stick_to_n64(-1.0f) == -N64_STICK_MAX);
+    assert(aero_normalized_stick_to_n64(0.5f) == N64_STICK_MAX / 2);
+    assert(aero_normalized_stick_to_n64(0.0f) == 0);
+}
+
+void check_touch_sampling() {
+    // Android publishes the already-calibrated N64 stick value from the Java
+    // overlay. Do not send it through normalized floating-point conversion.
+    assert(aero_touch_axis_to_n64(80) == N64_STICK_MAX);
+    assert(aero_touch_axis_to_n64(-80) == -N64_STICK_MAX);
+    assert(aero_touch_axis_to_n64(200) == N64_STICK_MAX);
+    assert(aero_touch_axis_to_n64(-200) == -N64_STICK_MAX);
+}
+
+void check_normalized_snapshot_sampling() {
+    const uint32_t snapshot = aero_input_pack(
+        0, aero_normalized_stick_to_n64(1.0f), aero_normalized_stick_to_n64(-0.5f));
+    assert(aero_input_snapshot_stick_x(snapshot) == N64_STICK_MAX);
+    assert(aero_input_snapshot_stick_y(snapshot) == -(N64_STICK_MAX / 2));
+}
+
+void check_sample_input_merge() {
+    const AeroSampledInput frontend = aero_sample_input(0x4000, 0.5f, -0.5f, 0x0001, 80, -80);
+    assert(frontend.buttons == 0x4001);
+    assert(frontend.stick_x == N64_STICK_MAX / 2);
+    assert(frontend.stick_y == -(N64_STICK_MAX / 2));
+
+    const AeroSampledInput touch_fallback = aero_sample_input(0, 0.0f, 0.0f, 0x0200, 80, -80);
+    assert(touch_fallback.buttons == 0x0200);
+    assert(touch_fallback.stick_x == N64_STICK_MAX);
+    assert(touch_fallback.stick_y == -N64_STICK_MAX);
+}
+
 void check_snapshot_handoff() {
     const uint32_t snapshot = aero_input_pack((uint16_t)0x9000, (int8_t)-80, (int8_t)53);
     assert(aero_input_snapshot_buttons(snapshot) == 0x9000);
@@ -145,6 +182,10 @@ int main() {
     check_cardinal_round_trip();
     check_full_deflection_clears_the_rom_menu_threshold();
     check_sdl_axis_mapping();
+    check_normalized_sampling();
+    check_touch_sampling();
+    check_normalized_snapshot_sampling();
+    check_sample_input_merge();
     check_snapshot_handoff();
     check_pulse_window();
     std::printf("PASS: host stick mapping round-trips through convert_to_n64_range; "

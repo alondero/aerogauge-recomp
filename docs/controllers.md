@@ -6,8 +6,8 @@ bindings are in the [README](../README.md).
 ## Player behavior
 
 The current port exposes one physical controller as Controller 1. Keyboard
-input uses the same game actions. The settings screen does not add a new
-control-binding page.
+input uses the same game actions. The Controls page edits the single-player
+profiles used by both devices; multiplayer assignment is not exposed.
 
 The gamepad path uses SDL's standard game-controller mapping. A connected
 controller without a rumble motor can still provide input.
@@ -26,19 +26,19 @@ The input path is:
 
 ~~~text
 SDL main thread
-    -> keyboard and Controller 1 polling
-    -> complete input snapshot
+    -> RecompFrontend event pump and input state
+    -> profile mapping through get_n64_input
     -> runtime input callback
     -> translated game on its game thread
 ~~~
 
-SDL owns the window, event pump, and physical devices. The game thread reads
-the published snapshot. A menu event is not proof that the same input reached
-the race.
+SDL owns the window, event pump, and physical devices. RecompFrontend owns the
+profile mapping; the game thread reads its result through the runtime callback.
+A menu event is not proof that the same input reached the race.
 
-While the settings menu has focus, the port clears the gameplay snapshot and
-queues raw SDL events for RecompFrontend. The race is not paused. Closing the
-menu returns input to the game.
+While the settings menu has focus, RecompFrontend disables gameplay mappings and
+the port queues raw SDL events for the frontend. The race is not paused. Closing
+the menu returns input to the game.
 
 ## Controller Pak and EEPROM
 

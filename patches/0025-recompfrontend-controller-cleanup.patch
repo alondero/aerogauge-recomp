@@ -1,0 +1,48 @@
+diff --git a/recompinput/include/recompinput/input_state.h b/recompinput/include/recompinput/input_state.h
+index 1961e29..9b86a59 100644
+--- a/recompinput/include/recompinput/input_state.h
++++ b/recompinput/include/recompinput/input_state.h
+@@ -46,6 +46,8 @@ namespace recompinput {
+     SDL_GameController *get_controller_from_joystick_id(SDL_JoystickID joystick_id);
+     void add_controller_state(SDL_JoystickID joystick_id, SDL_GameController* controller);
+     void remove_controller_state(SDL_JoystickID joystick_id);
++    void collect_detached_controller_states(std::vector<SDL_GameController*>& controllers);
++    void collect_all_controller_states(std::vector<SDL_GameController*>& controllers);
+     void add_rotation_deltas(SDL_JoystickID joystick_id, float rot_x, float rot_y);
+     void add_mouse_deltas(float delta_x, float delta_y);
+     void add_mouse_wheel_delta(int32_t delta);
+diff --git a/recompinput/src/input_state.cpp b/recompinput/src/input_state.cpp
+index 03ed871..6273101 100644
+--- a/recompinput/src/input_state.cpp
++++ b/recompinput/src/input_state.cpp
+@@ -399,6 +399,30 @@ void recompinput::remove_controller_state(SDL_JoystickID joystick_id) {
+     InputState.controller_states.erase(joystick_id);
+ }
+ 
++void recompinput::collect_detached_controller_states(std::vector<SDL_GameController*>& controllers) {
++    std::lock_guard lock{ InputState.controllers_mutex };
++    for (auto it = InputState.controller_states.begin(); it != InputState.controller_states.end();) {
++        SDL_GameController* controller = it->second.controller;
++        if (controller != nullptr && !SDL_GameControllerGetAttached(controller)) {
++            controllers.push_back(controller);
++            it = InputState.controller_states.erase(it);
++        } else {
++            ++it;
++        }
++    }
++}
++
++void recompinput::collect_all_controller_states(std::vector<SDL_GameController*>& controllers) {
++    std::lock_guard lock{ InputState.controllers_mutex };
++    for (const auto& [joystick_id, state] : InputState.controller_states) {
++        (void)joystick_id;
++        if (state.controller != nullptr) {
++            controllers.push_back(state.controller);
++        }
++    }
++    InputState.controller_states.clear();
++}
++
+ void recompinput::add_rotation_deltas(SDL_JoystickID joystick_id, float rot_x, float rot_y) {
+     std::lock_guard lock{ InputState.pending_input_mutex };
+     ControllerState &state = InputState.controller_states[joystick_id];

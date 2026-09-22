@@ -41,7 +41,7 @@ reader. A release user does not run the recompiler. A source developer does.
 | Game code | Recompiled N64 instructions and original data addresses | Generated C/C++ functions | N64Recomp plus ROM evidence |
 | Main memory | Low 8 MiB of guest RDRAM | Host byte buffer | Runtime; hooks may read it through MEM helpers |
 | OS services | libultra calls in the translated code | ultramodern and librecomp implementations | Runtime submodule |
-| Window and input | N64 controller records | SDL window, keyboard, and gamepad snapshot | src/main.cpp |
+| Window and input | N64 controller records | SDL window and RecompFrontend input profiles | src/main.cpp and RecompFrontend |
 | Graphics | N64 VI registers and display lists | RT64 swapchain and graphics API | RT64 plus src/rt64_renderer.cpp |
 | Audio | RSP audio tasks and AI buffers | RSPRecomp output, SDL audio queue | src/aspMain.cpp and src/aero_audio.cpp |
 | Saves | EEPROM and Controller Pak requests | Files in the application save directory | librecomp and src/aero_pak.cpp |
@@ -57,7 +57,7 @@ important ownership rules for this repository are:
 
 | Thread or callback | Owns or does | Must not do |
 | --- | --- | --- |
-| SDL main thread | Pumps SDL events, samples the keyboard and first gamepad, applies window changes, and sends rumble commands | Call SDL from an arbitrary game thread; copy a save-state |
+| SDL main thread | Pumps SDL events, updates RecompFrontend input state, applies window changes, and sends rumble commands | Call SDL from an arbitrary game thread; copy a save-state |
 | Game thread(s) | Run generated game functions and port hooks at their documented game boundaries | Treat native thread contexts as guest memory that can be restored |
 | VI callback | Observes VI timing, framebuffer swaps, scene changes, and test limits | Become a second graphics owner |
 | Graphics thread | Receives a graphics task and sends its display list to RT64 or the headless renderer | Mutate game logic to make a capture look right |
@@ -66,9 +66,9 @@ important ownership rules for this repository are:
 | Save worker | Publishes EEPROM file updates through the runtime | Be used as a general-purpose port-state store |
 | RT64 internal threads | Interpret display lists and present frames | Be given SDL window ownership |
 
-The SDL main thread publishes input as one atomic snapshot. The game thread
-reads that snapshot through the runtime input callback. This keeps SDL calls
-off the game thread.
+The SDL main thread owns event pumping and RecompFrontend's input-state update.
+The game thread reads the resulting profile mapping through the runtime input
+callback. This keeps SDL calls off the game thread.
 
 The game updates at its native cadence. The VI timing callback runs more
 often than the 30 fps gameplay update in the current ROM. RT64 may present

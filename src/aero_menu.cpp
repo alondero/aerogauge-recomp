@@ -88,6 +88,18 @@ void enqueue(std::function<void()> action) {
     actions.push_back(std::move(action));
 }
 
+void toggle() {
+    std::lock_guard lock(frontend_mutex);
+    if (!ready) return;
+    if (captures_input()) {
+        request = Request::Close;
+    } else {
+        refresh_settings();
+        capture.store(true, std::memory_order_release);
+        request = Request::Open;
+    }
+}
+
 void update() {
     std::lock_guard lock(frontend_mutex);
     // Persistence, config snapshots and SDL window changes belong to the main
@@ -125,16 +137,11 @@ bool handle_event(const SDL_Event& event) {
         toggle_fullscreen();
         return true;
     }
-    const bool toggle = (event.type == SDL_KEYDOWN && !event.key.repeat &&
-                         (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_F10 || event.key.keysym.sym == SDLK_AC_BACK)) ||
-                        (event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK);
-    if (toggle && ready) {
-        if (captures_input()) request = Request::Close;
-        else {
-            refresh_settings();
-            capture.store(true, std::memory_order_release);
-            request = Request::Open;
-        }
+    const bool menu_toggle = (event.type == SDL_KEYDOWN && !event.key.repeat &&
+                          (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_F10 || event.key.keysym.sym == SDLK_AC_BACK)) ||
+                         (event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK);
+    if (menu_toggle && ready) {
+        toggle();
         return true;
     }
     if (event.type == SDL_DROPFILE || event.type == SDL_DROPTEXT) {

@@ -1,6 +1,7 @@
 #include "aero_config.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompui/config.h"
+#include "recompinput/profiles.h"
 #include "librecomp/game.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -141,6 +142,14 @@ int main(int argc, char** argv) {
         hand_edit["future_option"] = "preserve me";
         { std::ofstream file(path / "graphics.json"); file << hand_edit; }
         aero::menu::create_settings();
+        bool controls_tab_registered = true;
+        try {
+            // This operates on the pending tab list before the modal is created.
+            recompui::config::set_tab_visible("controls", true);
+        } catch (const std::exception&) {
+            controls_tab_registered = false;
+        }
+        require(controls_tab_registered, "controls tab not registered");
         recompui::config::finalize();
         // Drain the seed echoes: seeding a live value that differs from the
         // schema default enqueues a no-op live-set (the app drains this queue
@@ -170,6 +179,35 @@ int main(int argc, char** argv) {
         require(aero::config::config_write_count() == writes_before_noop_apply,
                 "unchanged Graphics Apply does not dirty graphics.json");
         using namespace ultramodern::renderer;
+        const int keyboard_profile = recompinput::profiles::get_sp_keyboard_profile_index();
+        const int controller_profile = recompinput::profiles::get_sp_controller_profile_index();
+        require(recompinput::profiles::get_input_binding(
+                    keyboard_profile, recompinput::GameInput::A, 0) ==
+                    recompinput::InputField::keyboard(SDL_SCANCODE_X),
+                "keyboard defaults not configured");
+        require(recompinput::profiles::get_input_binding(
+                    controller_profile, recompinput::GameInput::A, 0) ==
+                    recompinput::InputField::controller_digital(SDL_CONTROLLER_BUTTON_A),
+                "controller defaults not configured");
+        const auto keyboard_a = recompinput::profiles::get_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0);
+        recompinput::profiles::set_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0, recompinput::InputField::keyboard(SDL_SCANCODE_Z));
+        require(recompinput::profiles::get_input_binding(
+                    keyboard_profile, recompinput::GameInput::A, 0) ==
+                    recompinput::InputField::keyboard(SDL_SCANCODE_Z),
+                "synchronized binding update not visible");
+        recompinput::profiles::set_input_binding(
+            keyboard_profile, recompinput::GameInput::A, 0, keyboard_a);
+        require(recompinput::get_game_input_description(recompinput::GameInput::A) ==
+                    "Accelerates during a race and confirms menu choices.",
+                "control descriptions not configured");
+        require(recompinput::profiles::save_controls_config(path / "controls.json"),
+                "controls persistence failed");
+        require(std::filesystem::exists(path / "controls.json"),
+                "controls file not created");
+        require(recompinput::players::is_single_player_mode(),
+                "single-player input mode not configured");
         require(std::get<uint32_t>(graphics.get_option_value("ds_option")) == 3, "supersampling import");
         require(std::get<uint32_t>(graphics.get_option_value("msaa_option")) == uint32_t(Antialiasing::MSAA8X), "MSAA import");
         for (const char* key : {"api_option", "hpfb_option", "texture_pack",

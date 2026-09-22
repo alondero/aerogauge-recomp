@@ -10,6 +10,7 @@ namespace aero::menu {
 // Attach before creating the renderer; call update on the SDL/main thread.
 void attach(SDL_Window* window);
 bool handle_event(const SDL_Event& event);
+void toggle();
 bool captures_input();
 void update();
 void apply_window_settings();

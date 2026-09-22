@@ -15,9 +15,10 @@ Open the menu with **Escape**, **F10**, or controller **Back**. It can open whil
 the game is fullscreen. Use the mouse, keyboard, or controller D-pad. The page
 shows the active button prompts.
 
-While the menu has focus, the port clears the gameplay input snapshot and
-queues the raw SDL events for RecompFrontend. The race is not paused. Hotplug
-events continue to be handled. Closing the menu returns input to the game.
+While the menu has focus, RecompFrontend disables gameplay mappings and the
+port queues the raw SDL events for the frontend. The race is not paused.
+Hotplug events continue to be handled. Closing the menu returns input to the
+game.
 
 The shared frontend has these pages:
 
@@ -25,10 +26,12 @@ The shared frontend has these pages:
 | --- | --- | --- |
 | Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
+| Controls | Single-player keyboard and controller bindings for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
 
-F11 and Alt+Enter still switch fullscreen. The menu does not add a new control
-binding page. The shared General page is hidden because this port does not
-implement all of its audio, mouse, gyro, and binding services.
+F11 and Alt+Enter still switch fullscreen. The shared General page is hidden
+because this port does not implement all of its audio, mouse, and gyro services.
+Multiplayer player assignment remains unavailable; the Controls page is always
+the single-player view.
 
 Full-course geometry is experimental. It can cost performance or show visual
 errors. Easy Turbo changes the driving controls and is off by default.
