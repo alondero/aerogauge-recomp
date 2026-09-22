@@ -88,6 +88,18 @@ void enqueue(std::function<void()> action) {
     actions.push_back(std::move(action));
 }
 
+void toggle() {
+    std::lock_guard lock(frontend_mutex);
+    if (!ready) return;
+    if (captures_input()) {
+        request = Request::Close;
+    } else {
+        refresh_settings();
+        capture.store(true, std::memory_order_release);
+        request = Request::Open;
+    }
+}
+
 void update() {
     std::lock_guard lock(frontend_mutex);
     // Persistence, config snapshots and SDL window changes belong to the main

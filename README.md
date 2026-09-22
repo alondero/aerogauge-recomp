@@ -76,9 +76,9 @@ errors. Easy Turbo changes the driving controls; it is off by default.
 With Easy Turbo on, press the R button during a race to start Turbo and use the
 assisted Boost Start.
 
-The settings screen does not change the game's normal control bindings. F11 and
-Alt+Enter switch fullscreen. Graphics API and texture-path changes take effect
-after a restart.
+The **Controls** page edits the single-player keyboard and controller bindings.
+F11 and Alt+Enter switch fullscreen. Graphics API and texture-path changes take
+effect after a restart.
 
 ## Saves and files
 
@@ -101,8 +101,7 @@ that folder before testing a new build.
 ## Known limitations
 
 - The USA release is the only supported ROM.
-- The settings screen has only Graphics and Enhancements pages. It does not
-  provide a new control-binding page.
+- The settings screen does not support multiplayer player assignment.
 - Full-course geometry is experimental.
 - Texture packs and texture dumps are developer features. They are not a
   general mod system.

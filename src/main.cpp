@@ -44,6 +44,9 @@
 #include "aero_menu.h"
 #include "aero_input.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
+#include "recompinput/input_events.h"
+#include "recompinput/input_state.h"
+#include "recompinput/profiles.h"
 #if defined(__ANDROID__)
 #include "android/aero_android.h"
 #endif
@@ -81,6 +84,16 @@ static std::atomic<bool> g_first_vi{false};
 // See state_probe().
 static std::atomic<int>  g_max_state{0};
 static std::atomic<int>  g_swaps{0};
+static SDL_GameController* g_pad = nullptr;
+static std::atomic<bool> g_controller_attached{false};
+static std::atomic<SDL_JoystickID> g_controller_instance{-1};
+static std::atomic<bool> g_window_close_requested{false};
+static std::atomic<bool> g_f10_requested{false};
+static std::atomic<bool> g_fullscreen_requested{false};
+#if defined(__ANDROID__)
+static std::atomic<bool> g_android_back_requested{false};
+static std::atomic<Uint32> g_android_lifecycle_event{0};
+#endif
 
 // AERO_CRASH_TEST: when set, the test thread's 2 s sleep must outlast
 // boot_summary_and_exit() so its deliberate crash fires. Disable the VI cap.
@@ -281,10 +294,12 @@ static void message_box_stub(const char* msg) {
 
 // Input callbacks are defined below in the input section; the window/pump callbacks
 // above use these declarations.
-static void input_sample();
-static void input_open_controller(int joystick_index);
-static void input_close_controller(SDL_JoystickID which);
+static void sample_input();
+static void developer_input_tick();
+static void register_initial_controller(int joystick_index);
+static void refresh_rumble_controller();
 static void rumble_apply();  // rumble-pak sink; defined in the input section below
+static int sdl_event_filter(void*, SDL_Event*);
 
 static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/) {
     // RT64 default presenter: RT64 needs a real window with a graphics surface
@@ -305,9 +320,13 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
                          SDL_GetError());
             return ultramodern::renderer::WindowHandle{};
         }
-        // Open any controller already connected at launch (ADDED events are also queued, but this
-        // covers pads present before the event pump starts).
-        for (int i = 0; i < SDL_NumJoysticks(); i++) input_open_controller(i);
+        // RecompFrontend owns input state after startup. Register pads that were
+        // already present because SDL only reports newly-added devices through
+        // the event queue.
+        for (int i = 0; i < SDL_NumJoysticks() &&
+             !g_controller_attached.load(std::memory_order_acquire); i++)
+            register_initial_controller(i);
+        SDL_SetEventFilter(sdl_event_filter, nullptr);
         uint32_t flags = SDL_WINDOW_RESIZABLE;
 #if defined(__ANDROID__)
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -361,79 +380,62 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
 }
 
 static void update_gfx_stub(void* /*gfx_data*/) {
-    // Pump SDL events on the main thread so the RT64 window stays responsive under WSLg.
+    // Pump SDL events and sample frontend input on the main thread. The
+    // frontend consumes the queue so binding scans and UI navigation see the
+    // same events as gameplay.
     if (aero_rt64::enabled()) {
-        SDL_Event event;
         aero::menu::update();
-        while (SDL_PollEvent(&event)) {
+        recompinput::handle_events();
 #if defined(__ANDROID__)
-            aero::android::handle_event(event);
-#endif
-            // Play mode has no VI cap (see quit_after_vis), so closing the window is the
-            // quit path: reuse the summary+_Exit teardown (game threads are torn down by
-            // process exit; see boot_summary_and_exit's rationale).
-            if (event.type == SDL_QUIT ||
-                (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)) {
-                std::fprintf(stderr, "[probe] window closed; quitting\n");
-                aero::menu::update();
-                boot_summary_and_exit();
-            }
-#if defined(__ANDROID__)
-            else if ((event.type == SDL_CONTROLLERBUTTONDOWN && event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
-                     (event.type == SDL_KEYDOWN && !event.key.repeat && event.key.keysym.sym == SDLK_AC_BACK)) {
-                aero::android::controller_back();
-            }
-#endif
-            else if (aero::menu::handle_event(event)) {
-                continue;
-            }
-            else if (event.type == SDL_CONTROLLERDEVICEADDED) {
-                input_open_controller(event.cdevice.which);   // which = joystick index (ADDED)
-            }
-            else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
-                input_close_controller(event.cdevice.which);  // which = instance id (REMOVED)
-            }
+        if (g_android_back_requested.exchange(false, std::memory_order_acq_rel)) {
+            aero::android::controller_back();
         }
-        // SDL_PollEvent pumped events above (implicitly SDL_GameControllerUpdate); sample the
-        // fresh keyboard+pad state into the atomic snapshot the game thread reads via get_input.
-        input_sample();
-        // Apply the game thread's latest rumble-pak motor state to the physical pad.
+        const Uint32 lifecycle_event = g_android_lifecycle_event.exchange(0, std::memory_order_acq_rel);
+        if (lifecycle_event != 0) {
+            SDL_Event event{};
+            event.type = lifecycle_event;
+            aero::android::handle_event(event);
+        }
+#endif
+        if (g_f10_requested.exchange(false, std::memory_order_acq_rel)) {
+            SDL_Event event{};
+            event.type = SDL_KEYDOWN;
+            event.key.keysym.sym = SDLK_F10;
+            aero::menu::handle_event(event);
+        }
+        if (g_fullscreen_requested.exchange(false, std::memory_order_acq_rel)) {
+            aero::menu::toggle_fullscreen();
+        }
+        if (g_window_close_requested.exchange(false, std::memory_order_acq_rel)) {
+            std::fprintf(stderr, "[probe] window closed; quitting\n");
+            aero::menu::update();
+            boot_summary_and_exit();
+        }
+        recompinput::poll_inputs();
+        sample_input();
+        developer_input_tick();
+        refresh_rumble_controller();
         rumble_apply();
     }
 }
 
 // --- input -------------------------------------------------------------------------------
-// Real SDL2 keyboard + gamepad -> N64 OSContPad, feeding ultramodern's get_input callback
-// (which packs our button mask + float stick into OSContPad via osContGetReadData).
+// RecompFrontend's SDL keyboard/gamepad profiles -> N64 OSContPad, feeding
+// ultramodern's get_input callback through the port's harness overrides.
 //
-// Threading: SDL events pump on the MAIN thread (update_gfx_stub); get_input/poll_input are
-// called on the GAME thread (osContStartReadData). So the main thread SAMPLES SDL state into
-// one atomic snapshot each frame (input_sample()), and the game thread only READS the
-// snapshot -- no cross-thread SDL calls, no lock. src/aero_input.h owns the packed
-// layout and the conversions; tests/test_input_scaling.cpp pins them.
+// Threading: SDL events and RecompFrontend's input state are updated on the
+// main thread (update_gfx_stub); get_input/poll_input are called on the game
+// thread (osContStartReadData). RecompFrontend owns its synchronized controller
+// state; this callback only reads the profile result and applies deterministic
+// test overrides.
 //
 // Port 0 is reported connected UNCONDITIONALLY (input_device_info below) even with no physical
 // pad: the keyboard is a valid input device, and the ROM's object-slot gate (func_8007A8A0)
 // bails to a stuck state 6 unless port 0 reads as present.
 //
 // AERO_MODERN_INPUT (env, hex OS_CONT mask) is OR'd into every read -- the permanent harness
-// knob for headless title-advance scripting (AERO_HEADLESS never inits SDL gamecontroller, so
-// its snapshot stays 0 and get_input returns exactly the env mask, as before this change).
-
-// N64 OSContPad button bits (libultra ultra64/controller.h; standard across all N64 titles).
-enum {
-    N64_A       = 0x8000, N64_B      = 0x4000, N64_Z     = 0x2000, N64_START = 0x1000,
-    N64_DU      = 0x0800, N64_DD     = 0x0400, N64_DL    = 0x0200, N64_DR    = 0x0100,
-    N64_L       = 0x0020, N64_R      = 0x0010,
-    N64_CU      = 0x0008, N64_CD     = 0x0004, N64_CL    = 0x0002, N64_CR    = 0x0001,
-};
-
-// The N64 stick range, the SDL deadzone, and the conversion into the runtime's
-// normalized input space live in src/aero_input.h so a host test can pin them.
-// See tests/test_input_scaling.cpp.
-static constexpr int   PAD_TRIG_THRESH   = 8000;   // analog trigger -> digital
-static constexpr int   PAD_CSTICK_THRESH = 12000;  // right-stick -> C-buttons
-
+// knob for headless title-advance scripting (AERO_HEADLESS never initializes
+// RecompFrontend input, so get_input returns exactly the env mask).
 static uint16_t g_held_buttons = 0;                 // AERO_MODERN_INPUT env override, OR'd in
 static int8_t   g_held_sx = 0, g_held_sy = 0;       // AERO_MODERN_INPUT stick override (harness)
 // AERO_MODERN_INPUT_AFTER=STARTVI:BTNHEX:SX:SY replaces the held harness input at a
@@ -448,8 +450,55 @@ static std::atomic<uint64_t> g_after_input_packed{UINT64_MAX};
 static uint16_t g_pulse_buttons = 0;
 static int      g_pulse_period = 0, g_pulse_duty = 0, g_pulse_start = 0;
 static int      g_pulse_count = 0;   // optional 5th field: stop after N pulses (0 = unlimited)
-static std::atomic<uint32_t> g_input_snapshot{0};   // main-thread sampled, game-thread read
-static SDL_GameController* g_pad = nullptr;          // first opened controller (port 0)
+static std::atomic<uint32_t> g_input_snapshot{0};
+// Events outside RecompFrontend's generic input contract remain port
+// responsibilities. Filtering them before they enter the queue preserves the
+// existing close/F10/Android behavior without a second SDL polling loop.
+static int sdl_event_filter(void*, SDL_Event* event) {
+#if defined(__ANDROID__)
+    if (event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_TERMINATING) {
+        g_android_lifecycle_event.store(event->type, std::memory_order_release);
+    }
+#endif
+    if (event->type == SDL_CONTROLLERDEVICEADDED) {
+        bool expected = false;
+        if (!g_controller_attached.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel)) {
+            return 0;
+        }
+    } else if (event->type == SDL_CONTROLLERDEVICEREMOVED &&
+               g_controller_instance.load(std::memory_order_acquire) == event->cdevice.which) {
+        g_controller_attached.store(false, std::memory_order_release);
+        g_controller_instance.store(-1, std::memory_order_release);
+    }
+    if (event->type == SDL_QUIT ||
+        (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_CLOSE)) {
+        g_window_close_requested.store(true, std::memory_order_release);
+        return 0;
+    }
+#if defined(__ANDROID__)
+    if ((event->type == SDL_CONTROLLERBUTTONDOWN && event->cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
+        (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_AC_BACK)) {
+        g_android_back_requested.store(true, std::memory_order_release);
+        return 0;
+    }
+#endif
+    if (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_F10) {
+        g_f10_requested.store(true, std::memory_order_release);
+        return 0;
+    }
+    if (event->type == SDL_KEYDOWN && !event->key.repeat && event->key.keysym.sym == SDLK_F8 &&
+        !aero::menu::captures_input()) {
+        return 0;
+    }
+    if (event->type == SDL_KEYDOWN && !event->key.repeat &&
+        (event->key.keysym.sym == SDLK_F11 ||
+         (event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT)))) {
+        g_fullscreen_requested.store(true, std::memory_order_release);
+        return 0;
+    }
+    return 1;
+}
 
 // Runtime motor callbacks and race-event feedback share a thread-safe publisher.
 // SDL calls stay on the main thread, which owns controller open/close.
@@ -467,121 +516,112 @@ static void rumble_apply() {
     was_on = on;
 }
 
-// Sample SDL keyboard + gamepad on the MAIN thread and publish the atomic snapshot.
-static void input_sample() {
-    if (aero::menu::captures_input()) {
-        g_input_snapshot.store(0, std::memory_order_relaxed);
-        return;
-    }
-    uint16_t b = 0;
-    int sx = 0, sy = 0;
-
-    if (g_pad != nullptr && SDL_GameControllerGetAttached(g_pad)) {
-        auto down = [](SDL_GameControllerButton g) { return SDL_GameControllerGetButton(g_pad, g) != 0; };
-        // Mapping is tuned to this game's verified menu control scheme: the ROM's
-        // menu driver (func_800030F8) confirms on A|START
-        // (andi 0x9000), cancels on B (0x4000), and moves the cursor with the ANALOG STICK only
-        // -- it tests no C-button or D-pad bit for menu nav. So the face buttons follow Xbox-native
-        // intent: A=confirm, B=cancel. The C-buttons live on X/Y + the right stick, where this
-        // game's menus never look at them, so they can't produce phantom menu input.
-        // NOTE: the *in-race* meaning of each N64 bit (throttle/brake/camera) is NOT yet ROM-verified
-        // -- the race-overlay input consumer hasn't been read. This is a physical Xbox->N64 binding,
-        // not a claim about race behavior; verify the race overlay separately
-        // before changing these bindings.
-        if (down(SDL_CONTROLLER_BUTTON_A))             b |= N64_A;      // confirm (menu)
-        if (down(SDL_CONTROLLER_BUTTON_B))             b |= N64_B;      // cancel (menu)
-        if (down(SDL_CONTROLLER_BUTTON_X))             b |= N64_CL;     // West  -> C-left
-        if (down(SDL_CONTROLLER_BUTTON_Y))             b |= N64_CU;     // North -> C-up
-        if (down(SDL_CONTROLLER_BUTTON_START))         b |= N64_START;  // advance / pause
-        if (down(SDL_CONTROLLER_BUTTON_LEFTSHOULDER))  b |= N64_L;
-        if (down(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) b |= N64_R;
-        if (down(SDL_CONTROLLER_BUTTON_DPAD_UP))        b |= N64_DU;
-        if (down(SDL_CONTROLLER_BUTTON_DPAD_DOWN))      b |= N64_DD;
-        if (down(SDL_CONTROLLER_BUTTON_DPAD_LEFT))      b |= N64_DL;
-        if (down(SDL_CONTROLLER_BUTTON_DPAD_RIGHT))     b |= N64_DR;
-        // N64 Z (default drift) on the left analog trigger (LT); N64 R on the right trigger (RT)
-        // is the dedicated race Turbo button (src/aero_turbo_boost.c), keeping the two apart.
-        if (SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT)  > PAD_TRIG_THRESH) b |= N64_Z;
-        if (SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > PAD_TRIG_THRESH) b |= N64_R;
-        // Remaining C directions: right-stick click -> C-down; the right stick itself -> all four C's.
-        if (down(SDL_CONTROLLER_BUTTON_RIGHTSTICK))     b |= N64_CD;    // right-stick click
-        int rx = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_RIGHTX);
-        int ry = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_RIGHTY);
-        if (rx >  PAD_CSTICK_THRESH) b |= N64_CR;
-        if (rx < -PAD_CSTICK_THRESH) b |= N64_CL;
-        if (ry >  PAD_CSTICK_THRESH) b |= N64_CD;
-        if (ry < -PAD_CSTICK_THRESH) b |= N64_CU;
-        // Left analog stick -> N64 stick (SDL Y is +down, N64 stick_y is +up -> negate).
-        sx =  aero_pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTX));
-        sy = -aero_pad_axis_to_n64(SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTY));
-    }
-
-    // Keyboard fallback (always sampled; OR'd with the pad). Arrow keys steer; racing essentials
-    // on the left hand. Digital keys drive the stick to full deflection only if the pad is idle.
-    if (const Uint8* ks = SDL_GetKeyboardState(nullptr)) {
-        if (ks[SDL_SCANCODE_X])      b |= N64_A;       // accelerate / confirm
-        if (ks[SDL_SCANCODE_C])      b |= N64_B;       // brake / cancel
-        if (ks[SDL_SCANCODE_Z])      b |= N64_Z;
-        if (ks[SDL_SCANCODE_RETURN]) b |= N64_START;
-        if (ks[SDL_SCANCODE_Q])      b |= N64_L;
-        if (ks[SDL_SCANCODE_E])      b |= N64_R;
-        if (ks[SDL_SCANCODE_R])      b |= N64_R;   // dedicated race Turbo button
-        if (ks[SDL_SCANCODE_I])      b |= N64_CU;
-        if (ks[SDL_SCANCODE_K])      b |= N64_CD;
-        if (ks[SDL_SCANCODE_J])      b |= N64_CL;
-        if (ks[SDL_SCANCODE_L])      b |= N64_CR;
-        int kx = 0, ky = 0;
-        if (ks[SDL_SCANCODE_LEFT]  || ks[SDL_SCANCODE_A]) kx -= N64_STICK_MAX;
-        if (ks[SDL_SCANCODE_RIGHT] || ks[SDL_SCANCODE_D]) kx += N64_STICK_MAX;
-        if (ks[SDL_SCANCODE_UP]    || ks[SDL_SCANCODE_W]) ky += N64_STICK_MAX;
-        if (ks[SDL_SCANCODE_DOWN]  || ks[SDL_SCANCODE_S]) ky -= N64_STICK_MAX;
-        if (sx == 0 && kx != 0) sx = kx;               // pad stick wins if deflected
-        if (sy == 0 && ky != 0) sy = ky;
-
-        // Developer warp menu (src/aero_warp.c): F1..F6 warp straight to that track.
-        // Edge-triggered here on the SDL thread; consumed by aero_warp_tick on the game
-        // thread (hooked at the scene-manager tick func_80015FD0).
-        static Uint8 warp_prev[6] = {};
-        for (int i = 0; i < 6; i++) {
-            Uint8 down = ks[SDL_SCANCODE_F1 + i];
-            if (down && !warp_prev[i]) aero_warp_request(i, -1);
-            warp_prev[i] = down;
+// Read the frontend mapping on the SDL thread and publish the same compact
+// snapshot shape used by the headless harness. The runtime callback runs on a
+// game thread and must not call SDL or inspect frontend controller state there.
+static void sample_input() {
+    uint16_t buttons = 0;
+    float normalized_x = 0.0f;
+    float normalized_y = 0.0f;
+    bool custom_toggle_down = false;
+    const Uint8* keyboard = SDL_GetKeyboardState(nullptr);
+    const int keyboard_profile = recompinput::profiles::get_sp_keyboard_profile_index();
+    if (keyboard != nullptr && keyboard_profile >= 0) {
+        for (size_t i = 0; i < recompinput::num_bindings_per_input; i++) {
+            const auto& field = recompinput::profiles::get_input_binding(
+                keyboard_profile, recompinput::GameInput::TOGGLE_MENU, i);
+            if (field.input_type == recompinput::InputType::Keyboard &&
+                field.input_id != SDL_SCANCODE_ESCAPE &&
+                field.input_id != SDL_SCANCODE_F10 &&
+                field.input_id >= 0 && field.input_id < SDL_NUM_SCANCODES &&
+                keyboard[field.input_id]) {
+                custom_toggle_down = true;
+            }
         }
+    }
+    static bool custom_toggle_was_down = false;
+    if (custom_toggle_down && !custom_toggle_was_down) {
+        aero::menu::toggle();
+    }
+    custom_toggle_was_down = custom_toggle_down;
 
-        // Developer save-state: F7 saves the current guest RAM to the state slot,
-        // F8 restores it (F1-F6 are the warp keys above). Edge-detected here (main thread);
-        // the copy runs on the game thread at the next frame boundary (src/aero_savestate.c).
-        static Uint8 f7_prev = 0, f8_prev = 0;
-        Uint8 f7 = ks[SDL_SCANCODE_F7], f8 = ks[SDL_SCANCODE_F8];
-        if (f7 && !f7_prev) aero_savestate_request_save();
-        if (f8 && !f8_prev) aero_savestate_request_load();
-        f7_prev = f7; f8_prev = f8;
+    if (!aero::menu::captures_input()) {
+        recompinput::profiles::get_n64_input(0, &buttons, &normalized_x, &normalized_y);
+#if defined(__ANDROID__)
+        uint16_t touch_buttons = 0;
+        int touch_x = 0, touch_y = 0;
+        aero::android::sample_touch(touch_buttons, touch_x, touch_y);
+        buttons |= touch_buttons;
+        if (normalized_x == 0.0f) {
+            normalized_x = aero_n64_stick_to_normalized(static_cast<int8_t>(touch_x));
+        }
+        if (normalized_y == 0.0f) {
+            normalized_y = aero_n64_stick_to_normalized(static_cast<int8_t>(touch_y));
+        }
+#endif
     }
 
-#if defined(__ANDROID__)
-    aero::android::sample_touch(b, sx, sy);
-#endif
-    uint32_t snap = aero_input_pack(b, (int8_t)sx, (int8_t)sy);
-    g_input_snapshot.store(snap, std::memory_order_relaxed);
+    const float n64_scale = static_cast<float>(N64_STICK_MAX) /
+                            ULTRAMODERN_STICK_INRADIUS;
+    const auto to_n64 = [n64_scale](float value) -> int8_t {
+        const float clamped = std::clamp(value * n64_scale,
+                                         -static_cast<float>(N64_STICK_MAX),
+                                         static_cast<float>(N64_STICK_MAX));
+        return static_cast<int8_t>(clamped);
+    };
+    g_input_snapshot.store(aero_input_pack(buttons, to_n64(normalized_x), to_n64(normalized_y)),
+                           std::memory_order_relaxed);
 }
 
-// Open the first connected game controller into port 0 (idempotent; called at init + on hotplug).
-static void input_open_controller(int joystick_index) {
-    if (g_pad != nullptr) return;
-    if (!SDL_IsGameController(joystick_index)) return;
-    g_pad = SDL_GameControllerOpen(joystick_index);
-    if (g_pad != nullptr)
-        std::fprintf(stderr, "[input] controller connected: %s\n",
-                     SDL_GameControllerName(g_pad) ? SDL_GameControllerName(g_pad) : "(unknown)");
+static void developer_input_tick() {
+    const Uint8* ks = SDL_GetKeyboardState(nullptr);
+    if (ks == nullptr) return;
+
+    // Developer warp menu (src/aero_warp.c): F1..F6 warp straight to that track.
+    static Uint8 warp_prev[6] = {};
+    for (int i = 0; i < 6; i++) {
+        const Uint8 down = ks[SDL_SCANCODE_F1 + i];
+        if (down && !warp_prev[i]) aero_warp_request(i, -1);
+        warp_prev[i] = down;
+    }
+
+    // Developer save-state: F7 saves and F8 restores at the next game frame.
+    static Uint8 f7_prev = 0, f8_prev = 0;
+    const Uint8 f7 = ks[SDL_SCANCODE_F7], f8 = ks[SDL_SCANCODE_F8];
+    if (f7 && !f7_prev) aero_savestate_request_save();
+    if (f8 && !f8_prev) aero_savestate_request_load();
+    f7_prev = f7;
+    f8_prev = f8;
 }
-static void input_close_controller(SDL_JoystickID which) {
-    if (g_pad == nullptr) return;
-    SDL_Joystick* js = SDL_GameControllerGetJoystick(g_pad);
-    if (js != nullptr && SDL_JoystickInstanceID(js) == which) {
-        aero::haptics::stop();
-        SDL_GameControllerClose(g_pad);
-        g_pad = nullptr;
-        std::fprintf(stderr, "[input] controller disconnected\n");
+
+static void register_initial_controller(int joystick_index) {
+    if (!SDL_IsGameController(joystick_index)) return;
+    SDL_GameController* controller = SDL_GameControllerOpen(joystick_index);
+    if (controller == nullptr) return;
+    SDL_Joystick* joystick = SDL_GameControllerGetJoystick(controller);
+    recompinput::add_controller_state(SDL_JoystickInstanceID(joystick), controller);
+    if (g_pad == nullptr) {
+        g_pad = controller;
+        g_controller_instance.store(SDL_JoystickInstanceID(joystick), std::memory_order_release);
+        g_controller_attached.store(true, std::memory_order_release);
+    }
+}
+
+static void refresh_rumble_controller() {
+    if (g_pad != nullptr && SDL_GameControllerGetAttached(g_pad)) return;
+    g_pad = nullptr;
+    g_controller_instance.store(-1, std::memory_order_release);
+    g_controller_attached.store(false, std::memory_order_release);
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (!SDL_IsGameController(i)) continue;
+        const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+        SDL_GameController* controller = SDL_GameControllerFromInstanceID(id);
+        if (controller != nullptr && SDL_GameControllerGetAttached(controller)) {
+            g_pad = controller;
+            g_controller_instance.store(id, std::memory_order_release);
+            g_controller_attached.store(true, std::memory_order_release);
+            return;
+        }
     }
 }
 
@@ -594,7 +634,7 @@ static bool input_get_input(int controller_num, uint16_t* buttons, float* x, flo
         if (y) *y = 0;
         return true;
     }
-    uint32_t snap = g_input_snapshot.load(std::memory_order_relaxed);
+    const uint32_t snapshot = g_input_snapshot.load(std::memory_order_relaxed);
     const int vi = g_vis.load(std::memory_order_relaxed);
     const uint64_t after = g_after_input_packed.load(std::memory_order_relaxed);
     const int after_vi = (int32_t)(after & 0xFFFFFFFFu);
@@ -602,17 +642,15 @@ static bool input_get_input(int controller_num, uint16_t* buttons, float* x, flo
     const uint16_t held_buttons = use_after ? (uint16_t)(after >> 32) : g_held_buttons;
     const int8_t held_sx = use_after ? (int8_t)(after >> 48) : g_held_sx;
     const int8_t held_sy = use_after ? (int8_t)(after >> 56) : g_held_sy;
-    uint16_t b  = aero_input_snapshot_buttons(snap) | held_buttons;  // env mask always OR'd
+    uint16_t b = aero_input_snapshot_buttons(snapshot) | held_buttons;
     if (aero_input_pulse_active(vi, g_pulse_period, g_pulse_duty, g_pulse_start,
                                 g_pulse_count))
         b |= g_pulse_buttons;
-    int8_t   sx = aero_input_snapshot_stick_x(snap);
-    int8_t   sy = aero_input_snapshot_stick_y(snap);
-    if (sx == 0) sx = held_sx;                                  // env stick fills in when live stick idle
+    int8_t sx = aero_input_snapshot_stick_x(snapshot);
+    int8_t sy = aero_input_snapshot_stick_y(snapshot);
+    if (sx == 0) sx = held_sx;
     if (sy == 0) sy = held_sy;
     if (buttons) *buttons = b;
-    // The runtime takes a normalized value, not an N64 one; src/aero_input.h owns that
-    // conversion, including why the divisor is the octagon's inradius rather than 127.
     if (x) *x = aero_n64_stick_to_normalized(sx);
     if (y) *y = aero_n64_stick_to_normalized(sy);
     return true;

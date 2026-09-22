@@ -1,9 +1,12 @@
 # Configuration
 
-The port has two JSON files. It creates them with defaults on the first run.
+The port uses three JSON files. Graphics and enhancement settings are created
+with defaults on the first run; `controls.json` is created when the Controls
+page first saves its bindings.
 
 - graphics.json stores renderer, window, and visual enhancement settings.
 - enhancements.json stores gameplay assists.
+- controls.json stores the single-player keyboard and controller bindings.
 
 The files live in the application directory:
 
@@ -74,6 +77,13 @@ The file currently contains one key:
 
 The assist preserves the game's own boost timer, heat, and overheat logic. It
 only adds the input path described in the [README](../README.md).
+
+## controls.json
+
+The in-game Controls page owns this file. It stores the RecompFrontend input
+profiles and controller associations. Use the page rather than editing this
+file by hand; its schema is owned by the frontend dependency and may change
+with the controls configuration version.
 
 ## Environment variables
 

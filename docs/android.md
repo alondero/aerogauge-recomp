@@ -167,7 +167,7 @@ saves still need a device run before claiming universal hardware coverage.
 
 The Android platform boundary lives in `src/android/`, the launcher/input UI
 in `android/app/`, and dependency changes in patches 0019–0023. The game process
-uses the normal input snapshot and save paths. Java publishes touch samples
+uses the normal RecompFrontend input and save paths. Java publishes touch samples
 atomically; SDL and game threads retain their existing ownership. Backgrounding
 releases touch input and waits at the VI callback boundary; SDL owns audio and
 surface lifecycle. The runtime's process-exit shutdown is confined to a separate
