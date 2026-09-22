@@ -322,6 +322,32 @@ NATIVE_NAMES = {
 # generated aerogauge.us.toml. Keep the source blocks here: edits made only in the
 # generated TOML disappear on the next regeneration.
 PATCH_BLOCKS = """
+# USA car LOD: c.lt.s f24,f20 at 7648 rejects >750 render units;
+# c.lt.s f28,f20 at 76DC selects distant meshes beyond 150. Preserve f20
+# and the independent <10 / dot<0.5 tests. See src/aero_car_lod.c.
+[[patches.hook]]
+func = "func_80007538"
+before_vram = 0x80007648
+text = "extern void aero_car_lod_visibility(uint8_t*, recomp_context*); aero_car_lod_visibility(rdram, ctx);"
+
+# Rebuild gate reads car+1 at A04C. a0 still owns the car pointer here.
+[[patches.hook]]
+func = "func_8005A034"
+before_vram = 0x8005A04C
+text = "extern void aero_car_lod_model(uint8_t*, recomp_context*); aero_car_lod_model(rdram, ctx);"
+
+# Mode 5 independently forces distant meshes (t6) and animated transforms
+# (t9). Override only these comparison operands; never change the race mode.
+[[patches.hook]]
+func = "func_8005A034"
+before_vram = 0x8005A0E0
+text = "extern void aero_car_lod_mesh_mode(uint8_t*, recomp_context*); aero_car_lod_mesh_mode(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8005A2D4"
+before_vram = 0x8005A368
+text = "extern void aero_car_lod_animation_mode(uint8_t*, recomp_context*); aero_car_lod_animation_mode(rdram, ctx);"
+
 # Remove the full-screen scene's overscan scissor after the ROM emits it.
 # s0 = viewport descriptor, v1 = just-written command. The port hook validates
 # both; sub-viewports and custom crops retain their original clipping.

@@ -39,9 +39,11 @@ struct IsolatedConfig {
     std::string previous_graphics_config;
     std::string previous_enhancements_config;
     std::string previous_debounce;
+    std::string previous_force_full_lod;
     bool had_previous_graphics_config = false;
     bool had_previous_enhancements_config = false;
     bool had_previous_debounce = false;
+    bool had_previous_force_full_lod = false;
 
     IsolatedConfig() {
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -72,8 +74,13 @@ struct IsolatedConfig {
             previous_debounce = previous;
             had_previous_debounce = true;
         }
+        if (const char* previous = std::getenv("AERO_FORCE_FULL_LOD")) {
+            previous_force_full_lod = previous;
+            had_previous_force_full_lod = true;
+        }
         set_environment("AERO_GRAPHICS_CONFIG", nullptr);
         set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
+        set_environment("AERO_FORCE_FULL_LOD", nullptr);
         // Park the background writer: the persistence checks below flush
         // explicitly, so a file read can never race the debounce window.
         set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", "60000");
@@ -93,6 +100,8 @@ struct IsolatedConfig {
                         had_previous_enhancements_config ? previous_enhancements_config.c_str() : nullptr);
         set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS",
                         had_previous_debounce ? previous_debounce.c_str() : nullptr);
+        set_environment("AERO_FORCE_FULL_LOD",
+                        had_previous_force_full_lod ? previous_force_full_lod.c_str() : nullptr);
     }
 };
 
@@ -138,11 +147,33 @@ int main(int argc, char** argv) {
         // every frame).
         flush();
         auto& graphics = recompui::config::get_graphics_config();
+        require(!aero::config::force_full_lod(), "full LOD must default off");
+        graphics.set_option_value("force_full_lod", true);
+        flush();
+        require(!aero::config::force_full_lod(), "LOD applied before Apply");
+        graphics.revert_temp_config();
+        require(!std::get<bool>(graphics.get_temp_option_value("force_full_lod")), "LOD discard failed");
+        graphics.set_option_value("force_full_lod", true);
+        graphics.save_config();
+        require(!aero::config::force_full_lod(), "LOD save escaped main-thread queue");
+        flush();
+        require(aero::config::force_full_lod(), "LOD Apply failed");
+        aero::config::flush_config_writes();
+        require(read(path / "graphics.json").at("force_full_lod") == true, "LOD persistence");
+        set_environment("AERO_FORCE_FULL_LOD", "0");
+        require(!aero::config::force_full_lod(), "LOD environment override");
+        set_environment("AERO_FORCE_FULL_LOD", nullptr);
+        const uint64_t writes_before_noop_apply = aero::config::config_write_count();
+        graphics.save_config();
+        flush();
+        aero::config::flush_config_writes();
+        require(aero::config::config_write_count() == writes_before_noop_apply,
+                "unchanged Graphics Apply does not dirty graphics.json");
         using namespace ultramodern::renderer;
         require(std::get<uint32_t>(graphics.get_option_value("ds_option")) == 3, "supersampling import");
         require(std::get<uint32_t>(graphics.get_option_value("msaa_option")) == uint32_t(Antialiasing::MSAA8X), "MSAA import");
         for (const char* key : {"api_option", "hpfb_option", "texture_pack",
-                               "texture_dump", "window_size"}) {
+                               "texture_dump", "window_size", "force_full_lod"}) {
             require(graphics.has_option(key), "missing graphics option");
         }
         // developer_mode moved to the Debug tab, which solely owns it.

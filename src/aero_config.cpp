@@ -63,6 +63,7 @@ std::atomic<float> g_draw_distance_scale{100.0f};
 // visibility window (the large-scale pop-in that the extended far plane exposed;
 // see src/aero_full_track.cpp). Enhancement default-on like the far plane.
 std::atomic_bool g_full_track{true};
+std::atomic_bool g_force_full_lod{false};
 
 // Accelerator-only Boost Start and player-directed Turbo assist. This changes
 // handling, so it is explicitly opt-in and defaults to the original game.
@@ -143,6 +144,7 @@ nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
         {"widescreen_sky_match", g_widescreen_sky_match.load()},
         {"draw_distance_scale", g_draw_distance_scale.load()},
         {"full_track", g_full_track.load()},
+        {"force_full_lod", g_force_full_lod.load()},
     });
     return result;
 }
@@ -168,14 +170,17 @@ void from_json(const nlohmann::json& j, ultramodern::renderer::GraphicsConfig& c
     bool widescreen_sky_match = g_widescreen_sky_match.load();
     float draw_distance_scale = g_draw_distance_scale.load();
     bool full_track = g_full_track.load();
+    bool force_full_lod = g_force_full_lod.load();
     from_or_default(j, "widescreen_fog_match", widescreen_fog_match);
     from_or_default(j, "widescreen_sky_match", widescreen_sky_match);
     from_or_default(j, "draw_distance_scale", draw_distance_scale);
     from_or_default(j, "full_track", full_track);
+    from_or_default(j, "force_full_lod", force_full_lod);
     g_widescreen_fog_match.store(widescreen_fog_match);
     g_widescreen_sky_match.store(widescreen_sky_match);
     g_draw_distance_scale.store(clamp_draw_distance(draw_distance_scale));
     g_full_track.store(full_track);
+    g_force_full_lod.store(force_full_lod);
     g_window_size = clamp_window_size(g_window_size);
 }
 
@@ -600,7 +605,8 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
                              WindowSize size,
                              std::string texture_pack,
                              std::string texture_dump,
-                             bool apply_live) {
+                             bool apply_live,
+                             std::optional<bool> force_full_lod) {
     const auto before = g_current_graphics;
     g_current_graphics = cfg;
 
@@ -636,6 +642,15 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
             g_texture_dump = std::move(texture_dump);
             updates["texture_dump"] = g_texture_dump;
         }
+    }
+
+    // The Graphics page commits all of its options as one transaction. An
+    // environment override is read-only, and an unchanged value must not
+    // create a spurious dirty write when the user presses Apply.
+    if (force_full_lod && std::getenv("AERO_FORCE_FULL_LOD") == nullptr &&
+        g_force_full_lod.load() != *force_full_lod) {
+        g_force_full_lod.store(*force_full_lod);
+        updates["force_full_lod"] = *force_full_lod;
     }
 
     if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
@@ -786,6 +801,22 @@ bool full_track() {
 void set_full_track(bool enabled) {
     g_full_track.store(enabled);
     queue_graphics_updates({{"full_track", enabled}});
+}
+
+bool force_full_lod() {
+    if (const char* v = std::getenv("AERO_FORCE_FULL_LOD")) {
+        return v[0] == '1';
+    }
+    return g_force_full_lod.load();
+}
+
+void set_force_full_lod(bool enabled) {
+    g_force_full_lod.store(enabled);
+    queue_graphics_updates({{"force_full_lod", enabled}});
+}
+
+extern "C" int aero_force_full_lod_enabled(void) {
+    return force_full_lod();
 }
 
 // AERO_EASY_TURBO=1/0 overrides the JSON key for A/B capture runs (0 = original

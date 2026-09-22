@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "ultramodern/config.hpp"
@@ -77,7 +78,8 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
                              WindowSize size,
                              std::string texture_pack,
                              std::string texture_dump,
-                             bool apply_live = true);
+                             bool apply_live = true,
+                             std::optional<bool> force_full_lod = std::nullopt);
 
 // RT64 texture-replacement paths. Both are extra graphics.json string keys
 // (empty = feature off), overridable by env var for headless capture/testing:
@@ -116,6 +118,12 @@ void set_draw_distance_scale(float scale);
 // graphics.json key "full_track" (default true), overridable by AERO_FULL_TRACK=1/0.
 bool full_track();
 void set_full_track(bool enabled);
+
+// Maximum car detail and no car distance rejection (default false).
+// graphics.json: force_full_lod; AERO_FORCE_FULL_LOD=1/0 overrides it.
+bool force_full_lod();
+void set_force_full_lod(bool enabled);
+extern "C" int aero_force_full_lod_enabled(void);
 
 // Player-directed Turbo + Boost Start assist (see src/aero_turbo_boost.c).
 // Persisted in enhancements.json (default false), overridable by AERO_EASY_TURBO=1/0.

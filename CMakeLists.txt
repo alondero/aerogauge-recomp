@@ -150,6 +150,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/aero_scene_scissor.c # remove full-screen world overscan clipping
+        src/aero_car_lod.c      # optional maximum car detail and distance visibility
         src/register_overlays.cpp
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
@@ -301,6 +302,19 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             target_link_libraries(test_scene_scissor PRIVATE m)
         endif()
         add_test(NAME scene_scissor COMMAND test_scene_scissor)
+        set(CAR_LOD_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/car_lod_test_funcs.c)
+        add_custom_command(OUTPUT ${CAR_LOD_TEST_FUNCS}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_car_lod_test.py
+                    ${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncs ${CAR_LOD_TEST_FUNCS}
+            DEPENDS tests/extract_car_lod_test.py ${FUNC_C_SOURCES}
+            VERBATIM)
+        add_executable(test_car_lod tests/test_car_lod.c src/aero_car_lod.c ${CAR_LOD_TEST_FUNCS})
+        target_include_directories(test_car_lod PRIVATE ${N64MR}/N64Recomp/include)
+        target_compile_options(test_car_lod PRIVATE -fno-strict-aliasing)
+        if(NOT WIN32)
+            target_link_libraries(test_car_lod PRIVATE m)
+        endif()
+        add_test(NAME car_lod COMMAND test_car_lod)
         set(PFS_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/pfs_test_funcs.c)
         add_custom_command(OUTPUT ${PFS_TEST_FUNCS}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_pfs_test.py
