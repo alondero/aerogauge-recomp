@@ -35,8 +35,10 @@ changing a subsystem.
 | docs/ | Port maintainers | Stable facts and user or developer guidance |
 | patches/ | Port maintainers | Diffs against pinned dependency commits |
 | scripts/gen_syms_toml.py | Port maintainers and ROM evidence | Generator for the symbol and hook TOML |
+| scripts/japan_rev_a.py | Port maintainers and ROM evidence | Verified Japanese SDK mappings and hook instructions |
 | aerogauge.syms.toml | Generated output | Regenerate and review; do not edit |
 | aerogauge.us.toml | Generated output | Regenerate and review; do not edit |
+| aerogauge.jp.syms.toml and aerogauge.jp.toml | Generated output | Regenerate with --region jp and review; do not edit |
 | aspMain.us.toml | Port maintainers and ROM evidence | Reviewed RSP input |
 | force_stub.txt | Port maintainers | Deliberate translation fallbacks |
 
@@ -45,6 +47,7 @@ changing a subsystem.
 | Path | Generator | Rule |
 | --- | --- | --- |
 | RecompiledFuncs/ | N64Recomp | Never edit; regenerate from the ROM |
+| RecompiledFuncsJP/ | N64Recomp | Never edit; regenerate from Japan Rev A |
 | src/aspMain.cpp | RSPRecomp | Never edit; regenerate from the ROM |
 | build/ | CMake and Ninja | Never commit |
 

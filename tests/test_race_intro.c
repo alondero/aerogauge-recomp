@@ -34,7 +34,7 @@ int main(void) {
     const float aspects[] = {4.0f/3, 16.0f/9, 21.0f/9, 32.0f/9};
     for (unsigned i = 0; i < 4; i++) {
         output_aspect = aspects[i];
-        MEM_W(0, ctx.r4) = start;
+        MEM_W(0, ctx.r4) = (int32_t)start;
         aero_intro_fade_begin(rdram, &ctx);
         gpr rect = MEM_W(0, ctx.r4);
         original_rect(rdram, rect, 0, 8, 319, 223);
@@ -56,7 +56,7 @@ int main(void) {
         assert((uint32_t)MEM_W(0, start) == ((RT64_HOOK_OPCODE << 24) | RT64_HOOK_MAGIC_NUMBER));
         assert((uint32_t)MEM_W(4, start) == ((RT64_HOOK_OP_ENABLE << 28) | RT64_EXTENDED_OPCODE));
 
-        MEM_W(0, ctx.r4) = start;
+        MEM_W(0, ctx.r4) = (int32_t)start;
         aero_intro_ticker_begin(rdram, &ctx);
         original_rect(rdram, rect, 16, 180, 287, 23);
         MEM_W(0x64, ctx.r29) = rect + 32;

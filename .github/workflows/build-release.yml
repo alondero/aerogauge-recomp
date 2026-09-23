@@ -10,7 +10,7 @@ name: Build & Release
 # (ROM_ASSETS_REPO) and is checked out during the build using a fine-grained PAT
 # (ROM_ASSETS_PAT) scoped to read-only access on that one repo. It is never uploaded
 # as part of any artifact or release asset: downstream users must supply their own
-# legally dumped copy of "AeroGauge (USA).z64" to run the released binary.
+# legally dumped USA or Japan Rev A ROM to run the released binary.
 
 on:
   workflow_dispatch:
@@ -356,4 +356,4 @@ jobs:
             --title "${{ inputs.tag }}" \
             $( [ "${{ inputs.prerelease }}" = "true" ] && echo --prerelease ) \
             $( [ "${{ inputs.draft }}" = "true" ] && echo --draft ) \
-            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped copy of \`AeroGauge (USA).z64\` next to the desktop executable, or import it from the Android launcher — this project ships no game data.** See BUILDING.md and docs/android.md."
+            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped USA or Japan Rev A ROM next to the desktop executable, or import it from the Android launcher — this project ships no game data.** See BUILDING.md and docs/android.md."

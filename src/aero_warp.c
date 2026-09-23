@@ -1,4 +1,6 @@
-// Developer race warp for the accepted USA ROM.
+// Developer race warp for the accepted USA and Japan Rev A ROMs.
+// The walkthrough below uses USA addresses; AERO_ADDR pairs select their
+// verified Japanese counterparts.
 //
 // The SDL/main thread publishes a one-shot request. The game thread consumes
 // it at the scene-driver hook and performs the same race-parameter stores
@@ -45,7 +47,6 @@
 // stores): reads RP_GROUP/RP_TRACK, resolves the blob id (0x800974F0 table), copies
 // the id's default-record row (0x80096B50) to 0x8008ED20 and DMAs the course's
 // replay blob to 0x801B5A30. Self-guarded (blob id 0 = no-op).
-void func_80036C54(uint8_t* rdram, recomp_context* ctx);
 
 // Scene manager (all u32).
 #define SCENE_CUR   AERO_ADDR(0x8013FF80u, 0x8013D000u)
