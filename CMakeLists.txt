@@ -189,6 +189,15 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     else()
         add_executable(aerogauge_modern ${AERO_SOURCES})
     endif()
+    if(NOT ANDROID)
+        add_custom_command(TARGET aerogauge_modern POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                $<TARGET_FILE_DIR:aerogauge_modern>/assets
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.bmp
+                $<TARGET_FILE_DIR:aerogauge_modern>/assets/aerogauge-icon.bmp
+            COMMENT "Copying desktop window icon")
+    endif()
     target_compile_options(aerogauge_modern PRIVATE
         -fno-strict-aliasing
         -fms-extensions
@@ -493,6 +502,17 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/app.manifest
             COMMENT "Embedding DPI-awareness manifest (windres)")
         target_sources(aerogauge_modern PRIVATE ${AERO_MANIFEST_OBJ})
+
+        set(AERO_ICON_OBJ ${CMAKE_CURRENT_BINARY_DIR}/aero_icon.rc.o)
+        add_custom_command(OUTPUT ${AERO_ICON_OBJ}
+            COMMAND ${AERO_WINDRES_EXECUTABLE}
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                -O coff -o ${AERO_ICON_OBJ}
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_icon.rc
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_icon.rc
+                    ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.ico
+            COMMENT "Embedding application icon")
+        target_sources(aerogauge_modern PRIVATE ${AERO_ICON_OBJ})
 
         # RecompFrontend resolves the per-user configuration directory.
         target_link_libraries(aerogauge_modern PRIVATE shell32)

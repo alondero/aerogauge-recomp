@@ -311,6 +311,30 @@ static void refresh_rumble_controller();
 static void rumble_apply();  // rumble-pak sink; defined in the input section below
 static int sdl_event_filter(void*, SDL_Event*);
 
+static void set_application_icon(SDL_Window* window) {
+#if !defined(__ANDROID__)
+    char* base_path = SDL_GetBasePath();
+    if (base_path == nullptr) {
+        std::fprintf(stderr, "[rt64] SDL_GetBasePath failed while locating the window icon: %s\n",
+                     SDL_GetError());
+        return;
+    }
+    const std::string icon_path = std::string(base_path) + "assets/aerogauge-icon.bmp";
+    SDL_free(base_path);
+
+    SDL_Surface* icon = SDL_LoadBMP(icon_path.c_str());
+    if (icon == nullptr) {
+        std::fprintf(stderr, "[rt64] Could not load window icon at %s: %s\n",
+                     icon_path.c_str(), SDL_GetError());
+        return;
+    }
+    SDL_SetWindowIcon(window, icon);
+    SDL_FreeSurface(icon);
+#else
+    (void)window;
+#endif
+}
+
 static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/) {
     // RT64 default presenter: RT64 needs a real window with a graphics surface
     // (Linux). Created on the main thread; the SDL event pump runs in update_gfx_stub
@@ -365,6 +389,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
                          SDL_GetError());
             return ultramodern::renderer::WindowHandle{};
         }
+        set_application_icon(window);
         aero::menu::attach(window);
 #if defined(__linux__)
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",

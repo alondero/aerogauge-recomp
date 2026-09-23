@@ -1,6 +1,6 @@
 # AeroGauge: Recompiled
 
-![AeroGauge: Recompiled running on PC](docs/aerogaugerecomp.jfif)
+![AeroGauge: Recompiled fan art by Gary (POOTERMAN)](docs/aerogauge-fan-art.png)
 
 AeroGauge: Recompiled is a PC version of the Nintendo 64 racing game AeroGauge.
 It runs your own copy of the game in a native window.
@@ -112,6 +112,12 @@ that folder before testing a new build.
 
 See the [documentation map](docs/README.md) for developer documentation, test
 commands, and configuration details.
+
+## Special thanks
+
+Thanks to [Gary (POOTERMAN)](https://www.deviantart.com/pooterman) for creating
+and sharing the fan art featured at the top of this README and used for the
+Windows, Linux, and Android application icons.
 
 ## License
 
