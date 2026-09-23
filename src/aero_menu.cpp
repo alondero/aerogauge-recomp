@@ -112,7 +112,6 @@ void toggle() {
 
 void report_mod_load_error(const char* message) {
     std::lock_guard lock(frontend_mutex);
-    if (!ready) return;
     pending_mod_error = message ? message : "The runtime could not load the enabled mod packages.";
     capture.store(true, std::memory_order_release);
     request = Request::Open;

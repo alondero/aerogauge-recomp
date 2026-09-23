@@ -138,6 +138,8 @@ interface.
 
 | Variable | Form | Effect |
 | --- | --- | --- |
+| AERO_AUTOSTART | 1 | Start the game immediately instead of waiting at the desktop launcher |
+| AERO_LAUNCHER | 0 or 1 | 0 starts the game immediately; 1 forces the desktop launcher |
 | AERO_WARP | track or track:craft | One-shot race warp; track is 1-6 and craft is 1-10 |
 | AERO_WARP_AT | vi:track or vi:track:craft | Schedules a warp at a VI count |
 | AERO_STATE_FILE | file path | F7/F8 save-state slot |
@@ -160,6 +162,11 @@ interface.
 | AERO_LIGHTING_SELFTEST | present | Runs the no-ROM software-renderer lighting test |
 | LAMBO_THREAD_TRACE | present | Enables the legacy thread-message trace in local runtime patch 0001 |
 | RT64_MATCH_DEBUG | 1 or 2 | Enables local interpolation-match diagnostics; 2 is more verbose |
+
+Windowed desktop runs also start the game automatically when AERO_MODERN_MAX_VIS,
+AERO_WARP, AERO_WARP_AT, or AERO_CRASH_TEST is set, so finite runs and developer
+harnesses reach the game loop without opening the launcher. AERO_LAUNCHER=1
+forces the launcher when one of those automation variables is present.
 
 ### Renderer and display-list probes
 

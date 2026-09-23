@@ -34,6 +34,9 @@ void register_overlays() {
         const SectionTableEntry& sec = section_table[i];
         aero_crash_register_code_ptrs(sec.ram_addr, sec.size, sec.funcs, sec.num_funcs);
         for (size_t j = 0; j < sec.num_funcs; ++j) {
+            // section_table points into generated vanilla tables. Mutate their
+            // ROM-size metadata intentionally so librecomp rejects mod hooks
+            // for port-patched functions; the copied entry below preserves it.
             auto& function = sec.funcs[j];
             if (std::binary_search(std::begin(protected_mod_functions),
                                    std::end(protected_mod_functions),

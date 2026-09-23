@@ -103,6 +103,19 @@ static void resolve_startup_mode(StartupMode mode) {
     }
     g_startup_mode_changed.notify_all();
 }
+static bool environment_is(const char* name, const char* expected) {
+    const char* value = std::getenv(name);
+    return value != nullptr && std::strcmp(value, expected) == 0;
+}
+static StartupMode desktop_startup_mode() {
+    if (environment_is("AERO_LAUNCHER", "1")) return StartupMode::Launcher;
+    if (environment_is("AERO_AUTOSTART", "1") || environment_is("AERO_LAUNCHER", "0") ||
+        std::getenv("AERO_MODERN_MAX_VIS") != nullptr || std::getenv("AERO_WARP") != nullptr ||
+        std::getenv("AERO_WARP_AT") != nullptr || std::getenv("AERO_CRASH_TEST") != nullptr) {
+        return StartupMode::AutoStart;
+    }
+    return StartupMode::Launcher;
+}
 static std::atomic<bool> g_menu_toggle_requested{false};
 static constexpr size_t kScancodeWords = (SDL_NUM_SCANCODES + 63) / 64;
 static std::mutex g_menu_toggle_bindings_mutex;
@@ -391,7 +404,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
 #elif defined(__linux__)
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",
                      win_size.width, win_size.height);
-        resolve_startup_mode(StartupMode::Launcher);
+        resolve_startup_mode(desktop_startup_mode());
         return ultramodern::renderer::WindowHandle{window};
 #elif defined(_WIN32)
         // Native Windows: ultramodern's WindowHandle is {HWND, thread_id} and
@@ -408,7 +421,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         }
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Win32 HWND -> D3D12)\n",
                      win_size.width, win_size.height);
-        resolve_startup_mode(StartupMode::Launcher);
+        resolve_startup_mode(desktop_startup_mode());
         return ultramodern::renderer::WindowHandle{wmInfo.info.win.window, GetCurrentThreadId()};
 #else
         std::fprintf(stderr, "[rt64] window handle wiring not implemented on this platform\n");
@@ -870,8 +883,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "[probe] ROM validated; rom_hash matches\n");
 
     // The launcher lets players install and configure packages before the
-    // runtime scans their files. Headless and window-fallback runs boot
-    // directly so ROM-backed automation keeps its existing behavior.
+    // runtime scans their files. Windowed automation still starts the game
+    // when a finite VI budget, warp, or crash harness is configured.
     std::thread starter([game_id]() {
         StartupMode mode;
         {
