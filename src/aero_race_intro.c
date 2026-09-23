@@ -1,5 +1,6 @@
 // Race-intro drawing only: preserve the ROM's timers and text metrics.
 #include "recomp.h"
+#include "aero_region.h"
 #include "rt64_extended_gbi.h"
 #include <math.h>
 #include <stdlib.h>
@@ -28,7 +29,7 @@ static void intro_op(uint8_t* rdram, gpr* p, unsigned op, unsigned arg) {
 static float intro_extra(uint8_t* rdram) {
     const char* enabled = getenv("AERO_WS_INTRO");
     if ((enabled && atoi(enabled) == 0) ||
-        MEM_W(0, (gpr)(int32_t)0x8013FF80u) != 5) return 0;
+        MEM_W(0, (gpr)(int32_t)AERO_ADDR(0x8013FF80u, 0x8013D000u)) != 5) return 0;
     uint32_t bits = aero_ws_get_output_aspect_bits();
     float aspect;
     memcpy(&aspect, &bits, sizeof(aspect));
@@ -81,12 +82,16 @@ void aero_intro_ticker_begin(uint8_t* rdram, recomp_context* ctx) {
 }
 void aero_intro_ticker_origin(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
-    ticker_origin = (int32_t)ctx->r6; // max(230 - 3*frame, -500), ROM D860
+    // USA D860: a2 = max(230 - 3*frame, -500).
+    // Japan DDEC: a0 = 230 - min(2*frame, 500). Preserve each ROM's timing.
+    ticker_origin = (int32_t)AERO_ADDR(ctx->r6, ctx->r4);
 }
 void aero_intro_ticker_end(uint8_t* rdram, recomp_context* ctx) {
     if (ticker_extra > 0) intro_close(rdram, ctx->r29 + 0x2c);
     // intro_close rewrote sp+0x2c; the original sw t6, (t8) wants the new value.
-    ctx->r14 = MEM_W(0x2c, ctx->r29);
+    // Rev A E130 stores t5 through t6; USA D968 stores t6 through t8.
+    if (AERO_ADDR(0, 1)) ctx->r13 = MEM_W(0x2c, ctx->r29);
+    else ctx->r14 = MEM_W(0x2c, ctx->r29);
     ticker_extra = 0;
 }
 void aero_intro_banner(uint8_t* rdram, recomp_context* ctx) {

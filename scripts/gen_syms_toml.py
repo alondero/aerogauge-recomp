@@ -29,6 +29,8 @@ Usage:  python scripts/gen_syms_toml.py    (from the repo root; reads the ROM +
 """
 import struct
 import sys
+import argparse
+import hashlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -594,9 +596,46 @@ INDIRECT_STARTS = [
 
 
 def main():
+    global ROM_FILE, OUT_SYMS, OUT_CFG, CODE_ROM_END
+    global LIBULTRA_NAMES, NATIVE_NAMES, BOOT_EXTRA, INDIRECT_STARTS, PATCH_BLOCKS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--region", choices=("us", "jp"), default="us")
+    parser.add_argument("--rom", type=Path)
+    args = parser.parse_args()
+    japanese = args.region == "jp"
+    if japanese:
+        import japan_rev_a as profile
+        ROM_FILE = REPO / "AeroGauge (Japan) (Rev A).z64"
+        OUT_SYMS = REPO / "aerogauge.jp.syms.toml"
+        OUT_CFG = REPO / "aerogauge.jp.toml"
+        CODE_ROM_END = 0x7F250
+        LIBULTRA_NAMES = profile.LIBULTRA_NAMES
+        NATIVE_NAMES = profile.NATIVE_NAMES
+        BOOT_EXTRA = profile.BOOT_EXTRA
+        INDIRECT_STARTS = profile.INDIRECT_STARTS
+        PATCH_BLOCKS = profile.PATCH_BLOCKS
+    if args.rom:
+        ROM_FILE = args.rom
     if not ROM_FILE.exists():
         sys.exit(f"missing ROM: {ROM_FILE}")
     rom = ROM_FILE.read_bytes()
+    if len(rom) != 8 * 1024 * 1024:
+        sys.exit("Expected an 8 MiB AeroGauge ROM")
+    if rom[:4] == bytes.fromhex("37804012"):
+        rom = bytes(x for pair in zip(rom[1::2], rom[::2]) for x in pair)
+    elif rom[:4] == bytes.fromhex("40123780"):
+        rom = bytes(x for word in zip(rom[3::4], rom[2::4], rom[1::4], rom[::4]) for x in word)
+    expected = ("1abff752862450bbfd3cfbb75b1c217daa57f524bee65f14ae436519a615368a" if japanese
+                else "2cc529109b11b00289d87f693a40591ef260d1dc7c1129113966ba6ddb1be4a5")
+    if hashlib.sha256(rom).hexdigest() != expected:
+        sys.exit(f"ROM does not match the supported {args.region} revision")
+    if japanese:
+        for _, address, instruction, _ in profile.HOOKS:
+            if address is not None and struct.unpack_from(">I", rom, vram_to_rom(address))[0] != instruction:
+                sys.exit(f"Japanese hook instruction mismatch at {address:#x}")
+    normalized_path = REPO / ("AeroGauge (Japan) (Rev A).z64" if japanese else "AeroGauge (USA).z64")
+    if not normalized_path.exists() or normalized_path.read_bytes() != rom:
+        normalized_path.write_bytes(rom)
 
     def word(off):
         return struct.unpack(">I", rom[off:off + 4])[0]
@@ -629,7 +668,7 @@ def main():
     for i, v in enumerate(starts):
         end_v = starts[i + 1] if i + 1 < len(starts) else vhi
         size = end_v - v
-        name = LIBULTRA_NAMES.get(v) or NATIVE_NAMES.get(v) or "func_%08X" % v
+        name = LIBULTRA_NAMES.get(v) or NATIVE_NAMES.get(v) or ("jp_func_%08X" if japanese else "func_%08X") % v
         cop0 = False
         branch_out = False
         for off in range(vram_to_rom(v), vram_to_rom(end_v), 4):
@@ -691,12 +730,12 @@ def main():
         f.write("# Whole-ROM recompile config (ROM+syms mode; see the script docstring).\n")
         f.write("# Run (see BUILDING.md step 3):\n")
         f.write("#   cmake --build build --target N64RecompCLI\n")
-        f.write("#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.us.toml\n\n")
+        f.write(f"#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp {OUT_CFG.name}\n\n")
         f.write("[input]\n")
         f.write(f"entrypoint = 0x{ENTRY:08X}\n")
-        f.write('output_func_path = "RecompiledFuncs"\n')
-        f.write('symbols_file_path = "aerogauge.syms.toml"\n')
-        f.write('rom_file_path = "AeroGauge (USA).z64"\n\n')
+        f.write(f'output_func_path = "{"RecompiledFuncsJP" if japanese else "RecompiledFuncs"}"\n')
+        f.write(f'symbols_file_path = "{OUT_SYMS.name}"\n')
+        f.write(f'rom_file_path = "{normalized_path.name}"\n\n')
         f.write("[patches]\n")
         f.write("stubs = [\n")
         for n in stubs:

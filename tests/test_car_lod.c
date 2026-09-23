@@ -6,6 +6,20 @@
 #include <string.h>
 #include "recomp.h"
 
+#ifdef AERO_JAPAN_SUPPORT
+int aero_japan = 1;
+#define func_80007538 jp_func_80007980
+#define func_8005A034 jp_func_8005A38C
+#define func_8005A2D4 jp_func_8005A660
+#define CAR_BASE 0x8013D030u
+#define CAR_STRIDE 0x2094
+#define RENDER_OFFSET(x) ((x) - 12)
+#else
+#define CAR_BASE 0x8013FFB0u
+#define CAR_STRIDE 0x20A0
+#define RENDER_OFFSET(x) (x)
+#endif
+
 void func_80007538(uint8_t*, recomp_context*);
 void func_8005A034(uint8_t*, recomp_context*);
 void func_8005A2D4(uint8_t*, recomp_context*);
@@ -14,9 +28,27 @@ static int enabled;
 int aero_force_full_lod_enabled(void) { return enabled; }
 _Alignas(8) static uint8_t ram[8 * 1024 * 1024];
 static uint8_t* rdram = ram;
-static const gpr car = (gpr)(int32_t)0x8013FFB0u;
+static const gpr car = (gpr)(int32_t)CAR_BASE;
 static const gpr camera = (gpr)(int32_t)0x80500000u;
-static gpr addr(unsigned value) { return (gpr)(int32_t)value; }
+static gpr addr(unsigned value) {
+#ifdef AERO_JAPAN_SUPPORT
+    // Fixture addresses from Rev A's actual car selectors, not port helpers.
+    switch (value) {
+    case 0x8013FC91: value = 0x8013CD11; break;
+    case 0x8013FF90: value = 0x8013D010; break;
+    case 0x8016C450: value = 0x80169470; break;
+    case 0x800951B4: value = 0x80092C94; break;
+    case 0x80098618: value = 0x80095E88; break;
+    case 0x8008F820: value = 0x8008D780; break;
+    case 0x8008F910: value = 0x8008D870; break;
+    case 0x8008F728: value = 0x8008D688; break;
+    case 0x8008F7A4: value = 0x8008D704; break;
+    case 0x80098330: value = 0x80095BA0; break;
+    case 0x800984A4: value = 0x80095D14; break;
+    }
+#endif
+    return (gpr)(int32_t)value;
+}
 static void putf(gpr base, unsigned offset, float value) {
     int32_t bits; memcpy(&bits, &value, 4); MEM_W(offset, base) = bits;
 }
@@ -48,10 +80,15 @@ static void setup(void) {
     MEM_H(0x16, addr(0x800984A4)) = 33;
 }
 static void visibility(float distance, float x, int visible, int low) {
-    putf(car, 0x4D0, x); putf(car, 0x4D8, distance);
+    putf(car, RENDER_OFFSET(0x4D0), x); putf(car, RENDER_OFFSET(0x4D8), distance);
     call(func_80007538, camera);
     assert((MEM_W(0x1B8, camera) != 0) == visible);
+#ifndef AERO_JAPAN_SUPPORT
     assert((MEM_W(0x1E0, camera) != 0) == visible);
+#else
+    // Rev A has only the primary node array; USA also publishes a second.
+    assert(MEM_W(0x1E0, camera) == 0);
+#endif
     assert(((MEM_BU(0, car) & 4) == 0) == visible);
     if (visible) assert((MEM_BU(0, car) & 1) == low);
 }
@@ -59,11 +96,14 @@ static void model(int low) {
     call(func_8005A034, car);
     const unsigned part = MEM_BU(9, car) * 3;
     for (unsigned i = 0; i < 3; ++i)
-        assert(MEM_W(0x544 + i * 0xB8, car) ==
+        assert(MEM_W(RENDER_OFFSET(0x544) + i * 0xB8, car) ==
                MEM_W((part + i) * 4, addr(low ? 0x8008F7A4 : 0x8008F728)));
     assert(!(MEM_BU(1, car) & 0x80)); // rebuild consumed by ROM
-    assert(MEM_W(0x4B0, car) == MEM_W(MEM_BU(9, car) * 24,
+    assert(MEM_W(RENDER_OFFSET(0x4B0), car) == MEM_W(MEM_BU(9, car) * 24,
                addr(low ? 0x8008F910 : 0x8008F820)));
+    // An already-correct mesh must not schedule another rebuild every frame.
+    call(aero_car_lod_model, car);
+    assert(!(MEM_BU(1, car) & 0x80));
 }
 int main(void) {
     setup();
@@ -99,13 +139,13 @@ int main(void) {
     MEM_BU(9, car) = 1;
     putf(car, 0x5C, -20); putf(car, 0x64, -20);
     enabled = 1; model(0); call(func_8005A2D4, car);
-    const int32_t forced_transform = MEM_W(0x59C, car);
+    const int32_t forced_transform = MEM_W(RENDER_OFFSET(0x59C), car);
     enabled = 0; model(1); call(func_8005A2D4, car);
-    assert(MEM_W(0x59C, car) != forced_transform);
+    assert(MEM_W(RENDER_OFFSET(0x59C), car) != forced_transform);
     MEM_B(0, addr(0x8013FF90)) = 4;
     MEM_BU(0, car) &= ~1u;
     model(0); call(func_8005A2D4, car);
-    assert(MEM_W(0x59C, car) == forced_transform);
+    assert(MEM_W(RENDER_OFFSET(0x59C), car) == forced_transform);
 
     // Invalid addresses/indices fail without touching the car's flag bytes.
     enabled = 1;
@@ -120,13 +160,13 @@ int main(void) {
 
     setup();
     MEM_BU(0, addr(0x8013FC91)) = 2;
-    MEM_BU(0x20AB, car) = 1;
+    MEM_BU((CAR_STRIDE + 11), car) = 1;
     MEM_W(4, addr(0x8016C450)) = 11;
-    putf(car, 0x4D8, 100); putf(car + 0x20A0, 0x4D8, 1000);
+    putf(car, RENDER_OFFSET(0x4D8), 100); putf(car + CAR_STRIDE, RENDER_OFFSET(0x4D8), 1000);
     call(func_80007538, camera);
-    assert(MEM_W(0x1B8, camera) == (int32_t)(car + 0x498));
-    assert(MEM_W(0x1BC, camera) == (int32_t)(car + 0x20A0 + 0x498));
-    assert(!(MEM_BU(0x20A0, car) & 5));
+    assert(MEM_W(0x1B8, camera) == (int32_t)(car + RENDER_OFFSET(0x498)));
+    assert(MEM_W(0x1BC, camera) == (int32_t)(car + CAR_STRIDE + RENDER_OFFSET(0x498)));
+    assert(!(MEM_BU(CAR_STRIDE, car) & 5));
     puts("PASS car_lod: ROM visibility, model transitions, mode override and animation");
     return 0;
 }

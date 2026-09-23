@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "recomp.h"
+#include "aero_region.h"
 
 // After a wholesale RDRAM restore, guest RAM's OSThread.context fields hold the SAVE
 // process's native pointers (dangling here). ultramodern re-points them to this process's
@@ -37,9 +38,9 @@ extern void ultramodern_relink_thread_contexts(uint8_t* rdram);
 // the current anchor is listed in docs/reference/rom.md.
 extern uint64_t osGetTime(void);
 
-#define SCENE_CUR   0x8013FF80u       // u32 current scene (see src/aero_warp.c; race = 5)
-#define SCENE_REQ   0x8013FF84u       // u32 requested scene (cur != req => transition in flight)
-#define SCENE_PHASE 0x8013FF88u       // u32 scene-local phase; race walks 1->2 (loading) -> 3 (running)
+#define SCENE_CUR   AERO_ADDR(0x8013FF80u, 0x8013D000u)       // u32 current scene (see src/aero_warp.c; race = 5)
+#define SCENE_REQ   AERO_ADDR(0x8013FF84u, 0x8013D004u)       // u32 requested scene (cur != req => transition in flight)
+#define SCENE_PHASE AERO_ADDR(0x8013FF88u, 0x8013D008u)       // u32 scene-local phase; race walks 1->2 (loading) -> 3 (running)
 #define RDRAM_SNAP_SIZE 0x800000u     // low 8 MiB = guest-addressable N64 RAM
 
 // osGetTime anchors stored in guest RAM (64-bit, high word first). The race
@@ -61,13 +62,13 @@ typedef struct {
     uint32_t version;       // STATE_VERSION
     uint32_t rdram_size;    // RDRAM_SNAP_SIZE
     uint32_t scene;         // captured scene word (informational)
-    uint32_t reserved;
+    uint32_t region;        // 0 = USA (including existing v2 files), 1 = Japan Rev A
     uint64_t os_time;       // save-process osGetTime() at snapshot; anchors rebase on load
 } state_header_t;
 
 // Default file for the F7/F8 slot; AERO_STATE_FILE overrides. AERO_STATE_LOAD names a
 // one-shot boot load (headless agent entry) and is parsed on the first tick.
-#define DEFAULT_STATE_PATH "aero_savestate.astate"
+#define DEFAULT_STATE_PATH AERO_ADDR("aero_savestate.astate", "aero_savestate.jp.rev_a.astate")
 
 // Request bits flipped by the SDL thread, consumed on the game thread.
 #define REQ_SAVE 0x1u
@@ -96,6 +97,7 @@ static void do_save(uint8_t* rdram, const char* path) {
     memset(&h, 0, sizeof(h));
     memcpy(h.magic, STATE_MAGIC, 8);
     h.version    = STATE_VERSION;
+    h.region     = AERO_ADDR(0u, 1u);
     h.rdram_size = RDRAM_SNAP_SIZE;
     h.scene      = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
     h.os_time    = osGetTime();
@@ -141,8 +143,9 @@ static void do_load(uint8_t* rdram, const char* path) {
         fclose(f);
         return;
     }
-    if (h.version != STATE_VERSION || h.rdram_size != RDRAM_SNAP_SIZE) {
-        fprintf(stderr, "[savestate] load: %s version/size mismatch (v%u size %u)\n",
+    if (h.version != STATE_VERSION || h.rdram_size != RDRAM_SNAP_SIZE ||
+        h.region != AERO_ADDR(0u, 1u)) {
+        fprintf(stderr, "[savestate] load: %s version/size/region mismatch (v%u size %u)\n",
                 path, h.version, h.rdram_size);
         fclose(f);
         return;
@@ -171,7 +174,7 @@ static void do_load(uint8_t* rdram, const char* path) {
     {
         uint64_t delta = osGetTime() - h.os_time;
         for (size_t i = 0; i < sizeof(k_ostime_anchors) / sizeof(k_ostime_anchors[0]); i++) {
-            uint32_t hi_addr = k_ostime_anchors[i];
+            uint32_t hi_addr = AERO_ADDR(k_ostime_anchors[i], 0x801694F0u);
             uint64_t t = ((uint64_t)(uint32_t)MEM_W(0, (gpr)(int32_t)hi_addr) << 32) |
                           (uint64_t)(uint32_t)MEM_W(4, (gpr)(int32_t)hi_addr);
             t += delta;

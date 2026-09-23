@@ -11,7 +11,9 @@ number alone does not guarantee compatibility.
    [Releases](https://github.com/alondero/aerogauge-recomp/releases).
 2. Open it and allow installation from that source if Android asks.
 3. Open **AeroGauge Recompiled**, tap **Import ROM**, and choose your own USA
-   cartridge dump. Uncompressed `.z64`, `.v64`, and `.n64` files are accepted.
+   or Japanese Rev A cartridge dump. Uncompressed `.z64`, `.v64`, and `.n64`
+   files are accepted. A locally built USA-only APK identifies that restriction
+   in the launcher and rejects Japanese imports before replacing the installed ROM.
 4. Tap **Play AeroGauge**.
 
 Import checks the complete 8 MiB ROM after normalizing its byte order. Invalid,
@@ -85,7 +87,9 @@ $env:ANDROID_HOME = "$env:LOCALAPPDATA/Android/Sdk"
 python scripts/build_android.py --cmake "$env:ANDROID_HOME/cmake/3.22.1/bin/cmake.exe" --install
 ```
 
-Supply `AeroGauge (USA).z64` at the repository root. The script initializes
+Supply `AeroGauge (USA).z64` at the repository root. Add the Japanese Rev A
+dump (or set `JAPAN_ROM_FILENAME`) to build both regions into the APK, as in
+[Building](../BUILDING.md#recommended-build). The script initializes
 submodules, applies the shared patch series without discarding local changes,
 fetches pinned SDL2/FreeType/AdrenoTools sources, builds host recompilers and
 shader tools, translates the ROM, cross-compiles native ARM64 libraries, and

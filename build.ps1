@@ -223,6 +223,8 @@ try {
     if (-not (Test-Path $n64recomp)) { throw "missing tool: $n64recomp" }
     & $n64recomp aerogauge.us.toml
     if ($LASTEXITCODE -ne 0) { throw 'N64Recomp failed.' }
+    & $python -B scripts/recompile_japan.py $n64recomp
+    if ($LASTEXITCODE -ne 0) { throw 'Japanese N64Recomp failed.' }
     if (Test-Path 'aspMain.us.toml') {
         $rsprecomp = (Resolve-Path 'build/lib/N64ModernRuntime/librecomp/N64Recomp/RSPRecomp.exe').Path
         & $rsprecomp aspMain.us.toml

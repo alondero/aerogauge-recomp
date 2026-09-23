@@ -6,7 +6,8 @@ This page is for developers. Players should download a package from the
 A source build needs:
 
 1. the files in this repository; and
-2. your own dump of the supported USA ROM.
+2. your own dump of the supported USA ROM, plus Japanese Rev A to include
+   Japanese support in the same executable.
 
 The ROM is read while building and again when the program starts. It is never
 committed or included in a release package.
@@ -77,6 +78,29 @@ file with `-RomPath`. The Linux script accepts another filename through
 update that input before using a non-default name for regeneration.
 
 ## Recommended build
+
+To include Japanese support, also place `AeroGauge (Japan) (Rev A).z64`,
+`.n64`, or `.v64` at the repository root. Alternatively set
+`JAPAN_ROM_FILENAME` to its path before running any build script. The generator
+normalizes byte order and validates the complete dump, then generates separate
+`RecompiledFuncsJP/` code. Both ROMs use the same verified audio microcode.
+Without a Japanese ROM, a fresh source checkout builds USA support only;
+existing Japanese generated code requires its ROM for regeneration.
+
+The release workflow requires both dumps in the existing private ROM-assets
+repository, with Japanese Rev A named `AeroGauge (Japan) (Rev A).n64`.
+Both inputs and the normalized Japanese copy are removed before packaging.
+No ROM belongs in this public repository or a release archive.
+
+For manual regeneration after changing Japanese boundaries:
+
+~~~text
+python -B scripts/gen_syms_toml.py --region jp --rom "path/to/Japanese dump.n64"
+build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.jp.toml
+~~~
+
+On Windows add `.exe` to the recompiler command. Reconfigure CMake after
+generation so it includes both code libraries and the Japanese overlay table.
 
 Clone the repository with its submodules, or initialise them in an existing
 checkout:

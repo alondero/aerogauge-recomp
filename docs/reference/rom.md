@@ -1,7 +1,8 @@
 # ROM reference
 
-This page records facts for the one ROM identity that the current build files
-describe. It is a developer reference. Players only need the short ROM note in
+This page records the supported ROM identities and their build boundaries.
+Unless marked Japanese, the address tables below describe USA. It is a
+developer reference. Players only need the short ROM note in
 the [README](../../README.md).
 
 ## Accepted input
@@ -22,6 +23,77 @@ that is the right size but has another dump identity is not enough evidence.
 The hash above is part of the repository's build contract. Before accepting a
 new dump or changing the hash, verify the algorithm and value with a small
 independent tool and record the command and result in the pull request.
+
+## Japanese Rev A
+
+Japanese support runs the Japanese program and loads its own assets. It does
+not replace names or audio in the USA image. Original Japanese Rev 0 is not
+accepted. The regional build inputs and native hook boundaries are maintained
+in [japan_rev_a.py](../../scripts/japan_rev_a.py).
+
+| Fact | Japan Rev A |
+| --- | --- |
+| Normalized build filename | AeroGauge (Japan) (Rev A).z64 |
+| Size | 8 MiB |
+| Header country / revision bytes | 0x4A / 0x01 |
+| XXH3-64 after normalization | d10125abf640077f |
+| SHA-256 after normalization | 1abff752862450bbfd3cfbb75b1c217daa57f524bee65f14ae436519a615368a |
+| CPU entrypoint / boot body | 0x80000400 / 0x80065DB0 |
+| Recompiler section ROM range | 0x1000 through 0x7F24F, end exclusive 0x7F250 |
+| RSP text / data ROM offsets | 0x7F0C0 / 0xC5700 |
+| Game/save identifier | aerogauge.jp.rev_a |
+
+The supplied `.n64` dump had header magic `37804012`: normalize adjacent byte
+pairs, regardless of extension. The generator also accepts big-endian and
+32-bit word-swapped dumps, then validates SHA-256 before writing inputs. The
+runtime independently normalizes and validates XXH3-64. The hash was measured
+with Python `xxhash.xxh3_64_hexdigest(Path(path).read_bytes())` on the normalized
+file, and confirmed by successful runtime selection. USA produces
+`89ea0690f3e22201` with the same command.
+
+The RSP text (0xE1C bytes) is byte-identical to USA, as is the audio dispatch
+data at the offsets above. Both regions therefore use the same generated
+`aspMain` implementation. The CPU functions have separate names and overlay
+tables. Region selection and overlay registration finish before starting game
+threads; only the selected table is registered. SDK replacements are shared.
+
+Important native data boundaries, all guest big-endian values accessed through
+N64Recomp memory helpers on their existing game/frame boundaries:
+
+| Owner / field | USA | Japan Rev A |
+| --- | --- | --- |
+| Scene / requested scene / phase | 0x8013FF80 / 84 / 88 | 0x8013D000 / 04 / 08 |
+| Race parameter block | 0x8013FF90 | 0x8013D010 |
+| Race countdown step | 0x8013FF38 | 0x8013CFB8 |
+| Course pointer / course rows | 0x8013FF44 / 0x8008B290 | 0x8013CFC4 / 0x8008AE40 |
+| HUD display-list cursor holder | 0x8016C508 | 0x80169508 |
+| Race time anchor (u64) | 0x8016C4F0 | 0x801694F0 |
+| P1 buttons (u16) | 0x8010CAB2 | 0x80109BA2 |
+| Car array / record stride | 0x8013FFB0 / 0x20A0 | 0x8013D030 / 0x2094 |
+| Car render node / root mesh offset | +0x498 / +0x544 | +0x48C / +0x538 |
+
+These are not related by one relocation delta. Matching load/store instructions,
+SDK call sites, and the actual generated-function tests establish the mappings.
+Rev A's car visibility routine publishes only the primary camera node array;
+USA additionally publishes a secondary array. Car controls, heat, and turbo
+fields used by the port retain their offsets.
+
+The first six course rows are byte-identical. The Bikini Island visibility
+exceptions retain display-list addresses 0x803903B8 and 0x80396070; their section
+entries occur at ROM 0x2D32F4 and 0x2D347C in Rev A. Node layout and registration
+helpers retain their calling contract, with regional function addresses.
+
+Rev A's intro ticker uses `230 - min(2 * frame, 500)`, while USA uses
+`max(230 - 3 * frame, -500)`. Its origin is in a0 at 0x8000DDEC, and its final
+cursor store uses t5 at 0x8000E130. The drawing hooks adapt those registers
+without changing the Japanese timing. Hook instruction words are checked
+during generation; generated C is never edited.
+
+EEPROM, Controller Pak, imported-ROM cache, and default developer save-state
+paths are separate per region. The v2 save-state header uses the previously
+reserved word as a region tag (USA 0, Japan Rev A 1), preserving old USA files
+and rejecting cross-region loads before touching RDRAM. Graphics and input
+preferences remain shared. See [Testing](../testing.md) for the regional checks.
 
 ## Address conversion
 

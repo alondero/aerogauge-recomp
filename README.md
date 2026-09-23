@@ -30,8 +30,9 @@ AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
 1. Download the archive for your system from
    [GitHub Releases](https://github.com/alondero/aerogauge-recomp/releases).
 2. Extract it to a folder.
-3. Put your legally dumped copy of the USA game in that folder. Name it
-   `AeroGauge (USA).z64`.
+3. Put your legally dumped USA or Japanese Rev A game in that folder. Use
+   `AeroGauge (USA).z64` or `AeroGauge (Japan) (Rev A).z64` (Japanese `.n64`
+   and `.v64` dumps are also detected).
 4. On Windows, start `aerogauge_modern.exe`. On Linux, start
    `./aerogauge_modern`. To add AeroGauge to the Linux applications menu with
    its icon (including native Wayland taskbars), run
@@ -39,7 +40,11 @@ AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
    the extracted folder, run the installer again to refresh the launcher.
 
 The archive contains the program and its support files. It does not contain the
-game ROM. Other ROM releases are not supported.
+game ROM. If both ROMs are present, USA is the default; pass a ROM path as the
+program's first argument to select either version. Japanese Rev A retains its
+original title, vehicle/course/difficulty names, announcer, and game behavior.
+Each region has separate game saves. Other revisions, including the original
+Japanese release, are not supported.
 
 ## Build from source
 
@@ -115,7 +120,7 @@ that folder before testing a new build.
 
 ## Known limitations
 
-- The USA release is the only supported ROM.
+- Supported ROMs are USA and Japan Rev A. Local USA-only builds remain possible.
 - The settings screen does not support multiplayer player assignment.
 - Full-course geometry is experimental.
 - Texture dumping remains a developer feature.

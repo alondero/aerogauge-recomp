@@ -11,9 +11,10 @@
 #include <string.h>
 
 #include "recomp.h"
+#include "aero_region.h"
 
-#define RACE_PHASE 0x8013FF88u
-#define RACE_STEP  0x8013FF38u
+#define RACE_PHASE AERO_ADDR(0x8013FF88u, 0x8013D008u)
+#define RACE_STEP  AERO_ADDR(0x8013FF38u, 0x8013CFB8u)
 
 #define PHASE_SETUP     1u
 #define PHASE_COUNTDOWN 2u
@@ -30,7 +31,7 @@
 // halfword is at +0x2, which func_80009438 returns to the ROM. Reading it here
 // keys Turbo to the physical N64 R button rather than to any semantic control
 // the player may have remapped, so drift is never disturbed.
-#define P1_PAD_BUTTONS 0x8010CAB2u
+#define P1_PAD_BUTTONS AERO_ADDR(0x8010CAB2u, 0x80109BA2u)
 #define N64_R          0x0010u
 #define CAR_SETTINGS    0x20u
 #define CAR_FLAGS       0x34u

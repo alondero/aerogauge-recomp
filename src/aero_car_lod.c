@@ -4,6 +4,7 @@
 // operands change: real distance, near rejection and angular culling survive.
 #include <math.h>
 #include "recomp.h"
+#include "aero_region.h"
 
 int aero_force_full_lod_enabled(void);
 
@@ -28,13 +29,14 @@ void aero_car_lod_model(uint8_t* rdram, recomp_context* ctx) {
     const int enabled = aero_force_full_lod_enabled();
     const unsigned old_flags = MEM_BU(0, car);
     const unsigned flags = enabled ? old_flags & ~1u : old_flags;
-    const int low = !enabled && ((flags & 1) || MEM_B(0, (gpr)(int32_t)0x8013FF90u) == 5);
-    const unsigned part = MEM_BU(craft * 2, (gpr)(int32_t)0x80098618u);
+    const int low = !enabled && ((flags & 1) || MEM_B(0, (gpr)(int32_t)AERO_ADDR(0x8013FF90u, 0x8013D010u)) == 5);
+    const unsigned part = MEM_BU(craft * 2, (gpr)(int32_t)AERO_ADDR(0x80098618u, 0x80095E88u));
     if (part >= 31) return;
-    const gpr table = (gpr)(int32_t)(low ? 0x8008F7A4u : 0x8008F728u);
+    const gpr table = (gpr)(int32_t)(low ? AERO_ADDR(0x8008F7A4u, 0x8008D704u) : AERO_ADDR(0x8008F728u, 0x8008D688u));
     // Comparing the installed root mesh also handles disabling in mode 5 and
     // restoring a save state without a host-side cache of previous LOD state.
-    if (flags != old_flags || MEM_W(0x544, car) != MEM_W(part * 4, table))
+    // Rev A's render-node block begins 12 bytes earlier (0x48C vs 0x498).
+    if (flags != old_flags || MEM_W(AERO_ADDR(0x544, 0x538), car) != MEM_W(part * 4, table))
         MEM_BU(1, car) |= 0x80;
     MEM_BU(0, car) = flags;
 }

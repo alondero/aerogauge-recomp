@@ -39,6 +39,34 @@ request that owns the change.
 
 ## CTest
 
+When Japanese generated code is present, `car_lod_jp`, `scene_scissor_jp`, and
+`controller_pak_rom_filesystem_jp` run the corresponding Japanese routines with
+the same behavioral assertions as USA. `race_intro_jp` checks the Japanese
+ticker's register contract. No game bytes are embedded in these tests.
+
+After building with both ROMs, run the shared-executable regression:
+
+~~~text
+python -B tests/test_rom_regions.py --exe build/aerogauge_modern.exe --usa "AeroGauge (USA).z64" --japan "AeroGauge (Japan) (Rev A).z64" --all-courses
+~~~
+
+On Linux omit `.exe`. This uses temporary portable profiles and tests both
+swapped byte orders, all six course launches with full LOD/Easy Turbo enabled,
+non-silent PCM, separate ROM caches, and cross-region save-state rejection.
+Omit `--all-courses` for a shorter first-course check. These are headless checks;
+they do not establish GPU visuals, physical-controller behavior, or audible
+announcer quality.
+
+The Android host import test accepts both normalized ROM paths:
+
+~~~text
+javac -d build/android-tests android/app/src/main/java/io/github/alondero/aerogaugerecomp/RomImport.java tests/android/RomImportTest.java
+java -cp build/android-tests io.github.alondero.aerogaugerecomp.RomImportTest "AeroGauge (USA).z64" "AeroGauge (Japan) (Rev A).z64"
+~~~
+
+It also checks that a USA-only APK rejects Japanese imports before replacing
+the installed file.
+
 After a successful build, list the tests:
 
 ~~~bash

@@ -105,6 +105,8 @@ def package(ndk, sdk, variant):
     assets = staging / "assets"
     shutil.copytree(native / "assets", assets / "assets")
     shutil.copy2(ROOT / "aerogauge.syms.toml", assets)
+    if (native / "aero_japan_support.txt").read_text().strip() == "1":
+        shutil.copy2(ROOT / "aerogauge.jp.syms.toml", assets)
     shutil.copy2(ROOT / "LICENSE", assets / "LICENSE")
     notices = assets / "licenses"
     notices.mkdir()
@@ -170,6 +172,8 @@ def main():
         run(args.cmake, "--build", host, "--target", "N64RecompCLI", "RSPRecomp", "file_to_c", "-j", args.jobs)
         suffix = ".exe" if os.name == "nt" else ""
         run(host / "bin" / f"N64Recomp{suffix}", "aerogauge.us.toml")
+        run(sys.executable, "-B", ROOT / "scripts/recompile_japan.py",
+            host / "bin" / f"N64Recomp{suffix}")
         run(host / "bin" / f"RSPRecomp{suffix}", "aspMain.us.toml")
         run(args.cmake, "-S", ROOT, "-B", WORK / "native", "-G", "Ninja",
             f"-DCMAKE_TOOLCHAIN_FILE={ndk.as_posix()}/build/cmake/android.toolchain.cmake",

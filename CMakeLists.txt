@@ -145,6 +145,21 @@ if(FUNC_C_SOURCES OR FUNC_CXX_SOURCES)
 endif()
 
 # --- Game executable: added once src/ exists ---------------------------------
+# Japanese code has distinct function names and its own overlay table. SDK and
+# native replacements remain shared. The generated lookup.cpp is USA-only.
+file(GLOB JP_FUNC_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncsJP/*.c)
+set(AERO_HAS_JAPAN 0)
+if(JP_FUNC_SOURCES)
+    set(AERO_HAS_JAPAN 1)
+    add_library(RecompiledFuncsJP STATIC ${JP_FUNC_SOURCES})
+    target_compile_definitions(RecompiledFuncsJP PRIVATE recomp_entrypoint=recomp_entrypoint_jp)
+    target_compile_options(RecompiledFuncsJP PRIVATE -fno-strict-aliasing -ggdb
+        -Wno-unused-variable -Wno-implicit-function-declaration)
+    target_include_directories(RecompiledFuncsJP PRIVATE
+        ${N64MR}/ultramodern/include ${N64MR}/librecomp/include ${N64MR}/N64Recomp/include)
+endif()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/aero_japan_support.txt" "${AERO_HAS_JAPAN}")
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # src/aspMain.cpp is RSPRecomp output (see BUILDING.md step 3); appended
     # only when present so the first configure (which builds the recompilers)
@@ -185,6 +200,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
     endif()
+    if(TARGET RecompiledFuncsJP)
+        list(APPEND AERO_SOURCES src/register_overlays_jp.cpp)
+    endif()
 
     if(ANDROID)
         add_library(aerogauge_modern SHARED ${AERO_SOURCES} src/android/aero_android.cpp)
@@ -205,6 +223,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         VERBATIM)
     target_sources(aerogauge_modern PRIVATE ${AERO_MOD_GUARDS})
     target_include_directories(aerogauge_modern PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    if(TARGET RecompiledFuncsJP)
+        target_compile_definitions(aerogauge_modern PRIVATE AERO_JAPAN_SUPPORT)
+        target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncsJP)
+    endif()
     target_compile_options(aerogauge_modern PRIVATE
         -fno-strict-aliasing
         -fms-extensions
@@ -340,6 +362,25 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             target_link_libraries(test_car_lod PRIVATE m)
         endif()
         add_test(NAME car_lod COMMAND test_car_lod)
+        if(TARGET RecompiledFuncsJP)
+            foreach(boundary IN ITEMS car_lod scene_scissor)
+                set(jp_test_funcs "${CMAKE_CURRENT_BINARY_DIR}/${boundary}_jp_test_funcs.c")
+                add_custom_command(OUTPUT ${jp_test_funcs}
+                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_${boundary}_test.py
+                            ${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncsJP ${jp_test_funcs} jp
+                    DEPENDS tests/extract_${boundary}_test.py ${JP_FUNC_SOURCES}
+                    VERBATIM)
+                add_executable(test_${boundary}_jp tests/test_${boundary}.c
+                    src/aero_${boundary}.c ${jp_test_funcs})
+                target_compile_definitions(test_${boundary}_jp PRIVATE AERO_JAPAN_SUPPORT)
+                target_include_directories(test_${boundary}_jp PRIVATE ${N64MR}/N64Recomp/include)
+                target_compile_options(test_${boundary}_jp PRIVATE -fno-strict-aliasing)
+                if(NOT WIN32)
+                    target_link_libraries(test_${boundary}_jp PRIVATE m)
+                endif()
+                add_test(NAME ${boundary}_jp COMMAND test_${boundary}_jp)
+            endforeach()
+        endif()
         set(PFS_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/pfs_test_funcs.c)
         add_custom_command(OUTPUT ${PFS_TEST_FUNCS}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_pfs_test.py
@@ -351,6 +392,20 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         add_test(NAME controller_pak_rom_filesystem COMMAND test_pfs_rom
                  "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (USA).z64")
         set_tests_properties(controller_pak_rom_filesystem PROPERTIES TIMEOUT 30)
+        if(TARGET RecompiledFuncsJP)
+            set(JP_PFS_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/pfs_jp_test_funcs.c)
+            add_custom_command(OUTPUT ${JP_PFS_TEST_FUNCS}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_pfs_test.py
+                        ${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncsJP ${JP_PFS_TEST_FUNCS} jp
+                DEPENDS tests/extract_pfs_test.py ${JP_FUNC_SOURCES} VERBATIM)
+            add_executable(test_pfs_rom_jp tests/test_pfs_rom.cpp src/aero_pak.cpp ${JP_PFS_TEST_FUNCS})
+            target_compile_definitions(test_pfs_rom_jp PRIVATE AERO_JAPAN_SUPPORT)
+            target_include_directories(test_pfs_rom_jp PRIVATE src ${N64MR}/N64Recomp/include)
+            target_compile_options(test_pfs_rom_jp PRIVATE -fno-strict-aliasing)
+            add_test(NAME controller_pak_rom_filesystem_jp COMMAND test_pfs_rom_jp
+                     "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (Japan) (Rev A).z64")
+            set_tests_properties(controller_pak_rom_filesystem_jp PROPERTIES TIMEOUT 30)
+        endif()
     endif()
     add_executable(test_hud_shift_scale tests/test_hud_shift_scale.c)
     target_include_directories(test_hud_shift_scale PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -371,6 +426,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_race_intro PRIVATE m)
     endif()
     add_test(NAME race_intro COMMAND test_race_intro)
+    add_executable(test_race_intro_jp tests/test_race_intro.c)
+    target_compile_definitions(test_race_intro_jp PRIVATE AERO_JAPAN_SUPPORT)
+    target_include_directories(test_race_intro_jp PRIVATE
+        ${N64MR}/N64Recomp/include ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    if(NOT WIN32)
+        target_link_libraries(test_race_intro_jp PRIVATE m)
+    endif()
+    add_test(NAME race_intro_jp COMMAND test_race_intro_jp)
     add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)

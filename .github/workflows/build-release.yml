@@ -32,6 +32,7 @@ permissions:
 
 env:
   ROM_FILENAME: "AeroGauge (USA).z64"
+  JAPAN_ROM_FILENAME: "AeroGauge (Japan) (Rev A).n64"
 
 jobs:
   build-linux:
@@ -76,6 +77,7 @@ jobs:
       - name: Place ROM
         run: |
           cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
           rm -rf rom-assets
 
       - name: Reset submodules before patching
@@ -105,7 +107,7 @@ jobs:
 
       - name: Remove ROM before packaging
         if: always()
-        run: rm -f "$ROM_FILENAME"
+        run: rm -f "$ROM_FILENAME" "$JAPAN_ROM_FILENAME" "AeroGauge (Japan) (Rev A).z64"
 
       - name: Package
         run: |
@@ -116,7 +118,7 @@ jobs:
           cp scripts/install_linux_launcher.sh dist/
           # Symbol table: probed next to the exe at runtime so field crash
           # dumps show function names, not raw N64 PCs.
-          cp aerogauge.syms.toml dist/
+          cp aerogauge.syms.toml aerogauge.jp.syms.toml dist/
           cd dist && zip -r ../aerogauge-recomp-linux-x64.zip .
 
       - name: Upload artifact
@@ -183,6 +185,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item "rom-assets\$env:ROM_FILENAME" ".\$env:ROM_FILENAME"
+          Copy-Item "rom-assets\$env:JAPAN_ROM_FILENAME" ".\$env:JAPAN_ROM_FILENAME"
           Remove-Item -Recurse -Force rom-assets
 
       - name: Reset submodules before patching
@@ -219,7 +222,7 @@ jobs:
       - name: Remove ROM before packaging
         if: always()
         shell: pwsh
-        run: Remove-Item -Force -ErrorAction SilentlyContinue "$env:ROM_FILENAME"
+        run: Remove-Item -Force -ErrorAction SilentlyContinue "$env:ROM_FILENAME", "$env:JAPAN_ROM_FILENAME", "AeroGauge (Japan) (Rev A).z64"
 
       - name: Package
         shell: pwsh
@@ -238,7 +241,8 @@ jobs:
             'build\assets',
             'build\dxcompiler.dll',
             'build\dxil.dll',
-            'aerogauge.syms.toml'
+            'aerogauge.syms.toml',
+            'aerogauge.jp.syms.toml'
           )
           $missing = $payload | Where-Object { -not (Test-Path $_) }
           if ($missing) { throw "Packaging aborted -- required files missing: $($missing -join ', ')" }
@@ -312,6 +316,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
           python3 scripts/build_android.py --release
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/aerogauge-recomp-android-arm64.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 dist/aerogauge-recomp-android-arm64.apk
@@ -319,7 +324,7 @@ jobs:
       - name: Remove private build inputs
         if: always()
         run: |
-          rm -f "$ROM_FILENAME" "$RUNNER_TEMP/android-release.jks"
+          rm -f "$ROM_FILENAME" "$JAPAN_ROM_FILENAME" "AeroGauge (Japan) (Rev A).z64" "$RUNNER_TEMP/android-release.jks"
           rm -rf rom-assets
 
       - name: Upload APK
