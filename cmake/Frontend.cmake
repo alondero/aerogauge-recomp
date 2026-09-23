@@ -79,7 +79,8 @@ set(AERO_RUNTIME_ASSETS
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets/LatoLatin-Bold.ttf)
 if(NOT ANDROID)
     list(APPEND AERO_RUNTIME_ASSETS
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.bmp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.bmp
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.png)
 endif()
 add_custom_command(TARGET aerogauge_modern POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

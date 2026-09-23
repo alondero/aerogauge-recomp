@@ -113,6 +113,7 @@ jobs:
           mkdir -p dist
           cp build/aerogauge_modern dist/
           cp -r build/assets dist/
+          cp scripts/install_linux_launcher.sh dist/
           # Symbol table: probed next to the exe at runtime so field crash
           # dumps show function names, not raw N64 PCs.
           cp aerogauge.syms.toml dist/

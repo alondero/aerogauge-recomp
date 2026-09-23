@@ -32,7 +32,11 @@ AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
 2. Extract it to a folder.
 3. Put your legally dumped copy of the USA game in that folder. Name it
    `AeroGauge (USA).z64`.
-4. Start `aerogauge_modern.exe` on Windows or `aerogauge_modern` on Linux.
+4. On Windows, start `aerogauge_modern.exe`. On Linux, start
+   `./aerogauge_modern`. To add AeroGauge to the Linux applications menu with
+   its icon (including native Wayland taskbars), run
+   `./install_linux_launcher.sh` once and start it from the menu. If you move
+   the extracted folder, run the installer again to refresh the launcher.
 
 The archive contains the program and its support files. It does not contain the
 game ROM. Other ROM releases are not supported.
