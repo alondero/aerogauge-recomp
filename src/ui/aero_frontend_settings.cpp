@@ -1,6 +1,8 @@
 #include "aero_frontend_settings.h"
 #include "aero_config.h"
 #include "aero_menu.h"
+#include "aero_mods.h"
+#include "recompui/recompui.h"
 #include "recompui/config.h"
 #include "recompinput/input_mapping.h"
 #include "recompinput/players.h"
@@ -149,8 +151,8 @@ void configure_controls() {
     using recompinput::GameInput;
     using recompinput::InputField;
 
-    // AeroGauge is a direct-boot single-player port. Keep the shared frontend
-    // profile model, but do not expose multiplayer assignment for a second
+    // AeroGauge is a single-player port. Keep the shared frontend profile
+    // model, but do not expose multiplayer assignment for a second
     // controller that the port cannot report to the game.
     recompinput::players::set_single_player_mode(true);
 
@@ -289,6 +291,7 @@ void refresh_settings() {
 void create_settings() {
     namespace settings = recompui::config;
     namespace port = aero::config;
+    recompui::update_game_mod_id(aero::mods::game_id);
     configure_controls();
     // The port does not implement all of the shared General page's audio,
     // gyro, and mouse services, so keep that page hidden. Create Graphics
@@ -299,6 +302,7 @@ void create_settings() {
     settings::set_tab_visible("general", false);
     auto& graphics = settings::create_graphics_tab();
     settings::create_controls_tab();
+    settings::create_mods_tab();
     graphics.external_storage = true;
     graphics.set_load_callback(seed_graphics);
     graphics.set_save_callback(save_graphics);

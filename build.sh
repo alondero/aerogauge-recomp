@@ -15,7 +15,7 @@
 #   4. Defensive submodule reset before patching (half-applied patches from a
 #      prior run would otherwise break the next apply with "patch failed: ...").
 #   5. Apply submodule patches (runtime 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018;
-#      frontend 0016, 0024, 0025; RT64 0006, 0008, 0009, 0010, 0011). Linux needs no MinGW/D3D12
+#      frontend 0016, 0024, 0025, 0026; RT64 0006, 0008, 0009, 0010, 0011). Linux needs no MinGW/D3D12
 #      patches. 0007 adds the save-state thread-context
 #      registry; without it, (save-state module, when ported) fails to link with
 #      "undefined reference to ultramodern_relink_thread_contexts".
@@ -130,6 +130,7 @@ PATCHES=(
     "lib/RecompFrontend:0016-recompfrontend-integration.patch"
     "lib/RecompFrontend:0024-recompfrontend-input-synchronization.patch"
     "lib/RecompFrontend:0025-recompfrontend-controller-cleanup.patch"
+    "lib/RecompFrontend:0026-recompfrontend-mod-failure-recovery.patch"
     "lib/rt64:0006-rt64-interp-angular-velocity-matching.patch"
     "lib/rt64:0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
     "lib/rt64:0009-rt64-widescreen-split-subviewport.patch"

@@ -7,6 +7,11 @@ Android game paths. Android presents it from the in-game menu and omits the
 desktop-only window, API, and developer-tool controls. It still needs a
 graphics device.
 
+The desktop app opens to a launcher with Start Game, Settings, and Mods options.
+The Mods manager must scan and install packages before gameplay begins because
+its refresh closes package handles used by the running game. The same Mods tab
+remains available from Settings while playing for runtime-toggleable content.
+
 Headless test runs do not show the menu.
 
 ## Player behavior
@@ -27,6 +32,7 @@ The shared frontend has these pages:
 | Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
 | Controls | Single-player keyboard and controller bindings for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
+| Mods | Install and manage AeroGauge code packages and RT64 texture packs | The runtime stores package enablement and order in `mods.json`; code mods load at game start, while texture packs can be toggled and reordered during play. |
 
 F11 and Alt+Enter still switch fullscreen. The shared General page is hidden
 because this port does not implement all of its audio, mouse, and gyro services.
@@ -35,6 +41,9 @@ the single-player view.
 
 Full-course geometry is experimental. It can cost performance or show visual
 errors. Easy Turbo changes the driving controls and is off by default.
+Mod loading is experimental. If an enabled package fails at startup, the
+settings overlay opens on Mods with the runtime error so the package can be
+disabled before starting the game again from the launcher.
 
 ## Environment overrides
 
