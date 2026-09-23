@@ -83,6 +83,7 @@ nextsessionprompt.md
 *.tmp
 # Session scratch (screenshots, driven-capture configs)
 verify_*/
+/.scratch/
 # Host-compiled unit-test binaries
 tests/*.exe
 

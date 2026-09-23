@@ -48,6 +48,7 @@ will produce the same image.
 | Rectangle alignment and wide scissor commands | RT64 extended GBI plus the HUD hook | Upstream command support; AeroGauge classification is project-specific |
 | Texture packs and dumps | RT64, configured by the port | Upstream-supported path; the port's file settings are local |
 | Full-course geometry registration | aero_full_track.cpp | AeroGauge-specific transitional hook |
+| Racer-shadow depth comparison | aero_shadow_depth.cpp, called from rt64_renderer.cpp | AeroGauge-specific task display-list correction |
 | Widescreen HUD retagging and needle matrix shift | aero_hud_widescreen.c | AeroGauge-specific display-list rewrite |
 | Draw-distance replacement | aero_draw_distance.cpp | AeroGauge-specific native replacement |
 | Full-screen overscan removal | aero_scene_scissor.c | AeroGauge-specific scissor hook |
@@ -59,6 +60,48 @@ not belong in RT64. A general interpolation or viewport defect should be
 reduced to a small renderer test and proposed upstream.
 
 ## AeroGauge display-list behavior
+
+### Racer shadows and tunnel occlusion
+
+In the USA race display list, the course writes depth with render modes
+`C8112078` and `C8110038`. The root list then sets geometry mode `00002000`
+and render mode `00504240` for eight racer-shadow display lists. Those shadow
+settings disable both `G_ZBUFFER` and `Z_CMP`, so their dark quads can blend over
+a tunnel wall even when the racers are behind it. The following car-mesh mode is
+`00552078`; later HUD passes also use `00504240` and must not be changed.
+
+The game-specific correction in [aero_shadow_depth.cpp](../../src/aero_shadow_depth.cpp),
+called from [rt64_renderer.cpp](../../src/rt64_renderer.cpp), recognizes that
+exact shadow setup after a depth-writing course mode and before each car-mesh
+mode. On the graphics thread, before RT64 consumes the current task's root
+list, it enables `G_ZBUFFER`, `Z_CMP`, and `ZMODE_DEC` for each matching shadow
+pass while leaving depth writes off. RT64 maps ordinary `Z_CMP` to a strict `LESS` test;
+the projected racer shadows lie on the course surface and can have equal depth,
+so that test can flicker as depth values round. `ZMODE_DEC` uses RT64's per-pixel
+coplanar-depth tolerance for the shadows while still rejecting tunnel-wall depth.
+The scanner reads guest 32-bit display-list words through N64Recomp's memory
+helper, starting at the 8-byte-aligned task root and never reading the prefix
+before it. Every access stays within 8 MiB RDRAM; the scan stops at `G_ENDDL`
+or a 200,000-command safety cap. The runtime submits one root display list per
+graphics task; a root may still contain multiple viewport/course/shadow/car
+sequences, so the scanner resets its course gate after each car mode and keeps
+looking until the list end. A later HUD command reusing `00504240` has no fresh
+course mode and remains untouched. The same scanner is host-testable with
+synthetic RDRAM. It leaves unexpected patterns intact. A future named
+game-source patch to the shadow-list builder should replace this RDRAM bridge.
+
+The diagnostic capture is an unpaused replay of a saved Bikini Island tunnel
+race: the original player renderer shows moving dark flecks on the lower-right
+wall; the decal-corrected player renderer hides them and retains the visible
+player shadow on the tunnel floor. A second replay accelerates from an
+eight-racer Canyon Rush start. With strict depth comparison, the player's
+shadow disappears and returns on the flat starting straight; with decal
+comparison it stays visible over the road and starting-grid markings. This
+comparison uses Windows D3D12, 8x MSAA, and the original game frame rate, so
+the dropout does not depend on interpolated frames. The corrected road shadow
+also remains visible with refresh rate set to Display. These captures cover the
+reported surface-depth failure and tunnel occlusion, not every course or GPU
+backend.
 
 ### VI colour correction
 

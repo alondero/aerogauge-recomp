@@ -34,6 +34,7 @@
 #include "aero_config.h"
 #include "aero_hud_widescreen.h"
 #include "aero_paths.h"
+#include "aero_shadow_depth.h"
 #if defined(__ANDROID__)
 #include "android/aero_android.h"
 #endif
@@ -361,6 +362,7 @@ public:
                          (uint32_t)task->t.data_ptr);
         }
         app->state->rsp->reset();
+        aero_patch_racer_shadow_depth(app->core.RDRAM, 0x00800000u, task);
         // AERO_DL_SKIP_DL=<hex,hex,...>: track-artefact-diagnosis Phase 3. At send_dl
         // time, walk the frame DL and rewrite any G_DL command whose target is in the
         // skip set to G_SPNOOP (0x00000000). A clean re-render with the DL skipped is

@@ -60,6 +60,7 @@ The current CMake file registers these tests:
 | input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
 | eeprom_exit_flush | Runtime host | Built N64ModernRuntime |
 | rsp_task_submission | Runtime host | Patched N64ModernRuntime; no ROM or audio device |
+| racer_shadow_depth | Host | Synthetic RDRAM and runtime OSTask type; no ROM or renderer |
 | hud_shift_scale | Host | No ROM |
 | hud_messages | Host | RT64 headers from the initialized submodule |
 | race_intro | Host | RT64 headers from the initialized submodule |
@@ -91,6 +92,11 @@ mode-5 animated-transform override. `frontend_settings` checks the Graphics
 option's Apply/Discard, persistence and environment override. For visual
 acceptance, compare moving cars around the original LOD/cutoff distances in
 RT64, including split screen, and measure performance with all racers visible.
+
+`racer_shadow_depth` uses a synthetic task display list to verify the exact
+shadow setup match, fail-closed behavior, task-relative bounds, repeated
+course/shadow passes in one root list, and preservation of a HUD pass that
+reuses the shadow render mode.
 
 The CTest wrappers use these skip behaviors:
 
