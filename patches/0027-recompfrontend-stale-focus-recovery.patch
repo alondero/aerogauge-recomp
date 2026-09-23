@@ -1,0 +1,20 @@
+diff --git a/recompui/src/elements/ui_document.cpp b/recompui/src/elements/ui_document.cpp
+index a60c585..723b809 100644
+--- a/recompui/src/elements/ui_document.cpp
++++ b/recompui/src/elements/ui_document.cpp
+@@ -198,7 +198,14 @@ namespace recompui {
+ 
+             int cur_element_index = get_element_index(this_element, nav_parent->nav_children);
+             if (cur_element_index == -1) {
+-                throw std::runtime_error("This should never ever ever happen. Element not found in its parent's nav children.");
++                // Focus can outlive a dynamic visibility or content change. Re-anchor
++                // navigation to the nearest item that is still present, then keep
++                // walking up through empty containers if this one has no candidates.
++                Element *closest = get_closest_element(this_element, nav_parent->nav_children);
++                if (closest != nullptr) {
++                    return unwind_nav_in_direction(closest);
++                }
++                return unwind_nav_in_direction(nav_parent);
+             }
+ 
+             // Process grid navigation if retained_grid_index is valid and grid navs are different.

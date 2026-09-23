@@ -64,8 +64,8 @@ void initialize(plume::RenderInterface* interface, plume::RenderDevice* device) 
 void render(plume::RenderCommandList* commands, plume::RenderFramebuffer* framebuffer) {
     std::lock_guard lock(frontend_mutex);
     if (request == Request::Open) {
-        recompui::config::open();
         recompui::config::set_tab(pending_mod_error.empty() ? "graphics" : "mods");
+        recompui::config::open();
     } else if (request == Request::Close) {
         // Preserve the Apply/Discard prompt when a confirmation-backed page is dirty.
         if (recompui::config::close()) recompui::hide_all_contexts();
