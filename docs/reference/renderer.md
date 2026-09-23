@@ -73,8 +73,12 @@ a tunnel wall even when the racers are behind it. The following car-mesh mode is
 The game-specific correction in [rt64_renderer.cpp](../../src/rt64_renderer.cpp)
 recognizes that exact shadow setup between the depth-writing course and car
 meshes. On the graphics thread, before RT64 consumes the current frame's root
-list, it enables `G_ZBUFFER` and `Z_CMP` for the shadow pass while leaving depth
-writes off. The scanner reads host-order 32-bit display-list words from the
+list, it enables `G_ZBUFFER`, `Z_CMP`, and `ZMODE_DEC` for the shadow pass while
+leaving depth writes off. RT64 maps ordinary `Z_CMP` to a strict `LESS` test;
+the projected racer shadows lie on the course surface and can have equal depth,
+so that test can flicker as depth values round. `ZMODE_DEC` uses RT64's per-pixel
+coplanar-depth tolerance for the shadows while still rejecting tunnel-wall depth.
+The scanner reads host-order 32-bit display-list words from the
 8-byte-aligned task address in 8 MiB RDRAM. It stops at `G_ENDDL` or the car
 mode and leaves the list intact if the expected commands are absent. A future
 named game-source patch to the shadow-list builder should replace this RDRAM
@@ -82,10 +86,16 @@ bridge.
 
 The diagnostic capture is an unpaused replay of a saved Bikini Island tunnel
 race: the original player renderer shows moving dark flecks on the lower-right
-wall; the corrected player renderer hides them. With the course display list
-temporarily omitted, the racer shadows still draw, confirming that the pass
-was not disabled. A visible racer-shadow-on-road view would further check how
-the depth comparison behaves on the course surface.
+wall; the decal-corrected player renderer hides them and retains the visible
+player shadow on the tunnel floor. A second replay accelerates from an
+eight-racer Canyon Rush start. With strict depth comparison, the player's
+shadow disappears and returns on the flat starting straight; with decal
+comparison it stays visible over the road and starting-grid markings. This
+comparison uses Windows D3D12, 8x MSAA, and the original game frame rate, so
+the dropout does not depend on interpolated frames. The corrected road shadow
+also remains visible with refresh rate set to Display. These captures cover the
+reported surface-depth failure and tunnel occlusion, not every course or GPU
+backend.
 
 ### VI colour correction
 

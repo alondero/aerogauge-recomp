@@ -91,8 +91,12 @@ void enable_racer_shadow_depth(uint8_t* rdram, const OSTask* task) {
         uint32_t* other_hi = (uint32_t*)(rdram + phys - 8);
         if (geom[0] != 0xB7000000u || geom[1] != 0x00002000u ||
             other_hi[0] != 0xBA001402u || other_hi[1] != 0) continue;
-        geom[1] |= 0x00000001u;                  // G_ZBUFFER
-        *(uint32_t*)(rdram + phys + 4) |= 0x10u; // Z_CMP; keep Z_UPD off
+        geom[1] |= 0x00000001u; // G_ZBUFFER
+        // Projected racer shadows are coplanar with the course. RT64 maps an
+        // ordinary Z_CMP to strict LESS, which can flicker on equal-depth road
+        // pixels. ZMODE_DEC uses RT64's coplanar-depth tolerance instead.
+        // A nearer wall still fails that depth match; no depth writes are needed.
+        *(uint32_t*)(rdram + phys + 4) |= 0xC10u; // ZMODE_DEC + Z_CMP; keep Z_UPD off
         return;
     }
 }
