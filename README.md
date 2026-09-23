@@ -1,6 +1,6 @@
 # AeroGauge: Recompiled
 
-![AeroGauge: Recompiled running on PC](docs/aerogaugerecomp.jfif)
+![AeroGauge: Recompiled fan art by Gary (POOTERMAN)](docs/aerogauge-fan-art.png)
 
 AeroGauge: Recompiled is a PC version of the Nintendo 64 racing game AeroGauge.
 It runs your own copy of the game in a native window.
@@ -32,7 +32,11 @@ AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
 2. Extract it to a folder.
 3. Put your legally dumped copy of the USA game in that folder. Name it
    `AeroGauge (USA).z64`.
-4. Start `aerogauge_modern.exe` on Windows or `aerogauge_modern` on Linux.
+4. On Windows, start `aerogauge_modern.exe`. On Linux, start
+   `./aerogauge_modern`. To add AeroGauge to the Linux applications menu with
+   its icon (including native Wayland taskbars), run
+   `./install_linux_launcher.sh` once and start it from the menu. If you move
+   the extracted folder, run the installer again to refresh the launcher.
 
 The archive contains the program and its support files. It does not contain the
 game ROM. Other ROM releases are not supported.
@@ -112,6 +116,12 @@ that folder before testing a new build.
 
 See the [documentation map](docs/README.md) for developer documentation, test
 commands, and configuration details.
+
+## Special thanks
+
+Thanks to [Gary (POOTERMAN)](https://www.deviantart.com/pooterman) for creating
+and sharing the fan art featured at the top of this README and used for the
+Windows, Linux, and Android application icons.
 
 ## License
 

@@ -72,13 +72,21 @@ add_test(NAME frontend_settings COMMAND test_frontend_settings)
 endif()
 
 # Release and source-build output needs the frontend assets and RmlUi fonts
-# beside the executable. Windows also needs the FreeType runtime DLL below.
+# beside the executable. Desktop builds also stage the window icon here.
+# Windows needs the FreeType runtime DLL below.
+set(AERO_RUNTIME_ASSETS
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets/LatoLatin-Regular.ttf
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets/LatoLatin-Bold.ttf)
+if(NOT ANDROID)
+    list(APPEND AERO_RUNTIME_ASSETS
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.bmp
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.png)
+endif()
 add_custom_command(TARGET aerogauge_modern POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/frontend $<TARGET_FILE_DIR:aerogauge_modern>/assets
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets/LatoLatin-Regular.ttf
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets/LatoLatin-Bold.ttf
+        ${AERO_RUNTIME_ASSETS}
         $<TARGET_FILE_DIR:aerogauge_modern>/assets)
 if(WIN32)
     add_custom_command(TARGET aerogauge_modern POST_BUILD
