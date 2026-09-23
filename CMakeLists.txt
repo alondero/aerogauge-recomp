@@ -165,6 +165,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                     # routed via `[patches] ignored` in aerogauge.us.toml
         src/aero_full_track.cpp     # native course-geometry registrars: full-track rendering
                                     # (large-scale pop-in fix); same `ignored` routing
+        src/aero_shadow_depth.cpp   # guarded racer-shadow depth-mode patch at RT64 task boundary
         src/aero_warp.c        # developer warp menu: F1-F6 / AERO_WARP race warp;
                                # tick hooked at func_80015FD0 via [[patches.hook]]
         src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning: whole-frame texrect
@@ -270,6 +271,13 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     set_property(TARGET test_rsp_submission PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
     add_test(NAME rsp_task_submission COMMAND test_rsp_submission)
     set_tests_properties(rsp_task_submission PROPERTIES TIMEOUT 10)
+
+    # Pure host test for the guarded RT64 task-display-list shadow patch.
+    add_executable(test_shadow_depth tests/test_shadow_depth.cpp src/aero_shadow_depth.cpp)
+    target_include_directories(test_shadow_depth PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${N64MR}/ultramodern/include)
+    add_test(NAME racer_shadow_depth COMMAND test_shadow_depth)
 
     if(TARGET RecompiledFuncs)
         # This extractor is part of the required regression suite. A missing or

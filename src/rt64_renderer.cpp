@@ -34,6 +34,7 @@
 #include "aero_config.h"
 #include "aero_hud_widescreen.h"
 #include "aero_paths.h"
+#include "aero_shadow_depth.h"
 #if defined(__ANDROID__)
 #include "android/aero_android.h"
 #endif
@@ -57,49 +58,6 @@ uint32_t DPC_PIPEBUSY_REG = 0;
 uint32_t DPC_TMEM_REG = 0;
 
 void dummy_check_interrupts() {}
-
-// The USA race DL draws eight craft shadow quads between the depth-writing
-// course and the car meshes. Its shadow setup disables both G_ZBUFFER and
-// Z_CMP, so shadows behind tunnel walls blend over those walls. On the graphics
-// thread, rewrite only this setup in the game's per-frame root DL before RT64
-// reads it. RDRAM holds host-order 32-bit DL words at an 8-byte-aligned task
-// address; the scan stays within 8 MiB and fails closed if the pattern changes.
-// A named game-source patch can replace this bridge once the shadow DL builder
-// is identified. Later 2D HUD passes use the same mode and must stay untouched.
-void enable_racer_shadow_depth(uint8_t* rdram, const OSTask* task) {
-    if (rdram == nullptr || task == nullptr) return;
-    uint32_t phys = (uint32_t)task->t.data_ptr & 0x3FFFFFFu;
-    if ((phys & 7u) != 0) return;
-    constexpr uint32_t kRdramBytes = 0x00800000u;
-    constexpr uint32_t kSetRenderMode = 0xB900031Du;
-    constexpr uint32_t kCourseOpaque = 0xC8112078u;
-    constexpr uint32_t kCourseEdge = 0xC8110038u;
-    constexpr uint32_t kCarMode = 0x00552078u;
-    constexpr uint32_t kShadowMode = 0x00504240u;
-    bool saw_depth_course = false;
-    for (uint32_t cmd = 0; cmd < 200000 && phys + 8 <= kRdramBytes; ++cmd, phys += 8) {
-        uint32_t w0 = *(const uint32_t*)(rdram + phys);
-        uint32_t w1 = *(const uint32_t*)(rdram + phys + 4);
-        if ((w0 >> 24) == 0xB8u) return; // G_ENDDL
-        if (w0 != kSetRenderMode) continue;
-        if (w1 == kCourseOpaque || w1 == kCourseEdge) saw_depth_course = true;
-        if (w1 == kCarMode) return; // later 2D passes are not shadows
-        if (!saw_depth_course || w1 != kShadowMode || phys < 16) continue;
-
-        // Match the race shadow setup exactly before changing guest RDRAM.
-        uint32_t* geom = (uint32_t*)(rdram + phys - 16);
-        uint32_t* other_hi = (uint32_t*)(rdram + phys - 8);
-        if (geom[0] != 0xB7000000u || geom[1] != 0x00002000u ||
-            other_hi[0] != 0xBA001402u || other_hi[1] != 0) continue;
-        geom[1] |= 0x00000001u; // G_ZBUFFER
-        // Projected racer shadows are coplanar with the course. RT64 maps an
-        // ordinary Z_CMP to strict LESS, which can flicker on equal-depth road
-        // pixels. ZMODE_DEC uses RT64's coplanar-depth tolerance instead.
-        // A nearer wall still fails that depth match; no depth writes are needed.
-        *(uint32_t*)(rdram + phys + 4) |= 0xC10u; // ZMODE_DEC + Z_CMP; keep Z_UPD off
-        return;
-    }
-}
 
 // Live swapchain handle for the widescreen HUD rect-aspect helper. The
 // game-space 2D HUD geometry shifts key off the effective rect-pin aspect, which depends
@@ -404,7 +362,7 @@ public:
                          (uint32_t)task->t.data_ptr);
         }
         app->state->rsp->reset();
-        enable_racer_shadow_depth(app->core.RDRAM, task);
+        aero_patch_racer_shadow_depth(app->core.RDRAM, 0x00800000u, task);
         // AERO_DL_SKIP_DL=<hex,hex,...>: track-artefact-diagnosis Phase 3. At send_dl
         // time, walk the frame DL and rewrite any G_DL command whose target is in the
         // skip set to G_SPNOOP (0x00000000). A clean re-render with the DL skipped is
