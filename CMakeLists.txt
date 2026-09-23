@@ -189,15 +189,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     else()
         add_executable(aerogauge_modern ${AERO_SOURCES})
     endif()
-    if(NOT ANDROID)
-        add_custom_command(TARGET aerogauge_modern POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                $<TARGET_FILE_DIR:aerogauge_modern>/assets
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.bmp
-                $<TARGET_FILE_DIR:aerogauge_modern>/assets/aerogauge-icon.bmp
-            COMMENT "Copying desktop window icon")
-    endif()
     target_compile_options(aerogauge_modern PRIVATE
         -fno-strict-aliasing
         -fms-extensions
@@ -489,30 +480,21 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         # gets true physical pixel dimensions at >100% display scaling --
         # without it DWM bitmap-stretches the window by the scale factor and a
         # 1600x900 window overflows 1080p screens at 175% scaling. MinGW ld has
-        # no /MANIFEST switch, so compile the .rc (which references the manifest)
-        # with windres and link the object.
+        # no /MANIFEST switch, so compile the resource script with windres and
+        # link the manifest and application icon.
         find_program(AERO_WINDRES_EXECUTABLE NAMES windres REQUIRED)
-        set(AERO_MANIFEST_OBJ ${CMAKE_CURRENT_BINARY_DIR}/aero_manifest.rc.o)
-        add_custom_command(OUTPUT ${AERO_MANIFEST_OBJ}
+        set(AERO_WINDOWS_RESOURCES_OBJ ${CMAKE_CURRENT_BINARY_DIR}/aero_resources.rc.o)
+        add_custom_command(OUTPUT ${AERO_WINDOWS_RESOURCES_OBJ}
             COMMAND ${AERO_WINDRES_EXECUTABLE}
                 -I ${CMAKE_CURRENT_SOURCE_DIR}/src
-                -O coff -o ${AERO_MANIFEST_OBJ}
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/assets
+                -O coff -o ${AERO_WINDOWS_RESOURCES_OBJ}
                 ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_manifest.rc
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_manifest.rc
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/app.manifest
-            COMMENT "Embedding DPI-awareness manifest (windres)")
-        target_sources(aerogauge_modern PRIVATE ${AERO_MANIFEST_OBJ})
-
-        set(AERO_ICON_OBJ ${CMAKE_CURRENT_BINARY_DIR}/aero_icon.rc.o)
-        add_custom_command(OUTPUT ${AERO_ICON_OBJ}
-            COMMAND ${AERO_WINDRES_EXECUTABLE}
-                -I ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                -O coff -o ${AERO_ICON_OBJ}
-                ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_icon.rc
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/aero_icon.rc
                     ${CMAKE_CURRENT_SOURCE_DIR}/assets/aerogauge-icon.ico
-            COMMENT "Embedding application icon")
-        target_sources(aerogauge_modern PRIVATE ${AERO_ICON_OBJ})
+            COMMENT "Embedding Windows manifest and application icon")
+        target_sources(aerogauge_modern PRIVATE ${AERO_WINDOWS_RESOURCES_OBJ})
 
         # RecompFrontend resolves the per-user configuration directory.
         target_link_libraries(aerogauge_modern PRIVATE shell32)

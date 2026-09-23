@@ -315,7 +315,7 @@ static void set_application_icon(SDL_Window* window) {
 #if !defined(__ANDROID__)
     char* base_path = SDL_GetBasePath();
     if (base_path == nullptr) {
-        std::fprintf(stderr, "[rt64] SDL_GetBasePath failed while locating the window icon: %s\n",
+        std::fprintf(stderr, "[window] SDL_GetBasePath failed while locating the window icon: %s\n",
                      SDL_GetError());
         return;
     }
@@ -324,7 +324,7 @@ static void set_application_icon(SDL_Window* window) {
 
     SDL_Surface* icon = SDL_LoadBMP(icon_path.c_str());
     if (icon == nullptr) {
-        std::fprintf(stderr, "[rt64] Could not load window icon at %s: %s\n",
+        std::fprintf(stderr, "[window] Could not load window icon at %s: %s\n",
                      icon_path.c_str(), SDL_GetError());
         return;
     }
