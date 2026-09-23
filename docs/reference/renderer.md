@@ -79,15 +79,16 @@ pass while leaving depth writes off. RT64 maps ordinary `Z_CMP` to a strict `LES
 the projected racer shadows lie on the course surface and can have equal depth,
 so that test can flicker as depth values round. `ZMODE_DEC` uses RT64's per-pixel
 coplanar-depth tolerance for the shadows while still rejecting tunnel-wall depth.
-The scanner reads host-order 32-bit display-list words from the
-8-byte-aligned task address and stays within the task and 8 MiB RDRAM bounds.
-The runtime submits one root display list per graphics task; a root may still
-contain multiple viewport/course/shadow/car sequences, so the scanner resets
-its course gate after each car mode and keeps looking until `G_ENDDL`. A later
-HUD command reusing `00504240` has no fresh course mode and remains untouched.
-The same scanner is host-testable with synthetic RDRAM. It leaves unexpected
-patterns intact. A future named game-source patch to the shadow-list builder
-should replace this RDRAM bridge.
+The scanner reads guest 32-bit display-list words through N64Recomp's memory
+helper, starting at the 8-byte-aligned task root and never reading the prefix
+before it. Every access stays within 8 MiB RDRAM; the scan stops at `G_ENDDL`
+or a 200,000-command safety cap. The runtime submits one root display list per
+graphics task; a root may still contain multiple viewport/course/shadow/car
+sequences, so the scanner resets its course gate after each car mode and keeps
+looking until the list end. A later HUD command reusing `00504240` has no fresh
+course mode and remains untouched. The same scanner is host-testable with
+synthetic RDRAM. It leaves unexpected patterns intact. A future named
+game-source patch to the shadow-list builder should replace this RDRAM bridge.
 
 The diagnostic capture is an unpaused replay of a saved Bikini Island tunnel
 race: the original player renderer shows moving dark flecks on the lower-right

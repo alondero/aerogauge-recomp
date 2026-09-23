@@ -6,8 +6,8 @@
 #include "ultramodern/ultra64.h"
 
 // Apply the narrow race-shadow depth-mode patch in this graphics task's root
-// display list. The explicit RDRAM size keeps the scanner host-testable and
-// makes every command read task- and allocation-bounded.
+// display list. The scan never reads before the task root and stays within the
+// supplied RDRAM allocation; it stops at G_ENDDL or the command safety cap.
 void aero_patch_racer_shadow_depth(uint8_t* rdram, uint32_t rdram_size,
                                    const OSTask* task);
 

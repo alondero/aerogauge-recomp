@@ -276,7 +276,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_executable(test_shadow_depth tests/test_shadow_depth.cpp src/aero_shadow_depth.cpp)
     target_include_directories(test_shadow_depth PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${N64MR}/ultramodern/include)
+        ${N64MR}/ultramodern/include
+        ${N64MR}/N64Recomp/include)
     add_test(NAME racer_shadow_depth COMMAND test_shadow_depth)
 
     if(TARGET RecompiledFuncs)

@@ -1,13 +1,13 @@
 #include "aero_shadow_depth.h"
 
-#include <cstring>
+#include "recomp.h"
 
 namespace {
 
 constexpr uint32_t kRdramAddressMask = 0x03FFFFFFu;
 constexpr uint32_t kMaxDisplayListCommands = 200000u;
 
-// F3DEX2 command words and the two known depth-writing course render modes.
+// F3D-family command words observed in the USA race root list.
 constexpr uint32_t kSetRenderModeCommand = 0xB900031Du;
 constexpr uint32_t kCourseOpaqueRenderMode = 0xC8112078u;
 constexpr uint32_t kCourseEdgeRenderMode = 0xC8110038u;
@@ -23,13 +23,13 @@ constexpr uint32_t kShadowDepthCompare = kZModeDecal | kZCompare;
 constexpr uint32_t kEndDisplayListOpcode = 0xB8u;
 
 uint32_t read_word(const uint8_t* rdram, uint32_t offset) {
-    uint32_t value;
-    std::memcpy(&value, rdram + offset, sizeof(value));
-    return value;
+    const gpr guest_address = 0xFFFFFFFF80000000ull + offset;
+    return static_cast<uint32_t>(MEM_W(0, guest_address));
 }
 
 void write_word(uint8_t* rdram, uint32_t offset, uint32_t value) {
-    std::memcpy(rdram + offset, &value, sizeof(value));
+    const gpr guest_address = 0xFFFFFFFF80000000ull + offset;
+    MEM_W(0, guest_address) = static_cast<int32_t>(value);
 }
 
 } // namespace
