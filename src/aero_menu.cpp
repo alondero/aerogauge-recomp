@@ -1,4 +1,4 @@
-// RecompFrontend settings-overlay integration.
+// RecompFrontend launcher and settings integration.
 //
 // The SDL/main thread calls attach(), handle_event(), update(), and
 // toggle_fullscreen(). RecompFrontend owns the temporary page state; the
@@ -13,6 +13,7 @@
 
 #include "aero_menu.h"
 #include "aero_config.h"
+#include "aero_mods.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompui/recompui.h"
 #include "recompui/config.h"
@@ -23,6 +24,7 @@
 #include <atomic>
 #include <cstdio>
 #include <mutex>
+#include <string>
 #include <vector>
 
 // RecompFrontend host contract. SDL owns the window; RT64 owns rendering.
@@ -40,6 +42,7 @@ bool ready = false;
 enum class Request { None, Open, Close };
 Request request = Request::None;
 std::vector<std::function<void()>> actions;
+std::string pending_mod_error;
 
 void initialize(plume::RenderInterface* interface, plume::RenderDevice* device) {
     std::lock_guard lock(frontend_mutex);
@@ -61,15 +64,22 @@ void initialize(plume::RenderInterface* interface, plume::RenderDevice* device) 
 void render(plume::RenderCommandList* commands, plume::RenderFramebuffer* framebuffer) {
     std::lock_guard lock(frontend_mutex);
     if (request == Request::Open) {
+        recompui::config::set_tab(pending_mod_error.empty() ? "graphics" : "mods");
         recompui::config::open();
-        recompui::config::set_tab("graphics");
     } else if (request == Request::Close) {
         // Preserve the Apply/Discard prompt when a confirmation-backed page is dirty.
         if (recompui::config::close()) recompui::hide_all_contexts();
     }
     request = Request::None;
-    // This port starts the game directly, with no pre-game launcher.
-    if (ultramodern::is_game_started() || capture.load()) draw_hook(commands, framebuffer);
+    if (!pending_mod_error.empty()) {
+        std::string message = std::move(pending_mod_error);
+        pending_mod_error.clear();
+        message += "\n\nDisable the incompatible package in Settings > Mods, then start AeroGauge again.";
+        recompui::open_info_prompt("Unable to load mods", message, "OK", {},
+                                   recompui::ButtonStyle::Tertiary);
+    }
+    // Keep the shared launcher interactive while the game has not started.
+    if (!ultramodern::is_game_started() || capture.load()) draw_hook(commands, framebuffer);
     capture.store(recompui::is_context_capturing_input(), std::memory_order_release);
 }
 
@@ -100,6 +110,13 @@ void toggle() {
     }
 }
 
+void report_mod_load_error(const char* message) {
+    std::lock_guard lock(frontend_mutex);
+    pending_mod_error = message ? message : "The runtime could not load the enabled mod packages.";
+    capture.store(true, std::memory_order_release);
+    request = Request::Open;
+}
+
 void update() {
     std::lock_guard lock(frontend_mutex);
     // Persistence, config snapshots and SDL window changes belong to the main
@@ -115,9 +132,23 @@ void attach(SDL_Window* value) {
     recompui::programconfig::set_program_id(u8"AeroGaugeRecomp");
     recompui::register_primary_font("LatoLatin-Regular.ttf", "LatoLatin");
     recompui::register_extra_font("LatoLatin-Bold.ttf");
-    // The stock launcher dereferences supported_games[0]. This direct-boot
-    // port only uses the config modal, so it supplies an empty launcher.
-    recompui::register_launcher_init_callback([](recompui::LauncherMenu*) {});
+    // Keep package installation reachable before the game starts; the shared
+    // mod scanner closes its loaded package handles when it refreshes the list.
+    recompui::register_launcher_init_callback([](recompui::LauncherMenu* launcher) {
+        auto* options = launcher->init_game_options_menu(
+            u8"aerogauge.us", aero::mods::game_id, "AeroGauge", {},
+            recompui::GameOptionsMenuLayout::Center);
+        options->add_start_game_or_load_rom_option();
+        options->add_setup_controls_option();
+        options->add_option("Settings", []() {
+            recompui::update_game_mod_id(aero::mods::game_id);
+            recompui::config::set_tab("graphics");
+            recompui::hide_all_contexts();
+            recompui::config::open();
+        });
+        options->add_mods_option();
+        options->add_exit_option();
+    });
     create_settings();
     recompui::config::finalize();
     SDL_DisplayMode display{};

@@ -23,6 +23,8 @@ Developers need clear build steps, evidence, and ownership.
   settings, saves, and known limits.
 - [Configuration](configuration.md) is for players who need to inspect or
   change a file by hand. The normal settings screen is the preferred path.
+- [Modding](modding.md) explains installing packages and the experimental
+  code-mod and texture-pack support.
 - [Controllers and accessories](controllers.md) explains input, Controller
   Pak storage, and rumble.
 
@@ -36,6 +38,8 @@ Developers need clear build steps, evidence, and ownership.
   reproducible failures.
 - [Settings frontend](frontend.md) describes the current menu boundary and
   its platform limits.
+- [Modding](modding.md) describes package types, install and load behavior, and
+  the experimental code-mod boundary.
 - [Configuration](configuration.md) lists persistent files and environment
   overrides.
 - [Glossary](glossary.md) defines project terms in plain English.

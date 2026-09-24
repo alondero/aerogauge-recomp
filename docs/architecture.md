@@ -41,6 +41,7 @@ reader. A release user does not run the recompiler. A source developer does.
 | Game code | Recompiled N64 instructions and original data addresses | Generated C/C++ functions | N64Recomp plus ROM evidence |
 | Main memory | Low 8 MiB of guest RDRAM | Host byte buffer | Runtime; hooks may read it through MEM helpers |
 | OS services | libultra calls in the translated code | ultramodern and librecomp implementations | Runtime submodule |
+| Mods | Runtime-loaded guest code and packaged content | librecomp package manager, RecompFrontend manager, and AeroGauge texture callbacks | Runtime plus `src/aero_mods.cpp` |
 | Window and input | N64 controller records | SDL window and RecompFrontend input profiles | src/main.cpp and RecompFrontend |
 | Graphics | N64 VI registers and display lists | RT64 swapchain and graphics API | RT64 plus src/rt64_renderer.cpp |
 | Audio | RSP audio tasks and AI buffers | RSPRecomp output, SDL audio queue | src/aspMain.cpp and src/aero_audio.cpp |
@@ -74,6 +75,12 @@ The game updates at its native cadence. The VI timing callback runs more
 often than the 30 fps gameplay update in the current ROM. RT64 may present
 interpolated frames between game updates. An interpolated frame is a renderer
 feature; it is not an extra game update.
+
+N64ModernRuntime loads enabled code packages when the game starts. Its content
+callbacks publish texture paths to AeroGauge, and RT64 applies them on the
+renderer thread. The package manager and its Settings tab come from the pinned
+runtime and frontend submodules; [Modding](modding.md) documents the game ID,
+package types, and function-protection rules.
 
 ## Generated code
 

@@ -15,7 +15,7 @@
       4. Defensive submodule reset before patching (a half-applied patch from a
          prior run would otherwise break the next apply).
       5. Apply submodule patches (runtime 0001, 0007, 0012, 0013, 0014, 0015, 0017,
-         0018; frontend 0016, 0024, 0025; RT64 0006, 0008, 0009, 0010, 0011;
+         0018; frontend 0016, 0024, 0025, 0026, 0027; RT64 0006, 0008, 0009, 0010, 0011;
          MinGW 0005, 0004)
          with --ignore-whitespace (CRLF mismatches on Windows git).
       6. First CMake configure (without RecompiledFuncs/ yet — that's the
@@ -159,6 +159,8 @@ try {
         @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0016-recompfrontend-integration.patch' },
         @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0024-recompfrontend-input-synchronization.patch' },
         @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0025-recompfrontend-controller-cleanup.patch' },
+        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0026-recompfrontend-mod-failure-recovery.patch' },
+        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0027-recompfrontend-stale-focus-recovery.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0006-rt64-interp-angular-velocity-matching.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },
         @{ Sub = 'lib/rt64';                   Patch = 'patches/0009-rt64-widescreen-split-subviewport.patch' },

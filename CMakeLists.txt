@@ -126,6 +126,11 @@ if(FUNC_C_SOURCES OR FUNC_CXX_SOURCES)
 
     target_compile_options(RecompiledFuncs PRIVATE
         -fno-strict-aliasing
+        # Runtime mod replacement writes an architecture-sized jump at each
+        # function entry. Keep room at aligned, distinct function addresses.
+        -fpatchable-function-entry=16
+        -falign-functions=16
+        $<$<C_COMPILER_ID:GNU>:-fno-ipa-icf>
         -ggdb
         -Wno-unused-variable
         # implicit-function-declaration is a C-only diagnostic; lookup.cpp is C++.
@@ -155,6 +160,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
         src/aero_config.cpp    # persistent graphics.json -> ultramodern GraphicsConfig
+        src/aero_mods.cpp      # runtime package registration and RT64 texture snapshots
         src/aero_menu.cpp      # portable RecompFrontend overlay and SDL input capture
         src/aero_crash.cpp     # native crash backtrace: Win32 EXCEPTION_POINTERS +
                                # POSIX sigaction handler printing KSEG0/RDRAM offset + a 32-entry
@@ -189,6 +195,16 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     else()
         add_executable(aerogauge_modern ${AERO_SOURCES})
     endif()
+    find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
+    set(AERO_MOD_GUARDS ${CMAKE_CURRENT_BINARY_DIR}/generated/aero_mod_patch_guards.inc)
+    add_custom_command(OUTPUT ${AERO_MOD_GUARDS}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_mod_patch_guards.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/aerogauge.us.toml
+            ${CMAKE_CURRENT_SOURCE_DIR}/aerogauge.syms.toml ${AERO_MOD_GUARDS}
+        DEPENDS scripts/gen_mod_patch_guards.py aerogauge.us.toml aerogauge.syms.toml
+        VERBATIM)
+    target_sources(aerogauge_modern PRIVATE ${AERO_MOD_GUARDS})
+    target_include_directories(aerogauge_modern PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
     target_compile_options(aerogauge_modern PRIVATE
         -fno-strict-aliasing
         -fms-extensions

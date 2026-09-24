@@ -11,6 +11,7 @@ namespace aero::menu {
 void attach(SDL_Window* window);
 bool handle_event(const SDL_Event& event);
 void toggle();
+void report_mod_load_error(const char* message);
 bool captures_input();
 void update();
 void apply_window_settings();

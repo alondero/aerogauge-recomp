@@ -65,9 +65,11 @@ The port exposes one physical controller as Controller 1.
 
 ## Settings
 
-Open the settings screen with **Escape**, **F10**, or controller **Back**.
-This also works in fullscreen. Use the mouse, keyboard, or controller D-pad.
-The screen shows the active button prompts.
+The desktop app opens to the AeroGauge launcher. Choose **Start Game** to play,
+or open **Settings** or **Mods** first. During play, open Settings with
+**Escape**, **F10**, or controller **Back**. This also works in fullscreen.
+Use the mouse, keyboard, or controller D-pad; the screen shows the active
+button prompts.
 
 The **Graphics** page controls resolution, widescreen display, HUD placement,
 presentation rate, anti-aliasing, window mode and size, and texture paths.
@@ -85,6 +87,13 @@ assisted Boost Start.
 The **Controls** page edits the single-player keyboard and controller bindings.
 F11 and Alt+Enter switch fullscreen. Graphics API and texture-path changes take
 effect after a restart.
+
+The **Mods** page installs and manages AeroGauge packages. Install packages
+before starting the game; scanning and installation are disabled while it is
+running. Code mods load at game start and require a restart after changing
+them. RT64 texture packs can be enabled, disabled, and reordered while playing.
+Mod support is experimental; see [Modding](docs/modding.md) for package
+requirements and limits.
 
 ## Saves and files
 
@@ -109,8 +118,8 @@ that folder before testing a new build.
 - The USA release is the only supported ROM.
 - The settings screen does not support multiplayer player assignment.
 - Full-course geometry is experimental.
-- Texture packs and texture dumps are developer features. They are not a
-  general mod system.
+- Texture dumping remains a developer feature.
+- Mod support is experimental, and packages must target AeroGauge Recompiled.
 - Platform, graphics-driver, and physical-controller coverage is incomplete.
 - The settings screen is not shown by headless test runs.
 

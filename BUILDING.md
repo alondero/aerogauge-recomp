@@ -31,7 +31,7 @@ All platforms need:
 
 - Git with recursive submodule support.
 - CMake 3.20 or newer.
-- Python 3.
+- Python 3.11 or newer (the mod guard generator reads TOML metadata).
 - Ninja.
 - A C17/C++20 compiler.
 

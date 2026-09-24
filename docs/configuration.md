@@ -1,12 +1,16 @@
 # Configuration
 
-The port uses three JSON files. Graphics and enhancement settings are created
-with defaults on the first run; `controls.json` is created when the Controls
-page first saves its bindings.
+The port and runtime use several JSON files. Graphics and enhancement settings
+are created with defaults on the first run; `controls.json` is created when the
+Controls page first saves its bindings. The mod manager creates `mods.json` and
+`mod_config/` when it initializes.
 
 - graphics.json stores renderer, window, and visual enhancement settings.
 - enhancements.json stores gameplay assists.
 - controls.json stores the single-player keyboard and controller bindings.
+- mods.json stores installed package enablement and order.
+- mod_config/ stores per-package settings.
+- mods/ contains installed packages.
 
 The files live in the application directory:
 
@@ -134,6 +138,8 @@ interface.
 
 | Variable | Form | Effect |
 | --- | --- | --- |
+| AERO_AUTOSTART | 1 | Start the game immediately instead of waiting at the desktop launcher |
+| AERO_LAUNCHER | 0 or 1 | 0 starts the game immediately; 1 forces the desktop launcher |
 | AERO_WARP | track or track:craft | One-shot race warp; track is 1-6 and craft is 1-10 |
 | AERO_WARP_AT | vi:track or vi:track:craft | Schedules a warp at a VI count |
 | AERO_STATE_FILE | file path | F7/F8 save-state slot |
@@ -156,6 +162,11 @@ interface.
 | AERO_LIGHTING_SELFTEST | present | Runs the no-ROM software-renderer lighting test |
 | LAMBO_THREAD_TRACE | present | Enables the legacy thread-message trace in local runtime patch 0001 |
 | RT64_MATCH_DEBUG | 1 or 2 | Enables local interpolation-match diagnostics; 2 is more verbose |
+
+Windowed desktop runs also start the game automatically when AERO_MODERN_MAX_VIS,
+AERO_WARP, AERO_WARP_AT, or AERO_CRASH_TEST is set, so finite runs and developer
+harnesses reach the game loop without opening the launcher. AERO_LAUNCHER=1
+forces the launcher when one of those automation variables is present.
 
 ### Renderer and display-list probes
 
@@ -292,7 +303,7 @@ players should put in JSON or expect to work after the program starts.
 | --- | --- | --- | --- | --- | --- |
 | AERO_PYTHON_SCRIPTS | Windows build script; directory path | Unset searches the local Python installation, then PATH | Before CMake checks | Prepends Python's Scripts directory; build.ps1 | $env:AERO_PYTHON_SCRIPTS='path/to/python/Scripts'; .\build.ps1 |
 | ROM_FILENAME | Build and CI; ROM file name | Defaults to AeroGauge (USA).z64; CI supplies the same name to both scripts | Before the ROM check | Selects the input file; build scripts and build-release.yml | ROM_FILENAME='AeroGauge (USA).z64' ./build.sh |
-| Python3_EXECUTABLE | CMake configure; interpreter path | Unset searches standard interpreter names | Configure time | Selects the Python used by ROM-backed helper generation; CMakeLists.txt | cmake -S . -B build -DPython3_EXECUTABLE=python3 |
+| Python3_EXECUTABLE | CMake configure; interpreter path | Unset searches standard interpreter names | Configure time | Selects Python 3.11+ for mod guard and ROM-backed helper generation; CMakeLists.txt | cmake -S . -B build -DPython3_EXECUTABLE=python3 |
 | CMAKE_BUILD_TYPE | CMake configure; build type | Release in the host scripts; a direct configure may choose another type | Configure time | Selects compiler optimization and debug settings; CMake | cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug |
 | RT64_STATIC | Internal CMake value; boolean | Set true by CMakeLists.txt | Configure time | Selects static RT64 linkage; CMakeLists.txt | cmake -S . -B build -DRT64_STATIC=TRUE |
 | RT64_SDL_WINDOW_VULKAN | Internal CMake value; boolean | Set for non-Windows targets | Configure time | Selects the SDL/Vulkan window path; CMakeLists.txt | cmake -S . -B build -DRT64_SDL_WINDOW_VULKAN=TRUE |

@@ -19,8 +19,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "hle/rt64_application.h"
 #include "hle/rt64_state.h"
@@ -32,6 +34,7 @@
 
 #include "aero_rt64.h"
 #include "aero_config.h"
+#include "aero_mods.h"
 #include "aero_hud_widescreen.h"
 #include "aero_paths.h"
 #include "aero_shadow_depth.h"
@@ -331,8 +334,17 @@ public:
         app->updateEnhancementConfig();
     }
 
-    // The port starts gameplay directly; no launcher workload is needed.
-    void send_dummy_workload(uint32_t) override {}
+    // RecompFrontend is drawn before a game starts, while ultramodern supplies
+    // a dummy VI. Clear its framebuffer with the same simple RT64 workload the
+    // shared frontend renderer uses so launcher controls have a clean canvas.
+    void send_dummy_workload(uint32_t fb_address) override {
+        app->state->listProcessBegin();
+        app->state->rdp->setColorImage(G_IM_FMT_RGBA, G_IM_SIZ_16b, 320, fb_address);
+        app->state->rdp->setOtherMode(0x382C30, 0);
+        app->state->rdp->fillRect(0, 0, 320 << 2, 240 << 2);
+        app->state->fullSync();
+        app->state->listProcessEnd();
+    }
 
     // Frame-pacing probe (PERMANENT harness instrumentation, same class as pace_probe):
     // AERO_FRAME_LOG=<path> logs gfx-thread anomalies -- gaps between update_screen calls
@@ -497,6 +509,20 @@ public:
     }
 
     void update_screen() override {
+        if (auto paths = aero::mods::take_texture_pack_update()) {
+            std::vector<RT64::ReplacementDirectory> directories;
+            directories.reserve(paths->size() + 1);
+            for (const auto& path : *paths) directories.emplace_back(path);
+
+            // The existing graphics option or environment override remains
+            // the final, highest-priority texture replacement source.
+            const std::string legacy_pack = aero::config::texture_pack_path();
+            if (!legacy_pack.empty())
+                directories.emplace_back(std::filesystem::path(legacy_pack));
+
+            if (directories.empty()) app->textureCache->clearReplacementDirectories();
+            else app->textureCache->loadReplacementDirectories(directories);
+        }
         // Present cadence: update_screen is called once per VI tick (60 Hz);
         // a gap >25 ms means the display visibly stalled -- log gap and body duration.
         FILE* f = frame_log();

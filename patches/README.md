@@ -4,6 +4,15 @@ These files are build inputs. They are applied to pinned public submodules by
 the supported build scripts. They are not a private fork and this page is not
 an upstream proposal log.
 
+Mod support uses the package manager already present in the pinned
+N64ModernRuntime and RecompFrontend submodules. `src/aero_mods.cpp` registers
+the AeroGauge ID and RT64 texture content, while CMake generates guards for
+port-modified functions. Local frontend patch [0026](0026-recompfrontend-mod-failure-recovery.patch)
+restores the manager controls if loading fails and the runtime returns to the
+stopped state. Patch [0027](0027-recompfrontend-stale-focus-recovery.patch)
+recovers navigation when a focused element disappears from the rebuilt visible
+navigation tree.
+
 The exact diff is in each patch file. This table gives the local purpose,
 platform, and ownership question.
 
@@ -27,6 +36,8 @@ platform, and ownership question.
 | [0018](0018-ultramodern-graphics-config-snapshot.patch) | N64ModernRuntime | Windows, Linux | Return the graphics configuration by value. A live `set_graphics_config()` from the menu thread otherwise raced the game, VI, and graphics threads that read the accessor's reference after its mutex was released. |
 | [0024](0024-recompfrontend-input-synchronization.patch) | RecompFrontend | Windows, Linux, Android | Synchronize input-binding state and provide a locked binding snapshot for the port's SDL menu-toggle cache. |
 | [0025](0025-recompfrontend-controller-cleanup.patch) | RecompFrontend | Windows, Linux, Android | Collect detached and shutdown controller states on the SDL main thread so missed removal events or window teardown cannot leave frontend handles registered. |
+| [0026](0026-recompfrontend-mod-failure-recovery.patch) | RecompFrontend | Windows, Linux, Android | Local recovery fix restores Install, Refresh, and mod-toggle controls after a failed load. This general frontend behavior is a candidate for upstream RecompFrontend. |
+| [0027](0027-recompfrontend-stale-focus-recovery.patch) | RecompFrontend | Windows, Linux, Android | Recover directional navigation when the focused element is no longer present in its parent's rebuilt visible navigation list. |
 | [0023](0023-rt64-adreno-endian-swap.patch) | RT64 | Windows, Linux, Android | Spell the 16-bit byte swap with XOR instead of OR. The Adreno system Vulkan driver returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for any compute shader containing the OR form, which previously left a null pipeline handle that crashed `vkCmdBindPipeline`. The masked fields are disjoint, so the result is identical on every driver. |
 
 ## Application order
@@ -46,13 +57,13 @@ The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
-| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0006, 0008, 0009, 0010, 0011, 0023 |
-| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
-| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
+| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0006, 0008, 0009, 0010, 0011, 0023 |
+| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025, 0026, 0027; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
+| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
 
-Keep this inventory, [BUILDING.md](../BUILDING.md), and both host scripts in
-agreement. The documentation checker validates patch hunk counts, but only a
-clean submodule at its pinned commit proves that a patch still applies.
+Keep this inventory, [BUILDING.md](../BUILDING.md), and all supported build
+scripts in agreement. The documentation checker validates patch hunk counts,
+but only a clean submodule at its pinned commit proves that a patch still applies.
 
 ## Maintaining a patch
 

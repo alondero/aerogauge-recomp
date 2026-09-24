@@ -16,6 +16,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -44,6 +45,7 @@
 #include "aero_rt64.h"
 #include "aero_audio.h"
 #include "aero_config.h"
+#include "aero_mods.h"
 #include "aero_menu.h"
 #include "aero_input.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
@@ -90,6 +92,30 @@ static std::atomic<int>  g_max_state{0};
 static std::atomic<int>  g_swaps{0};
 static SDL_GameController* g_pad = nullptr;
 static std::atomic<bool> g_window_close_requested{false};
+enum class StartupMode { Pending, AutoStart, Launcher };
+static std::mutex g_startup_mode_mutex;
+static std::condition_variable g_startup_mode_changed;
+static StartupMode g_startup_mode = StartupMode::Pending;
+static void resolve_startup_mode(StartupMode mode) {
+    {
+        std::lock_guard lock(g_startup_mode_mutex);
+        g_startup_mode = mode;
+    }
+    g_startup_mode_changed.notify_all();
+}
+static bool environment_is(const char* name, const char* expected) {
+    const char* value = std::getenv(name);
+    return value != nullptr && std::strcmp(value, expected) == 0;
+}
+static StartupMode desktop_startup_mode() {
+    if (environment_is("AERO_LAUNCHER", "1")) return StartupMode::Launcher;
+    if (environment_is("AERO_AUTOSTART", "1") || environment_is("AERO_LAUNCHER", "0") ||
+        std::getenv("AERO_MODERN_MAX_VIS") != nullptr || std::getenv("AERO_WARP") != nullptr ||
+        std::getenv("AERO_WARP_AT") != nullptr || std::getenv("AERO_CRASH_TEST") != nullptr) {
+        return StartupMode::AutoStart;
+    }
+    return StartupMode::Launcher;
+}
 static std::atomic<bool> g_menu_toggle_requested{false};
 static constexpr size_t kScancodeWords = (SDL_NUM_SCANCODES + 63) / 64;
 static std::mutex g_menu_toggle_bindings_mutex;
@@ -298,6 +324,10 @@ static RspUcodeFunc* get_rsp_microcode_stub(const OSTask* task) {
 
 static void message_box_stub(const char* msg) {
     std::fprintf(stderr, "[probe] message_box: %s\n", msg);
+    if (msg && std::strncmp(msg, "Error loading mods:", 19) == 0) {
+        aero::mods::discard_failed_load();
+        aero::menu::report_mod_load_error(msg);
+    }
 }
 
 // Input callbacks are defined below in the input section; the window/pump callbacks
@@ -352,6 +382,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
             std::fprintf(stderr, "[rt64] SDL_InitSubSystem(VIDEO|GAMECONTROLLER) failed: %s -- staying headless\n",
                          SDL_GetError());
+            resolve_startup_mode(StartupMode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         SDL_SetEventFilter(sdl_event_filter, nullptr);
@@ -387,13 +418,18 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         if (window == nullptr) {
             std::fprintf(stderr, "[rt64] SDL_CreateWindow failed: %s -- staying headless\n",
                          SDL_GetError());
+            resolve_startup_mode(StartupMode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         set_application_icon(window);
         aero::menu::attach(window);
-#if defined(__linux__)
+#if defined(__ANDROID__)
+        resolve_startup_mode(StartupMode::AutoStart);
+        return ultramodern::renderer::WindowHandle{window};
+#elif defined(__linux__)
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",
                      win_size.width, win_size.height);
+        resolve_startup_mode(desktop_startup_mode());
         return ultramodern::renderer::WindowHandle{window};
 #elif defined(_WIN32)
         // Native Windows: ultramodern's WindowHandle is {HWND, thread_id} and
@@ -405,17 +441,21 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
             std::fprintf(stderr, "[rt64] SDL_GetWindowWMInfo failed: %s -- staying headless\n",
                          SDL_GetError());
             SDL_DestroyWindow(window);
+            resolve_startup_mode(StartupMode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Win32 HWND -> D3D12)\n",
                      win_size.width, win_size.height);
+        resolve_startup_mode(desktop_startup_mode());
         return ultramodern::renderer::WindowHandle{wmInfo.info.win.window, GetCurrentThreadId()};
 #else
         std::fprintf(stderr, "[rt64] window handle wiring not implemented on this platform\n");
         SDL_DestroyWindow(window);
+        resolve_startup_mode(StartupMode::AutoStart);
         return ultramodern::renderer::WindowHandle{};
 #endif
     }
+    resolve_startup_mode(StartupMode::AutoStart);
     return ultramodern::renderer::WindowHandle{}; // headless: null handle
 }
 
@@ -845,6 +885,7 @@ int main(int argc, char** argv) {
     game.internal_name     = "AEROGAUGE           "; // ROM header name @0x20 (20 bytes)
     game.display_name      = "AeroGauge";
     game.game_id           = u8"aerogauge.us";
+    game.mod_game_id       = aero::mods::game_id;
     game.is_enabled        = true;
     // 4Kbit EEPROM (512 B): the ROM's save loader (0x80061D00) probes with osEepromProbe and
     // the routed librecomp eep.cpp natives gate on this via recomp::eeprom_allowed(). The
@@ -856,6 +897,7 @@ int main(int argc, char** argv) {
     game.on_init_callback  = on_init_cb;
     game.thread_create_callback = thread_create_cb;
     recomp::register_game(game);
+    aero::mods::register_content();
 
     std::u8string game_id = u8"aerogauge.us";
     recomp::RomValidationError verr = recomp::select_rom(rom_path, game_id);
@@ -865,9 +907,19 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stderr, "[probe] ROM validated; rom_hash matches\n");
 
-    // recomp::start() blocks the calling thread until ultramodern::quit(), so
-    // kick the game off from a side thread once the runtime has set up.
+    // The launcher lets players install and configure packages before the
+    // runtime scans their files. Windowed automation still starts the game
+    // when a finite VI budget, warp, or crash harness is configured.
     std::thread starter([game_id]() {
+        StartupMode mode;
+        {
+            std::unique_lock lock(g_startup_mode_mutex);
+            g_startup_mode_changed.wait(lock, [] {
+                return g_startup_mode != StartupMode::Pending;
+            });
+            mode = g_startup_mode;
+        }
+        if (mode == StartupMode::Launcher) return;
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         std::fprintf(stderr, "[probe] calling start_game\n");
         std::u8string gid = game_id;

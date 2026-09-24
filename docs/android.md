@@ -67,7 +67,7 @@ use a process lock so a running game cannot copy or replace its files.
 
 ## Build
 
-Install Python 3, Git, Ninja, a native CMake 3.22+, JDK 17 or 21, a host GCC/G++
+Install Python 3.11 or newer, Git, Ninja, a native CMake 3.22+, JDK 17 or 21, a host GCC/G++
 toolchain, Android SDK platform 35, build tools 35.0.0, and NDK 28.2.13676358.
 Windows requires MinGW-w64 on PATH and native Windows CMake, not MSYS CMake.
 
