@@ -21,8 +21,9 @@ boundaries from the ROM itself:
   * PRE-STUBS: functions containing CP0/cache instructions (the libultra kernel layer
     ultramodern replaces wholesale) and functions whose branches escape their derived
     range (mis-split shared-tail code) are emitted as `stubs` so the whole-ROM
-    recompile succeeds. force_stub.txt adds hand-curated entries on top (one name per
-    line, '#' comments) — the iteration loop for recompiler errors.
+    recompile succeeds. Region-specific force_stub.txt / force_stub.jp.txt add
+    hand-curated entries on top (one name per line, '#' comments) — the iteration
+    loop for recompiler errors.
 
 Usage:  python scripts/gen_syms_toml.py    (from the repo root; reads the ROM +
         force_stub.txt, writes aerogauge.syms.toml + aerogauge.us.toml)
@@ -596,7 +597,7 @@ INDIRECT_STARTS = [
 
 
 def main():
-    global ROM_FILE, OUT_SYMS, OUT_CFG, CODE_ROM_END
+    global ROM_FILE, OUT_SYMS, OUT_CFG, CODE_ROM_END, FORCE_STUB
     global LIBULTRA_NAMES, NATIVE_NAMES, BOOT_EXTRA, INDIRECT_STARTS, PATCH_BLOCKS
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--region", choices=("us", "jp"), default="us")
@@ -605,6 +606,7 @@ def main():
     japanese = args.region == "jp"
     if japanese:
         import japan_rev_a as profile
+        FORCE_STUB = REPO / "force_stub.jp.txt"
         ROM_FILE = REPO / "AeroGauge (Japan) (Rev A).z64"
         OUT_SYMS = REPO / "aerogauge.jp.syms.toml"
         OUT_CFG = REPO / "aerogauge.jp.toml"
@@ -691,7 +693,7 @@ def main():
 
     # entrypoint gets renamed by N64Recomp itself (vram==ENTRY && rom==SECTION_ROM)
 
-    # --- force_stub.txt (hand-curated error-loop additions) ----------------------
+    # --- regional hand-curated error-loop additions -----------------------------
     force = set()
     if FORCE_STUB.exists():
         for line in FORCE_STUB.read_text().splitlines():
@@ -701,7 +703,7 @@ def main():
     known = {n for n, _, _ in funcs}
     unknown_force = force - known
     if unknown_force:
-        print(f"WARNING: force_stub.txt names not in the function map: {sorted(unknown_force)}")
+        raise SystemExit(f"{FORCE_STUB.name}: names not in the {args.region} function map: {sorted(unknown_force)}")
     # Canonically-named functions are routed (reimplemented/ignored) by N64Recomp itself and
     # are never emitted -- listing one as a stub too would make the recompiler hard-error.
     stubs = sorted(((auto_stubs | force) & known)
@@ -758,7 +760,7 @@ def main():
     print(f"hook-named (toml ignored): {sorted(n for n in NATIVE_NAMES.values() if n in known)}")
     print(f"functions: {len(funcs)}  (jal+prologue-derived)")
     print(f"libultra-named: {len(named)}  {named}")
-    print(f"stubs: {len(stubs)}  (auto CP0/branch-out: {n_auto}, force_stub.txt: {len(force & known)})")
+    print(f"stubs: {len(stubs)}  (auto CP0/branch-out: {n_auto}, {FORCE_STUB.name}: {len(force & known)})")
     print(f"wrote {OUT_SYMS.name} + {OUT_CFG.name}")
 
 

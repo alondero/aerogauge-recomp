@@ -84,13 +84,13 @@ void aero_intro_ticker_origin(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     // USA D860: a2 = max(230 - 3*frame, -500).
     // Japan DDEC: a0 = 230 - min(2*frame, 500). Preserve each ROM's timing.
-    ticker_origin = (int32_t)AERO_ADDR(ctx->r6, ctx->r4);
+    ticker_origin = (int32_t)AERO_BRANCH(ctx->r6, ctx->r4);
 }
 void aero_intro_ticker_end(uint8_t* rdram, recomp_context* ctx) {
     if (ticker_extra > 0) intro_close(rdram, ctx->r29 + 0x2c);
     // intro_close rewrote sp+0x2c; the original sw t6, (t8) wants the new value.
     // Rev A E130 stores t5 through t6; USA D968 stores t6 through t8.
-    if (AERO_ADDR(0, 1)) ctx->r13 = MEM_W(0x2c, ctx->r29);
+    if (AERO_IS_JP) ctx->r13 = MEM_W(0x2c, ctx->r29);
     else ctx->r14 = MEM_W(0x2c, ctx->r29);
     ticker_extra = 0;
 }

@@ -937,14 +937,14 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::fprintf(stderr, "[probe] ROM validated; rom_hash matches (%s)\n",
-                 AERO_ADDR("USA", "Japan Rev A"));
+                 AERO_BRANCH("USA", "Japan Rev A"));
 #ifdef AERO_JAPAN_SUPPORT
     if (aero_japan) register_overlays_jp();
     else
 #endif
         register_overlays();
     aero::crash::install();
-    auto pak_path = config_dir / "saves" / AERO_ADDR("aerogauge.us.mpk", "aerogauge.jp.rev_a.mpk");
+    auto pak_path = config_dir / "saves" / AERO_BRANCH("aerogauge.us.mpk", "aerogauge.jp.rev_a.mpk");
     if (const char* path = std::getenv("AERO_PAK_PATH"); path && *path)
         pak_path = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(path)));
     if (!pak_path.parent_path().empty()) std::filesystem::create_directories(pak_path.parent_path());

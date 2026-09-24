@@ -68,7 +68,7 @@ typedef struct {
 
 // Default file for the F7/F8 slot; AERO_STATE_FILE overrides. AERO_STATE_LOAD names a
 // one-shot boot load (headless agent entry) and is parsed on the first tick.
-#define DEFAULT_STATE_PATH AERO_ADDR("aero_savestate.astate", "aero_savestate.jp.rev_a.astate")
+#define DEFAULT_STATE_PATH AERO_BRANCH("aero_savestate.astate", "aero_savestate.jp.rev_a.astate")
 
 // Request bits flipped by the SDL thread, consumed on the game thread.
 #define REQ_SAVE 0x1u
@@ -97,7 +97,7 @@ static void do_save(uint8_t* rdram, const char* path) {
     memset(&h, 0, sizeof(h));
     memcpy(h.magic, STATE_MAGIC, 8);
     h.version    = STATE_VERSION;
-    h.region     = AERO_ADDR(0u, 1u);
+    h.region     = AERO_BRANCH(0u, 1u);
     h.rdram_size = RDRAM_SNAP_SIZE;
     h.scene      = (uint32_t)MEM_W(0, (gpr)(int32_t)SCENE_CUR);
     h.os_time    = osGetTime();
@@ -144,7 +144,7 @@ static void do_load(uint8_t* rdram, const char* path) {
         return;
     }
     if (h.version != STATE_VERSION || h.rdram_size != RDRAM_SNAP_SIZE ||
-        h.region != AERO_ADDR(0u, 1u)) {
+        h.region != AERO_BRANCH(0u, 1u)) {
         fprintf(stderr, "[savestate] load: %s version/size/region mismatch (v%u size %u)\n",
                 path, h.version, h.rdram_size);
         fclose(f);

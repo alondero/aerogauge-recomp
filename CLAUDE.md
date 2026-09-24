@@ -27,7 +27,9 @@ For the workflow, read [CONTRIBUTING.md](CONTRIBUTING.md) and the
 - Region selection occurs before game threads start. Native hooks use verified
   regional addresses; Japanese car records and ticker registers differ from USA.
 - aspMain.us.toml is the hand-maintained RSPRecomp input.
-- force_stub.txt is a hand-maintained translation fallback list.
+- force_stub.txt (USA) and force_stub.jp.txt (Japan Rev A) are hand-maintained
+  translation fallback lists. Entries must match that region's function map;
+  unknown names fail generation rather than silently dropping a fallback.
 - src/ contains hand-written port code and narrow game hooks.
 - patches/ contains diffs against pinned dependency commits.
 

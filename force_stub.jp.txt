@@ -1,0 +1,3 @@
+# Japanese Rev A only. One jp_func_XXXXXXXX name per line; '#' comments.
+# Addresses must be verified against this ROM, not copied from force_stub.txt.
+# No manual fallbacks are currently required.

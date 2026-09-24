@@ -57,6 +57,13 @@ Omit `--all-courses` for a shorter first-course check. These are headless checks
 they do not establish GPU visuals, physical-controller behavior, or audible
 announcer quality.
 
+The Windows and Linux release jobs build both regions' car LOD, scissor,
+Controller Pak, and race-intro tests explicitly, then run them alongside the
+audio submission test. They also run the full shared-executable regression
+above with SDL dummy video/audio drivers before removing the private ROMs.
+Missing Japanese test targets fail the build; this coverage runs on release
+workflow dispatch, not on the ROM-free pull-request documentation workflow.
+
 The Android host import test accepts both normalized ROM paths:
 
 ~~~text

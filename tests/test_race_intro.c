@@ -101,7 +101,7 @@ int main(void) {
         }
         MEM_W(0x2c, ctx.r29) = rect + 32;
         aero_intro_ticker_end(rdram, &ctx);
-        assert(AERO_ADDR(ctx.r14, ctx.r13) == (gpr)MEM_W(0x2c, ctx.r29));
+        assert(AERO_BRANCH(ctx.r14, ctx.r13) == (gpr)MEM_W(0x2c, ctx.r29));
         assert(ticker_extra == 0);
     }
     // A synthetic extreme output still clamps to the signed quarter-pixel limit.

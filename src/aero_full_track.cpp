@@ -354,7 +354,7 @@ void ensure_side_init(uint8_t* rdram, recomp_context* ctx, int cslot, int list) 
         // Same one-time init the race-init loop applies to the real arena slots:
         // node+0 = per-list handler table, node+0xA8 = 0, then the reset helper.
         ctx->r4 = A(base + s * NODE_SIZE);
-        ctx->r5 = A(OBJ_HANDLERS[AERO_ADDR(0, 1)][list]);
+        ctx->r5 = A(OBJ_HANDLERS[AERO_IS_JP][list]);
         init_node(rdram, ctx);
     }
     g_course.side_inited[cslot][list] = true;

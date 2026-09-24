@@ -40,7 +40,7 @@ changing a subsystem.
 | aerogauge.us.toml | Generated output | Regenerate and review; do not edit |
 | aerogauge.jp.syms.toml and aerogauge.jp.toml | Generated output | Regenerate with --region jp and review; do not edit |
 | aspMain.us.toml | Port maintainers and ROM evidence | Reviewed RSP input |
-| force_stub.txt | Port maintainers | Deliberate translation fallbacks |
+| force_stub.txt and force_stub.jp.txt | Port maintainers | Deliberate translation fallbacks for USA and Japan Rev A respectively |
 
 ## Generated files
 
