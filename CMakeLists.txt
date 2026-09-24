@@ -154,6 +154,8 @@ if(JP_FUNC_SOURCES)
     add_library(RecompiledFuncsJP STATIC ${JP_FUNC_SOURCES})
     target_compile_definitions(RecompiledFuncsJP PRIVATE recomp_entrypoint=recomp_entrypoint_jp)
     target_compile_options(RecompiledFuncsJP PRIVATE -fno-strict-aliasing -ggdb
+        -fpatchable-function-entry=16 -falign-functions=16
+        $<$<C_COMPILER_ID:GNU>:-fno-ipa-icf>
         -Wno-unused-variable -Wno-implicit-function-declaration)
     target_include_directories(RecompiledFuncsJP PRIVATE
         ${N64MR}/ultramodern/include ${N64MR}/librecomp/include ${N64MR}/N64Recomp/include)
@@ -223,7 +225,23 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         VERBATIM)
     target_sources(aerogauge_modern PRIVATE ${AERO_MOD_GUARDS})
     target_include_directories(aerogauge_modern PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    add_executable(test_mod_guards tests/test_mod_guards.cpp ${AERO_MOD_GUARDS})
+    target_include_directories(test_mod_guards PRIVATE src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated ${N64MR}/librecomp/include
+        ${N64MR}/N64Recomp/include)
+    add_test(NAME mod_guards COMMAND test_mod_guards)
     if(TARGET RecompiledFuncsJP)
+        set(AERO_JP_MOD_GUARDS ${CMAKE_CURRENT_BINARY_DIR}/generated/aero_mod_patch_guards_jp.inc)
+        add_custom_command(OUTPUT ${AERO_JP_MOD_GUARDS}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_mod_patch_guards.py
+                ${CMAKE_CURRENT_SOURCE_DIR}/aerogauge.jp.toml
+                ${CMAKE_CURRENT_SOURCE_DIR}/aerogauge.jp.syms.toml ${AERO_JP_MOD_GUARDS}
+            DEPENDS scripts/gen_mod_patch_guards.py aerogauge.jp.toml aerogauge.jp.syms.toml
+            VERBATIM)
+        target_sources(aerogauge_modern PRIVATE ${AERO_JP_MOD_GUARDS})
+        target_sources(test_mod_guards PRIVATE ${AERO_JP_MOD_GUARDS})
+        target_compile_definitions(test_mod_guards PRIVATE AERO_JAPAN_SUPPORT)
+        add_test(NAME mod_guards_jp COMMAND test_mod_guards jp)
         target_compile_definitions(aerogauge_modern PRIVATE AERO_JAPAN_SUPPORT)
         target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncsJP)
     endif()

@@ -43,6 +43,11 @@ When Japanese generated code is present, `car_lod_jp`, `scene_scissor_jp`, and
 `controller_pak_rom_filesystem_jp` run the corresponding Japanese routines with
 the same behavioral assertions as USA. `race_intro_jp` checks the Japanese
 ticker's register contract. No game bytes are embedded in these tests.
+`mod_guards` and `mod_guards_jp` check that each generated regional guard list
+protects injected hooks while leaving ordinary functions available to mods,
+and that patch metadata remains valid after overlay registration.
+`frontend_settings_jp` runs the settings adapter with the Japanese region and
+checks that initial Mods settings use its code-package compatibility ID.
 
 After building with both ROMs, run the shared-executable regression:
 

@@ -14,6 +14,7 @@
 #include "aero_menu.h"
 #include "aero_config.h"
 #include "aero_mods.h"
+#include "aero_region.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompui/recompui.h"
 #include "recompui/config.h"
@@ -136,12 +137,13 @@ void attach(SDL_Window* value) {
     // mod scanner closes its loaded package handles when it refreshes the list.
     recompui::register_launcher_init_callback([](recompui::LauncherMenu* launcher) {
         auto* options = launcher->init_game_options_menu(
-            u8"aerogauge.us", aero::mods::game_id, "AeroGauge", {},
+            AERO_BRANCH(u8"aerogauge.us", u8"aerogauge.jp.rev_a"),
+            AERO_BRANCH(aero::mods::game_id, aero::mods::japan_game_id), "AeroGauge", {},
             recompui::GameOptionsMenuLayout::Center);
         options->add_start_game_or_load_rom_option();
         options->add_setup_controls_option();
         options->add_option("Settings", []() {
-            recompui::update_game_mod_id(aero::mods::game_id);
+            recompui::update_game_mod_id(AERO_BRANCH(aero::mods::game_id, aero::mods::japan_game_id));
             recompui::config::set_tab("graphics");
             recompui::hide_all_contexts();
             recompui::config::open();

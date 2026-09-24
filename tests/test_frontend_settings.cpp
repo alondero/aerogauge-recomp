@@ -1,4 +1,6 @@
 #include "aero_config.h"
+#include "aero_region.h"
+#include "recompui/recompui.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompui/config.h"
 #include "recompinput/profiles.h"
@@ -8,9 +10,11 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 SDL_Window* window = nullptr;
+int aero_japan = 0;
 std::vector<recomp::GameEntry> supported_games;
 namespace {
 std::vector<std::function<void()>> pending;
@@ -119,8 +123,7 @@ void apply_window_settings() { ++window_updates; }
 
 int main(int argc, char** argv) {
     try {
-        (void)argc;
-        (void)argv;
+        aero_japan = argc > 1 && std::string_view(argv[1]) == "jp";
         IsolatedConfig isolated;
         const auto path = aero::config::app_config_dir();
         std::filesystem::create_directories(path);
@@ -142,6 +145,8 @@ int main(int argc, char** argv) {
         hand_edit["future_option"] = "preserve me";
         { std::ofstream file(path / "graphics.json"); file << hand_edit; }
         aero::menu::create_settings();
+        require(recompui::get_game_mod_id() == (aero_japan ? "aerogauge.jp.rev_a" : "aerogauge"),
+                "initial Mods settings must use the selected ROM region");
         bool controls_tab_registered = true;
         try {
             // This operates on the pending tab list before the modal is created.

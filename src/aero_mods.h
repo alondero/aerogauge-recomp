@@ -8,6 +8,8 @@
 namespace aero::mods {
 
 inline constexpr char game_id[] = "aerogauge";
+// Code packages contain regional guest addresses and must not cross regions.
+inline constexpr char japan_game_id[] = "aerogauge.jp.rev_a";
 
 void register_content();
 void discard_failed_load();

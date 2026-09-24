@@ -1,8 +1,9 @@
 # Modding
 
 Status: experimental. AeroGauge uses the package loader in N64ModernRuntime and
-the Mods manager in RecompFrontend. Packages must target the AeroGauge game ID
-`aerogauge`; a package for another recompilation is not compatible.
+the Mods manager in RecompFrontend. Code packages must target the selected ROM:
+`aerogauge` for USA or `aerogauge.jp.rev_a` for Japan Rev A. Regional guest
+addresses differ, so code packages are not interchangeable.
 
 ## Install and manage packages
 
@@ -22,7 +23,7 @@ of the port:
 
 Supported package types are:
 
-- `.nrm` code packages with a manifest targeting `game_id = "aerogauge"`;
+- `.nrm` code packages with a manifest targeting the selected region's game ID;
 - `.rtz` RT64 texture archives containing `rt64.json` at the archive root.
 
 Code packages load when the game starts. Enable them before choosing **Start
@@ -39,13 +40,16 @@ from the launcher again. A failed load does not automatically retry the game.
 ## Code package boundary
 
 Use the runtime's mod packaging tool with this repository's
-`aerogauge.syms.toml` function references. The mod game ID is `aerogauge`; the
-ROM selection ID remains `aerogauge.us`. Symbols describe the supported USA ROM
-and are an experimental interface that can change.
+`aerogauge.syms.toml` function references for USA, or `aerogauge.jp.syms.toml`
+for Japan Rev A. USA's mod game ID is `aerogauge` and ROM selection ID is
+`aerogauge.us`; Japan uses `aerogauge.jp.rev_a` for both. The launcher and Mods
+tab use the validated ROM's IDs. Symbols are an experimental interface that
+can change.
 
 The runtime supports function hooks and replacements. CMake aligns translated
 function entries and reserves room for runtime replacement jumps. The build
-also derives a guard list from `aerogauge.us.toml`: functions with port-injected
+also derives regional guard lists from `aerogauge.us.toml` and
+`aerogauge.jp.toml`: functions with port-injected
 hooks, stubs, or instruction patches are registered as base patches so ordinary
 mod replacements cannot silently discard port behavior.
 

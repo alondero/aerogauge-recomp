@@ -916,6 +916,7 @@ int main(int argc, char** argv) {
     auto japan_game = game;
     japan_game.rom_hash = 0xd10125abf640077fULL;
     japan_game.game_id = u8"aerogauge.jp.rev_a";
+    japan_game.mod_game_id = aero::mods::japan_game_id;
     japan_game.display_name = "AeroGauge (Japan, Rev A)";
     japan_game.entrypoint = recomp_entrypoint_jp;
     recomp::register_game(japan_game);

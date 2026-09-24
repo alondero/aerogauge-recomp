@@ -102,8 +102,8 @@ jobs:
 
       - name: Verify audio and regional guest boundaries
         run: |
-          cmake --build build --target test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
-          ctest --test-dir build -R '^(rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
+          cmake --build build --target test_frontend_settings test_mod_guards test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
+          ctest --test-dir build -R '^(frontend_settings(_jp)?|mod_guards(_jp)?|rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
 
       - name: Verify both ROMs through all courses
         env:
@@ -220,9 +220,9 @@ jobs:
       - name: Verify audio and regional guest boundaries
         shell: pwsh
         run: |
-          cmake --build build --target test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
+          cmake --build build --target test_frontend_settings test_mod_guards test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir build -R '^(rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
+          ctest --test-dir build -R '^(frontend_settings(_jp)?|mod_guards(_jp)?|rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify both ROMs through all courses
