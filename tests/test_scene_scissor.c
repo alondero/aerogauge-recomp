@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <string.h>
 #include "recomp.h"
+#ifdef AERO_JAPAN_SUPPORT
+#define func_800227E4 jp_func_80023238
+#define CURSOR_HOLDER 0x80169508
+#else
+#define CURSOR_HOLDER 0x8016C508
+#endif
 
 void func_800227E4(uint8_t*, recomp_context*);
 void aero_scene_scissor(uint8_t*, recomp_context*);
@@ -21,7 +27,7 @@ static void check(int sx, int sy, int tx, int ty, unsigned left, unsigned top,
     uint8_t* rdram = ram;
     const gpr desc = (gpr)(int32_t)0x80400000;
     const gpr dl = desc + 0x100;
-    const gpr holder = (gpr)(int32_t)0x8016c508;
+    const gpr holder = (gpr)(int32_t)CURSOR_HOLDER;
     recomp_context ctx = {0};
     memset(ram, 0, sizeof(ram));
     ctx.r29 = (gpr)(int32_t)0x807ff000;

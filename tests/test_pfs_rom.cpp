@@ -8,6 +8,13 @@
 #include <vector>
 #include "aero_pak.h"
 #include "recomp.h"
+#ifdef AERO_JAPAN_SUPPORT
+#define func_8006B440 jp_func_8006C310
+#define func_8006F040 jp_func_8006F650
+#define func_8006CDE0 jp_func_8006F060
+#define func_8006EC1C jp_func_8006F2E0
+#define func_8006D0F0 jp_func_8006E0A0
+#endif
 
 extern "C" {
 void func_8006B440(uint8_t*, recomp_context*); // osPfsInitPak

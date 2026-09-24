@@ -2,6 +2,7 @@
 #include "aero_config.h"
 #include "aero_menu.h"
 #include "aero_mods.h"
+#include "aero_region.h"
 #include "recompui/recompui.h"
 #include "recompui/config.h"
 #include "recompinput/input_mapping.h"
@@ -291,7 +292,7 @@ void refresh_settings() {
 void create_settings() {
     namespace settings = recompui::config;
     namespace port = aero::config;
-    recompui::update_game_mod_id(aero::mods::game_id);
+    recompui::update_game_mod_id(AERO_BRANCH(aero::mods::game_id, aero::mods::japan_game_id));
     configure_controls();
     // The port does not implement all of the shared General page's audio,
     // gyro, and mouse services, so keep that page hidden. Create Graphics

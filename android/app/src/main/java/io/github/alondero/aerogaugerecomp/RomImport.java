@@ -9,14 +9,19 @@ final class RomImport {
     static final String NAME = "AeroGauge (USA).z64";
     static final int SIZE = 8 * 1024 * 1024;
     static final String SHA256 = "2cc529109b11b00289d87f693a40591ef260d1dc7c1129113966ba6ddb1be4a5";
+    static final String JAPAN_SHA256 = "1abff752862450bbfd3cfbb75b1c217daa57f524bee65f14ae436519a615368a";
 
     static void install(InputStream input, File directory) throws Exception {
+        install(input, directory, false);
+    }
+
+    static void install(InputStream input, File directory, boolean supportsJapan) throws Exception {
         if (input == null) throw new IOException("The selected file could not be opened. Try a local copy.");
         byte[] bytes = new byte[SIZE];
         int offset = 0, count;
         while (offset < SIZE && (count = input.read(bytes, offset, SIZE - offset)) != -1) offset += count;
         if (offset != SIZE || input.read() != -1)
-            throw new IOException("Choose an uncompressed 8 MiB AeroGauge USA ROM (.z64, .v64 or .n64).");
+            throw new IOException("Choose an uncompressed 8 MiB AeroGauge ROM (.z64, .v64 or .n64).");
         if ((bytes[0] & 255) == 0x37) {
             for (int i = 0; i < SIZE; i += 2) {
                 byte a = bytes[i]; bytes[i] = bytes[i+1]; bytes[i+1] = a;
@@ -30,8 +35,10 @@ final class RomImport {
         StringBuilder hash = new StringBuilder();
         for (byte b : MessageDigest.getInstance("SHA-256").digest(bytes))
             hash.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-        if (!SHA256.equals(hash.toString()))
-            throw new IOException("This ROM does not match AeroGauge USA. Other regions and modified ROMs are not supported.");
+        if (!SHA256.equals(hash.toString()) && !(supportsJapan && JAPAN_SHA256.equals(hash.toString())))
+            throw new IOException(supportsJapan
+                ? "Choose AeroGauge USA or Japan Rev A. Other revisions and modified ROMs are not supported."
+                : "This build supports AeroGauge USA only.");
         File temporary = File.createTempFile("rom-import-", ".tmp", directory);
         try {
             try (FileOutputStream output = new FileOutputStream(temporary)) {

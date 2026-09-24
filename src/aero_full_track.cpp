@@ -18,24 +18,24 @@
 #include <vector>
 
 #include "recomp.h"
+#include "aero_region.h"
 
 #include "aero_config.h"
 #include "aero_full_track_policy.h"
 
-// Recompiled game helpers (RecompiledFuncs/, ROM-derived) this module calls back into.
-extern "C" {
-void func_800077B4(uint8_t* rdram, recomp_context* ctx); // section-node registration
-void func_800078A8(uint8_t* rdram, recomp_context* ctx); // section list left-empty reset
-void func_8000791C(uint8_t* rdram, recomp_context* ctx); // object-node registration (+ callback)
-void func_80020504(uint8_t* rdram, recomp_context* ctx); // node reset (zone-list empty tail)
-void func_800204E0(uint8_t* rdram, recomp_context* ctx); // node init: handler ptr + reset
-}
+// Region-specific helpers are resolved from the selected overlay table.
+// The node ABI (0xB8 stride, sentinel + 47 slots) is shared by both ROMs.
+#define register_section LOOKUP_FUNC(AERO_ADDR(0x800077B4u, 0x80007C38u))
+#define reset_sections LOOKUP_FUNC(AERO_ADDR(0x800078A8u, 0x80007D38u))
+#define rom_register_object LOOKUP_FUNC(AERO_ADDR(0x8000791Cu, 0x80007DA8u))
+#define reset_node LOOKUP_FUNC(AERO_ADDR(0x80020504u, 0x80020E54u))
+#define init_node LOOKUP_FUNC(AERO_ADDR(0x800204E0u, 0x80020E30u))
 
 namespace {
 
-constexpr uint32_t TRACK_BYTE  = 0x8013FF9B; // current track (s8)
-constexpr uint32_t COURSE_ROWS = 0x8008B290; // course row table, stride 0x14
-constexpr uint32_t COURSE_PTR  = 0x8013FF44; // -> zone-object table; 0 = no course loaded
+#define TRACK_BYTE AERO_ADDR(0x8013FF9Bu, 0x8013D01Bu) // current track (s8)
+#define COURSE_ROWS AERO_ADDR(0x8008B290u, 0x8008AE40u) // course row table, stride 0x14
+#define COURSE_PTR AERO_ADDR(0x8013FF44u, 0x8013CFC4u) // -> zone-object table; 0 = no course loaded
 
 // Node arena geometry (verified: race-init loop 0x80006590 stamps s0 = 0..0x2B20
 // step 0xB8 over each list; helper places node = list + counter*0xB8, counter
@@ -43,9 +43,12 @@ constexpr uint32_t COURSE_PTR  = 0x8013FF44; // -> zone-object table; 0 = no cou
 constexpr uint32_t NODE_SIZE  = 0xB8;
 constexpr uint32_t REAL_SLOTS = 47;   // usable per-list nodes (slot 0 = sentinel)
 
-// Per-list handler tables the race-init loop passes to func_800204E0 for the three
+// Per-list handler tables the race-init loop passes to init_node for the three
 // zone-object lists (craft+0x5704 / +0x8224 / +0xAD44 in that order).
-constexpr uint32_t OBJ_HANDLERS[3] = { 0x80095118, 0x80095120, 0x80095128 };
+constexpr uint32_t OBJ_HANDLERS[2][3] = {
+    {0x80095118, 0x80095120, 0x80095128},
+    {0x80092BF8, 0x80092C00, 0x80092C08},
+};
 constexpr uint32_t OBJ_LISTS[3]    = { 0x5704, 0x8224, 0xAD44 };
 constexpr uint32_t OBJ_EMPTY[3]    = { 0x57BC, 0x82DC, 0xADFC };
 
@@ -351,8 +354,8 @@ void ensure_side_init(uint8_t* rdram, recomp_context* ctx, int cslot, int list) 
         // Same one-time init the race-init loop applies to the real arena slots:
         // node+0 = per-list handler table, node+0xA8 = 0, then the reset helper.
         ctx->r4 = A(base + s * NODE_SIZE);
-        ctx->r5 = A(OBJ_HANDLERS[list]);
-        func_800204E0(rdram, ctx);
+        ctx->r5 = A(OBJ_HANDLERS[AERO_IS_JP][list]);
+        init_node(rdram, ctx);
     }
     g_course.side_inited[cslot][list] = true;
 }
@@ -379,9 +382,9 @@ void register_pvs_sections(uint8_t* rdram, recomp_context* ctx,
                     static_cast<uint8_t>(k.track), z, dl, hw4)) continue;
             uint16_t t = hw4 & 0xF;
             if (t == 0 || t == 8)
-                call3(rdram, ctx, func_800077B4, c0, craft + 0xC4, e);
+                call3(rdram, ctx, register_section, c0, craft + 0xC4, e);
             else if (t == 1)
-                call3(rdram, ctx, func_800077B4, c1, craft + 0x2BE4, e);
+                call3(rdram, ctx, register_section, c1, craft + 0x2BE4, e);
         }
     }
 }
@@ -393,7 +396,7 @@ void register_object(uint8_t* rdram, recomp_context* ctx, uint32_t craft, int cs
     uint32_t list = craft + OBJ_LISTS[li];
     uint32_t cnt = rw(rdram, counter_addr);   // helper places node = a1 + cnt*NODE_SIZE
     if (cnt <= REAL_SLOTS) {
-        call3(rdram, ctx, func_8000791C, counter_addr, list, entry);
+        call3(rdram, ctx, rom_register_object, counter_addr, list, entry);
         return;
     }
     if (cslot < 0) return;                    // >4 crafts: never expected; drop quietly
@@ -411,7 +414,7 @@ void register_object(uint8_t* rdram, recomp_context* ctx, uint32_t craft, int cs
     // a1 chosen so the helper's `a1 + cnt*NODE_SIZE` lands on our side node. Its
     // prev-link write (*(node-0x14) = node) hits the previous side node's +0xA4 --
     // or, for the first side node, the RES_SIDE_PAD scratch -- so splice manually.
-    call3(rdram, ctx, func_8000791C, counter_addr, node - cnt * NODE_SIZE, entry);
+    call3(rdram, ctx, rom_register_object, counter_addr, node - cnt * NODE_SIZE, entry);
     if (s == 0) {
         uint32_t last_real = list + REAL_SLOTS * NODE_SIZE;
         ww(rdram, last_real + 0xA4, node);
@@ -424,7 +427,7 @@ void register_object(uint8_t* rdram, recomp_context* ctx, uint32_t craft, int cs
 
 // ROM 0x80007150: track-ribbon sections -> lists craft+0xC4 (types 0/8) and
 // craft+0x2BE4 (type 1). Counters start at 0; a list left at 0 gets the
-// func_800078A8 "left empty" tail. Returns the number of registered nodes.
+// reset_sections "left empty" tail. Returns the number of registered nodes.
 extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
     uint32_t self = (uint32_t)ctx->r4;
     uint32_t craft = rw(rdram, self + 8);
@@ -436,7 +439,7 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
     bool full = aero::config::full_track() && dbg_sections && ensure_course(rdram);
     if (full) {
         for (auto& b : g_course.buckets)
-            call3(rdram, ctx, func_800077B4,
+            call3(rdram, ctx, register_section,
                   b.list == 0 ? c0 : c1,
                   craft + (b.list == 0 ? 0xC4 : 0x2BE4),
                   b.fake_entry);
@@ -459,15 +462,15 @@ extern "C" void aeroRegisterTrackSections(uint8_t* rdram, recomp_context* ctx) {
     }
 
     uint32_t n0 = rw(rdram, c0), n1 = rw(rdram, c1);
-    if (n0 == 0) call1(rdram, ctx, func_800078A8, craft + 0xC4);
-    if (n1 == 0) call1(rdram, ctx, func_800078A8, craft + 0x2BE4);
+    if (n0 == 0) call1(rdram, ctx, reset_sections, craft + 0xC4);
+    if (n1 == 0) call1(rdram, ctx, reset_sections, craft + 0x2BE4);
     ctx->r2 = A(n0 + n1);
 }
 
 // ROM 0x80007310: landmark zone objects -> lists craft+0x5704 (types 0/8),
 // craft+0x8224 (types 2/4), craft+0xAD44 (type 1); types 3/5/6/7 skipped.
 // Counters start at 1 (slot 0 is the sentinel); a list left at 1 gets the
-// func_80020504 tail on its first node. Returns the counter sum.
+// reset_node tail on its first node. Returns the counter sum.
 extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     uint32_t self = (uint32_t)ctx->r4;
     if (rw(rdram, COURSE_PTR) == 0) {   // original guard: no course loaded
@@ -508,13 +511,13 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
             if (t < 9) {
                 if (t == 0 || t == 8) {
                     if (full) register_object(rdram, ctx, craft, cslot, 0, cA, e);
-                    else call3(rdram, ctx, func_8000791C, cA, craft + 0x5704, e);
+                    else call3(rdram, ctx, rom_register_object, cA, craft + 0x5704, e);
                 } else if (t == 2 || t == 4) {
                     if (full) register_object(rdram, ctx, craft, cslot, 1, cB, e);
-                    else call3(rdram, ctx, func_8000791C, cB, craft + 0x8224, e);
+                    else call3(rdram, ctx, rom_register_object, cB, craft + 0x8224, e);
                 } else if (t == 1) {
                     if (full) register_object(rdram, ctx, craft, cslot, 2, cC, e);
-                    else call3(rdram, ctx, func_8000791C, cC, craft + 0xAD44, e);
+                    else call3(rdram, ctx, rom_register_object, cC, craft + 0xAD44, e);
                 }
             }
             if (rw(rdram, e + 0x28) == 0) break;
@@ -522,8 +525,8 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     }
 
     uint32_t nA = rw(rdram, cA), nB = rw(rdram, cB), nC = rw(rdram, cC);
-    if (nA == 1) call1(rdram, ctx, func_80020504, craft + OBJ_EMPTY[0]);
-    if (nB == 1) call1(rdram, ctx, func_80020504, craft + OBJ_EMPTY[1]);
-    if (nC == 1) call1(rdram, ctx, func_80020504, craft + OBJ_EMPTY[2]);
+    if (nA == 1) call1(rdram, ctx, reset_node, craft + OBJ_EMPTY[0]);
+    if (nB == 1) call1(rdram, ctx, reset_node, craft + OBJ_EMPTY[1]);
+    if (nC == 1) call1(rdram, ctx, reset_node, craft + OBJ_EMPTY[2]);
     ctx->r2 = A(nA + nB + nC);
 }

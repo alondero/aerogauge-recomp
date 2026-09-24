@@ -50,6 +50,7 @@ if(NOT ANDROID)
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
+target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker
 # (Threads::Threads is resolved once in the top-level CMakeLists.txt).
 target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads)
@@ -69,6 +70,7 @@ else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
 endif()
 add_test(NAME frontend_settings COMMAND test_frontend_settings)
+add_test(NAME frontend_settings_jp COMMAND test_frontend_settings jp)
 endif()
 
 # Release and source-build output needs the frontend assets and RmlUi fonts

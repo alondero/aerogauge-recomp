@@ -2,6 +2,7 @@
 // No guest state is changed. See docs/controllers.md for the device boundary.
 #include "aero_haptics.h"
 #include "recomp.h"
+#include "aero_region.h"
 
 #include <atomic>
 #include <bit>
@@ -18,9 +19,9 @@ uint64_t now_ms() {
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 bool racing(uint8_t* rdram) {
-    return MEM_W(0, (gpr)(int32_t)0x8013FF80) == 5 &&
-           MEM_W(0, (gpr)(int32_t)0x8013FF88) == 3 &&
-           MEM_BU(0, (gpr)(int32_t)0x8013FF90) != 7; // attract demo
+    return MEM_W(0, (gpr)(int32_t)AERO_ADDR(0x8013FF80, 0x8013D000u)) == 5 &&
+           MEM_W(0, (gpr)(int32_t)AERO_ADDR(0x8013FF88, 0x8013D008u)) == 3 &&
+           MEM_BU(0, (gpr)(int32_t)AERO_ADDR(0x8013FF90, 0x8013D010u)) != 7; // attract demo
 }
 }
 
@@ -57,7 +58,7 @@ extern "C" void aero_haptics_race_tick(uint8_t* rdram, recomp_context* ctx) {
     const auto address = static_cast<uint32_t>(ctx->r16);
     if (address < 0x80000000u || address > 0x807FFF80u) return;
     const gpr car = static_cast<int32_t>(address);
-    if (static_cast<uint32_t>(MEM_W(4, car)) != 0x8005C750u) return;
+    if (static_cast<uint32_t>(MEM_W(4, car)) != AERO_ADDR(0x8005C750u, 0x8005CCD0u)) return;
     const auto now = now_ms();
     const float damage = std::bit_cast<float>(static_cast<uint32_t>(MEM_W(0x24, car)));
     // A short impact pulse remains perceptible even for a single collision tick.

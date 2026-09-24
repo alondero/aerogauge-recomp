@@ -3,11 +3,12 @@ import re
 import sys
 from pathlib import Path
 
-source, destination = map(Path, sys.argv[1:])
+source, destination = map(Path, sys.argv[1:3])
+name = "jp_func_80023238" if len(sys.argv) > 3 and sys.argv[3] == "jp" else "func_800227E4"
 matches = []
 for path in source.glob("*.c"):
     matches.extend(re.findall(
-        r"RECOMP_FUNC void func_800227E4\(.*?(?=RECOMP_FUNC void |\Z)",
+        rf"RECOMP_FUNC void {name}\(.*?(?=RECOMP_FUNC void |\Z)",
         path.read_text(encoding="utf-8"), re.S))
 if len(matches) != 1:
     raise SystemExit("Expected exactly one generated scene scissor builder")

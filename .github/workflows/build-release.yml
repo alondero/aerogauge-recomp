@@ -10,7 +10,7 @@ name: Build & Release
 # (ROM_ASSETS_REPO) and is checked out during the build using a fine-grained PAT
 # (ROM_ASSETS_PAT) scoped to read-only access on that one repo. It is never uploaded
 # as part of any artifact or release asset: downstream users must supply their own
-# legally dumped copy of "AeroGauge (USA).z64" to run the released binary.
+# legally dumped USA or Japan Rev A ROM to run the released binary.
 
 on:
   workflow_dispatch:
@@ -32,6 +32,7 @@ permissions:
 
 env:
   ROM_FILENAME: "AeroGauge (USA).z64"
+  JAPAN_ROM_FILENAME: "AeroGauge (Japan) (Rev A).n64"
 
 jobs:
   build-linux:
@@ -76,6 +77,7 @@ jobs:
       - name: Place ROM
         run: |
           cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
           rm -rf rom-assets
 
       - name: Reset submodules before patching
@@ -98,14 +100,20 @@ jobs:
           ROM_FILENAME: ${{ env.ROM_FILENAME }}
         run: bash build.sh
 
-      - name: Verify audio task submission
+      - name: Verify audio and regional guest boundaries
         run: |
-          cmake --build build --target test_rsp_submission -j2
-          ctest --test-dir build -R '^rsp_task_submission$' --output-on-failure --no-tests=error
+          cmake --build build --target test_frontend_settings test_mod_guards test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
+          ctest --test-dir build -R '^(frontend_settings(_jp)?|mod_guards(_jp)?|rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
+
+      - name: Verify both ROMs through all courses
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python3 -B tests/test_rom_regions.py --exe build/aerogauge_modern --usa "$ROM_FILENAME" --japan "AeroGauge (Japan) (Rev A).z64" --all-courses
 
       - name: Remove ROM before packaging
         if: always()
-        run: rm -f "$ROM_FILENAME"
+        run: rm -f "$ROM_FILENAME" "$JAPAN_ROM_FILENAME" "AeroGauge (Japan) (Rev A).z64"
 
       - name: Package
         run: |
@@ -116,7 +124,7 @@ jobs:
           cp scripts/install_linux_launcher.sh dist/
           # Symbol table: probed next to the exe at runtime so field crash
           # dumps show function names, not raw N64 PCs.
-          cp aerogauge.syms.toml dist/
+          cp aerogauge.syms.toml aerogauge.jp.syms.toml dist/
           cd dist && zip -r ../aerogauge-recomp-linux-x64.zip .
 
       - name: Upload artifact
@@ -183,6 +191,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item "rom-assets\$env:ROM_FILENAME" ".\$env:ROM_FILENAME"
+          Copy-Item "rom-assets\$env:JAPAN_ROM_FILENAME" ".\$env:JAPAN_ROM_FILENAME"
           Remove-Item -Recurse -Force rom-assets
 
       - name: Reset submodules before patching
@@ -208,18 +217,27 @@ jobs:
           ROM_FILENAME: ${{ env.ROM_FILENAME }}
         run: ./build.ps1 -RomPath "$env:ROM_FILENAME"
 
-      - name: Verify audio task submission
+      - name: Verify audio and regional guest boundaries
         shell: pwsh
         run: |
-          cmake --build build --target test_rsp_submission -j2
+          cmake --build build --target test_frontend_settings test_mod_guards test_rsp_submission test_car_lod test_car_lod_jp test_scene_scissor test_scene_scissor_jp test_pfs_rom test_pfs_rom_jp test_race_intro test_race_intro_jp -j2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir build -R '^rsp_task_submission$' --output-on-failure --no-tests=error
+          ctest --test-dir build -R '^(frontend_settings(_jp)?|mod_guards(_jp)?|rsp_task_submission|car_lod(_jp)?|scene_scissor(_jp)?|controller_pak_rom_filesystem(_jp)?|race_intro(_jp)?)$' --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify both ROMs through all courses
+        shell: pwsh
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python -B tests/test_rom_regions.py --exe build/aerogauge_modern.exe --usa "$env:ROM_FILENAME" --japan "AeroGauge (Japan) (Rev A).z64" --all-courses
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Remove ROM before packaging
         if: always()
         shell: pwsh
-        run: Remove-Item -Force -ErrorAction SilentlyContinue "$env:ROM_FILENAME"
+        run: Remove-Item -Force -ErrorAction SilentlyContinue "$env:ROM_FILENAME", "$env:JAPAN_ROM_FILENAME", "AeroGauge (Japan) (Rev A).z64"
 
       - name: Package
         shell: pwsh
@@ -238,7 +256,8 @@ jobs:
             'build\assets',
             'build\dxcompiler.dll',
             'build\dxil.dll',
-            'aerogauge.syms.toml'
+            'aerogauge.syms.toml',
+            'aerogauge.jp.syms.toml'
           )
           $missing = $payload | Where-Object { -not (Test-Path $_) }
           if ($missing) { throw "Packaging aborted -- required files missing: $($missing -join ', ')" }
@@ -312,6 +331,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
           python3 scripts/build_android.py --release
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/aerogauge-recomp-android-arm64.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 dist/aerogauge-recomp-android-arm64.apk
@@ -319,7 +339,7 @@ jobs:
       - name: Remove private build inputs
         if: always()
         run: |
-          rm -f "$ROM_FILENAME" "$RUNNER_TEMP/android-release.jks"
+          rm -f "$ROM_FILENAME" "$JAPAN_ROM_FILENAME" "AeroGauge (Japan) (Rev A).z64" "$RUNNER_TEMP/android-release.jks"
           rm -rf rom-assets
 
       - name: Upload APK
@@ -351,4 +371,4 @@ jobs:
             --title "${{ inputs.tag }}" \
             $( [ "${{ inputs.prerelease }}" = "true" ] && echo --prerelease ) \
             $( [ "${{ inputs.draft }}" = "true" ] && echo --draft ) \
-            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped copy of \`AeroGauge (USA).z64\` next to the desktop executable, or import it from the Android launcher — this project ships no game data.** See BUILDING.md and docs/android.md."
+            --notes "Automated build from commit ${{ github.sha }}. **You must supply your own legally-dumped USA or Japan Rev A ROM next to the desktop executable, or import it from the Android launcher — this project ships no game data.** See BUILDING.md and docs/android.md."

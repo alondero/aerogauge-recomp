@@ -8,6 +8,7 @@
 #endif
 
 #include "aero_crash.h"
+#include "aero_region.h"
 
 #include <algorithm>
 #include <atomic>
@@ -174,20 +175,20 @@ void find_and_load_symbol_table() {
     const char* env = std::getenv("AERO_CRASH_SYMBOLS");
     std::vector<std::filesystem::path> candidates;
     if (env && env[0] != '\0') candidates.emplace_back(env);
-    candidates.emplace_back(std::filesystem::current_path() / "aerogauge.syms.toml");
+    candidates.emplace_back(std::filesystem::current_path() / AERO_BRANCH("aerogauge.syms.toml", "aerogauge.jp.syms.toml"));
 #if defined(_WIN32)
     char exe_buf[MAX_PATH];
     DWORD n = GetModuleFileNameA(nullptr, exe_buf, MAX_PATH);
     if (n > 0 && n < MAX_PATH) {
         std::filesystem::path exedir = std::filesystem::path(std::string(exe_buf, n)).parent_path();
-        candidates.emplace_back(exedir / "aerogauge.syms.toml");
-        candidates.emplace_back(exedir.parent_path() / "aerogauge.syms.toml");
+        candidates.emplace_back(exedir / AERO_BRANCH("aerogauge.syms.toml", "aerogauge.jp.syms.toml"));
+        candidates.emplace_back(exedir.parent_path() / AERO_BRANCH("aerogauge.syms.toml", "aerogauge.jp.syms.toml"));
     }
 #else
     {
         std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe");
-        candidates.emplace_back(self.parent_path() / "aerogauge.syms.toml");
-        candidates.emplace_back(self.parent_path().parent_path() / "aerogauge.syms.toml");
+        candidates.emplace_back(self.parent_path() / AERO_BRANCH("aerogauge.syms.toml", "aerogauge.jp.syms.toml"));
+        candidates.emplace_back(self.parent_path().parent_path() / AERO_BRANCH("aerogauge.syms.toml", "aerogauge.jp.syms.toml"));
     }
 #endif
     for (const auto& p : candidates) {

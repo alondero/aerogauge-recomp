@@ -21,14 +21,17 @@ boundaries from the ROM itself:
   * PRE-STUBS: functions containing CP0/cache instructions (the libultra kernel layer
     ultramodern replaces wholesale) and functions whose branches escape their derived
     range (mis-split shared-tail code) are emitted as `stubs` so the whole-ROM
-    recompile succeeds. force_stub.txt adds hand-curated entries on top (one name per
-    line, '#' comments) — the iteration loop for recompiler errors.
+    recompile succeeds. Region-specific force_stub.txt / force_stub.jp.txt add
+    hand-curated entries on top (one name per line, '#' comments) — the iteration
+    loop for recompiler errors.
 
 Usage:  python scripts/gen_syms_toml.py    (from the repo root; reads the ROM +
         force_stub.txt, writes aerogauge.syms.toml + aerogauge.us.toml)
 """
 import struct
 import sys
+import argparse
+import hashlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -594,9 +597,47 @@ INDIRECT_STARTS = [
 
 
 def main():
+    global ROM_FILE, OUT_SYMS, OUT_CFG, CODE_ROM_END, FORCE_STUB
+    global LIBULTRA_NAMES, NATIVE_NAMES, BOOT_EXTRA, INDIRECT_STARTS, PATCH_BLOCKS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--region", choices=("us", "jp"), default="us")
+    parser.add_argument("--rom", type=Path)
+    args = parser.parse_args()
+    japanese = args.region == "jp"
+    if japanese:
+        import japan_rev_a as profile
+        FORCE_STUB = REPO / "force_stub.jp.txt"
+        ROM_FILE = REPO / "AeroGauge (Japan) (Rev A).z64"
+        OUT_SYMS = REPO / "aerogauge.jp.syms.toml"
+        OUT_CFG = REPO / "aerogauge.jp.toml"
+        CODE_ROM_END = 0x7F250
+        LIBULTRA_NAMES = profile.LIBULTRA_NAMES
+        NATIVE_NAMES = profile.NATIVE_NAMES
+        BOOT_EXTRA = profile.BOOT_EXTRA
+        INDIRECT_STARTS = profile.INDIRECT_STARTS
+        PATCH_BLOCKS = profile.PATCH_BLOCKS
+    if args.rom:
+        ROM_FILE = args.rom
     if not ROM_FILE.exists():
         sys.exit(f"missing ROM: {ROM_FILE}")
     rom = ROM_FILE.read_bytes()
+    if len(rom) != 8 * 1024 * 1024:
+        sys.exit("Expected an 8 MiB AeroGauge ROM")
+    if rom[:4] == bytes.fromhex("37804012"):
+        rom = bytes(x for pair in zip(rom[1::2], rom[::2]) for x in pair)
+    elif rom[:4] == bytes.fromhex("40123780"):
+        rom = bytes(x for word in zip(rom[3::4], rom[2::4], rom[1::4], rom[::4]) for x in word)
+    expected = ("1abff752862450bbfd3cfbb75b1c217daa57f524bee65f14ae436519a615368a" if japanese
+                else "2cc529109b11b00289d87f693a40591ef260d1dc7c1129113966ba6ddb1be4a5")
+    if hashlib.sha256(rom).hexdigest() != expected:
+        sys.exit(f"ROM does not match the supported {args.region} revision")
+    if japanese:
+        for _, address, instruction, _ in profile.HOOKS:
+            if address is not None and struct.unpack_from(">I", rom, vram_to_rom(address))[0] != instruction:
+                sys.exit(f"Japanese hook instruction mismatch at {address:#x}")
+    normalized_path = REPO / ("AeroGauge (Japan) (Rev A).z64" if japanese else "AeroGauge (USA).z64")
+    if not normalized_path.exists() or normalized_path.read_bytes() != rom:
+        normalized_path.write_bytes(rom)
 
     def word(off):
         return struct.unpack(">I", rom[off:off + 4])[0]
@@ -629,7 +670,7 @@ def main():
     for i, v in enumerate(starts):
         end_v = starts[i + 1] if i + 1 < len(starts) else vhi
         size = end_v - v
-        name = LIBULTRA_NAMES.get(v) or NATIVE_NAMES.get(v) or "func_%08X" % v
+        name = LIBULTRA_NAMES.get(v) or NATIVE_NAMES.get(v) or ("jp_func_%08X" if japanese else "func_%08X") % v
         cop0 = False
         branch_out = False
         for off in range(vram_to_rom(v), vram_to_rom(end_v), 4):
@@ -652,7 +693,7 @@ def main():
 
     # entrypoint gets renamed by N64Recomp itself (vram==ENTRY && rom==SECTION_ROM)
 
-    # --- force_stub.txt (hand-curated error-loop additions) ----------------------
+    # --- regional hand-curated error-loop additions -----------------------------
     force = set()
     if FORCE_STUB.exists():
         for line in FORCE_STUB.read_text().splitlines():
@@ -662,7 +703,7 @@ def main():
     known = {n for n, _, _ in funcs}
     unknown_force = force - known
     if unknown_force:
-        print(f"WARNING: force_stub.txt names not in the function map: {sorted(unknown_force)}")
+        raise SystemExit(f"{FORCE_STUB.name}: names not in the {args.region} function map: {sorted(unknown_force)}")
     # Canonically-named functions are routed (reimplemented/ignored) by N64Recomp itself and
     # are never emitted -- listing one as a stub too would make the recompiler hard-error.
     stubs = sorted(((auto_stubs | force) & known)
@@ -691,12 +732,12 @@ def main():
         f.write("# Whole-ROM recompile config (ROM+syms mode; see the script docstring).\n")
         f.write("# Run (see BUILDING.md step 3):\n")
         f.write("#   cmake --build build --target N64RecompCLI\n")
-        f.write("#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp aerogauge.us.toml\n\n")
+        f.write(f"#   ./build/lib/N64ModernRuntime/librecomp/N64Recomp/N64Recomp {OUT_CFG.name}\n\n")
         f.write("[input]\n")
         f.write(f"entrypoint = 0x{ENTRY:08X}\n")
-        f.write('output_func_path = "RecompiledFuncs"\n')
-        f.write('symbols_file_path = "aerogauge.syms.toml"\n')
-        f.write('rom_file_path = "AeroGauge (USA).z64"\n\n')
+        f.write(f'output_func_path = "{"RecompiledFuncsJP" if japanese else "RecompiledFuncs"}"\n')
+        f.write(f'symbols_file_path = "{OUT_SYMS.name}"\n')
+        f.write(f'rom_file_path = "{normalized_path.name}"\n\n')
         f.write("[patches]\n")
         f.write("stubs = [\n")
         for n in stubs:
@@ -719,7 +760,7 @@ def main():
     print(f"hook-named (toml ignored): {sorted(n for n in NATIVE_NAMES.values() if n in known)}")
     print(f"functions: {len(funcs)}  (jal+prologue-derived)")
     print(f"libultra-named: {len(named)}  {named}")
-    print(f"stubs: {len(stubs)}  (auto CP0/branch-out: {n_auto}, force_stub.txt: {len(force & known)})")
+    print(f"stubs: {len(stubs)}  (auto CP0/branch-out: {n_auto}, {FORCE_STUB.name}: {len(force & known)})")
     print(f"wrote {OUT_SYMS.name} + {OUT_CFG.name}")
 
 

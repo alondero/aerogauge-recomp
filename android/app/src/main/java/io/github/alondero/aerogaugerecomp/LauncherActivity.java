@@ -31,6 +31,15 @@ public final class LauncherActivity extends Activity {
 
     private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
+    private boolean supportsJapan() {
+        // The packager includes this table only when the native library has
+        // Japanese generated code. Reject unsupported imports before replacing
+        // the installed ROM, including in locally built USA-only APKs.
+        try (InputStream ignored = getAssets().open("aerogauge.jp.syms.toml")) {
+            return true;
+        } catch (IOException absent) { return false; }
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.rgb(9, 18, 31));
@@ -59,7 +68,7 @@ public final class LauncherActivity extends Activity {
         progress.setIndeterminate(true); game.addView(progress);
         play = button(game, "Play AeroGauge", true, () -> prepareGame());
         importRom = button(game, "Import ROM", false, () -> choose(ROM));
-        game.addView(text("Bring your own USA cartridge dump. Import once; your game and saves stay on this device. No game data is included.", 13, muted));
+        game.addView(text("Bring your own " + (supportsJapan() ? "USA or Japanese Rev A" : "USA") + " cartridge dump. Import once; your game and saves stay on this device. No game data is included.", 13, muted));
 
         LinearLayout controls = card(page);
         controls.addView(text("READY TO RACE", 12, 0xff59e2d0));
@@ -181,8 +190,8 @@ public final class LauncherActivity extends Activity {
         }
         work(() -> {
             if (request == ROM) {
-                try (InputStream input = getContentResolver().openInputStream(uri)) { RomImport.install(input, getFilesDir()); }
-                return "USA ROM verified. Ready to race!";
+                try (InputStream input = getContentResolver().openInputStream(uri)) { RomImport.install(input, getFilesDir(), supportsJapan()); }
+                return "ROM verified. Ready to race!";
             }
             if (request == DRIVER) return "Driver ready: " + DriverImport.install(this, uri);
             if (request == BACKUP) { exportSaves(uri); return "Save backup exported. Keep it somewhere safe."; }

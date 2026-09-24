@@ -189,6 +189,7 @@ RSPRECOMP=build/lib/N64ModernRuntime/librecomp/N64Recomp/RSPRecomp
 [ -x "$N64RECOMP" ] || die "missing tool: $N64RECOMP"
 [ -x "$RSPRECOMP" ] || die "missing tool: $RSPRECOMP"
 "$N64RECOMP" aerogauge.us.toml
+"$PYTHON3_EXECUTABLE" -B scripts/recompile_japan.py "$N64RECOMP"
 if [[ -f aspMain.us.toml ]]; then
     "$RSPRECOMP" aspMain.us.toml
 else

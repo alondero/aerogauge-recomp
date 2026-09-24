@@ -14,6 +14,7 @@
 // a general RT64 rule. See docs/reference/renderer.md.
 
 #include "recomp.h"
+#include "aero_region.h"
 #include "rt64_extended_gbi.h"
 #include "aero_hud_widescreen.h"
 #include <stdio.h>
@@ -22,11 +23,11 @@
 
 #define SCREEN_WIDTH_QP (320 * 4) /* gEXSetRectAlign offsets are quarter-pixels */
 
-#define AERO_HUD_CURSOR_HOLDER 0x8016C508u /* fixed DL write-cursor holder (live-derived) */
-#define AERO_SCENE_CUR         0x8013FF80u /* scene manager: current scene id (5 = race) */
+#define AERO_HUD_CURSOR_HOLDER AERO_ADDR(0x8016C508u, 0x80169508u) /* fixed DL write-cursor holder (live-derived) */
+#define AERO_SCENE_CUR         AERO_ADDR(0x8013FF80u, 0x8013D000u) /* scene manager: current scene id (5 = race) */
 #define AERO_SCENE_RACE        5u
-#define AERO_SCENE_PHASE       0x8013FF88u /* scene-local phase (see aero_warp.c) */
-#define AERO_RACE_CDOWN_STEP   0x8013FF38u /* race block +0x2B0: countdown step 0..3 */
+#define AERO_SCENE_PHASE       AERO_ADDR(0x8013FF88u, 0x8013D008u) /* scene-local phase (see aero_warp.c) */
+#define AERO_RACE_CDOWN_STEP   AERO_ADDR(0x8013FF38u, 0x8013CFB8u) /* race block +0x2B0: countdown step 0..3 */
 
 static void emit_at(uint8_t* rdram, gpr* cur, uint32_t w0, uint32_t w1) {
     MEM_W(0, *cur) = (int32_t)w0;
@@ -104,7 +105,7 @@ static void bracket_close_at(uint8_t* rdram, gpr* cur) {
 // orange-primcolor VTX+TRI1 ROM resource, live-derived). The matrix-pool address itself is
 // double-buffered, so keying off the static mesh pointer is the only stable discriminator.
 
-#define AERO_NEEDLE_MESH_ADDR 0x800995C0u /* static needle VTX+TRI1 sub-DL (live-derived) */
+#define AERO_NEEDLE_MESH_ADDR AERO_ADDR(0x800995C0u, 0x80096E30u) /* static needle VTX+TRI1 sub-DL (live-derived) */
 
 // 16:9 shift magnitude in the needle matrix's translate.x units. The unit is ONE
 // 320-space pixel: live-logged at the hook, the needle modelview's translate.x int part
@@ -371,10 +372,10 @@ static void aero_ws_trace(uint8_t* rdram, gpr start, gpr end) {
         return;
     }
     uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE);
-    uint32_t frame = (uint32_t)MEM_W(0, (gpr)(int32_t)0x8013FC88u); /* race frame counter */
-    uint32_t cdown = (uint32_t)MEM_W(0, (gpr)(int32_t)0x8013FF38u); /* countdown step +0x2B0 */
-    int8_t w244 = (int8_t)MEM_B(0, (gpr)(int32_t)0x8019E034u);      /* fade ch A +0x244 */
-    int8_t w245 = (int8_t)MEM_B(0, (gpr)(int32_t)0x8019E035u);      /* fade ch B +0x245 */
+    uint32_t frame = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_ADDR(0x8013FC88u, 0x8013CD08u)); /* race frame counter */
+    uint32_t cdown = (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_ADDR(0x8013FF38u, 0x8013CFB8u)); /* countdown step +0x2B0 */
+    int8_t w244 = (int8_t)MEM_B(0, (gpr)(int32_t)AERO_ADDR(0x8019E034u, 0x8019B034u));      /* fade ch A +0x244 */
+    int8_t w245 = (int8_t)MEM_B(0, (gpr)(int32_t)AERO_ADDR(0x8019E035u, 0x8019B035u));      /* fade ch B +0x245 */
     int rects = 0, left = 0, right = 0, minulx = 4096, maxlrx = -1;
     int ext_aligned = 0;
     for (gpr p = start; p + 8 <= end; p += 8) {

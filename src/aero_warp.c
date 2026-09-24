@@ -1,4 +1,6 @@
-// Developer race warp for the accepted USA ROM.
+// Developer race warp for the accepted USA and Japan Rev A ROMs.
+// The walkthrough below uses USA addresses; AERO_ADDR pairs select their
+// verified Japanese counterparts.
 //
 // The SDL/main thread publishes a one-shot request. The game thread consumes
 // it at the scene-driver hook and performs the same race-parameter stores
@@ -39,20 +41,20 @@
 #include <stdlib.h>
 
 #include "recomp.h"
+#include "aero_region.h"
 
 // Recompiled per-course record/ghost loader (see the preload comment at the launch
 // stores): reads RP_GROUP/RP_TRACK, resolves the blob id (0x800974F0 table), copies
 // the id's default-record row (0x80096B50) to 0x8008ED20 and DMAs the course's
 // replay blob to 0x801B5A30. Self-guarded (blob id 0 = no-op).
-void func_80036C54(uint8_t* rdram, recomp_context* ctx);
 
 // Scene manager (all u32).
-#define SCENE_CUR   0x8013FF80u
-#define SCENE_REQ   0x8013FF84u
-#define SCENE_PHASE 0x8013FF88u  // scene-local phase; 6 = fresh entry (boot seed, and the
+#define SCENE_CUR   AERO_ADDR(0x8013FF80u, 0x8013D000u)
+#define SCENE_REQ   AERO_ADDR(0x8013FF84u, 0x8013D004u)
+#define SCENE_PHASE AERO_ADDR(0x8013FF88u, 0x8013D008u)  // scene-local phase; 6 = fresh entry (boot seed, and the
                                  // value every ROM launch site fires from — race scene
                                  // dispatches on it at 0x800161C4 and walks 1->2->3)
-#define SCENE_TRANS 0x8013FF8Cu  // runner transition word; the race runner's own finish/
+#define SCENE_TRANS AERO_ADDR(0x8013FF8Cu, 0x8013D00Cu)  // runner transition word; the race runner's own finish/
                                  // exit detection stores 5/6/7 here (0x80016A4C..0x80016B44)
                                  // and 7 drives phase->7, the ~60-frame teardown sequence
                                  // that then requests the next scene itself (measured on the
@@ -63,18 +65,18 @@ void func_80036C54(uint8_t* rdram, recomp_context* ctx);
 #define TRANS_EXIT  7
 
 // Race-parameter block (base 0x8013FF90; initializer func_80015EC0).
-#define RP_MODE    0x8013FF90u  // u8: 4 = mode-0 menu race, 7 = attract demo
-#define RP_GROUP   0x8013FF94u  // u8: course group; menu confirm (0x80052078, func_80051F2C)
+#define RP_MODE    AERO_ADDR(0x8013FF90u, 0x8013D010u)  // u8: 4 = mode-0 menu race, 7 = attract demo
+#define RP_GROUP   AERO_ADDR(0x8013FF94u, 0x8013D014u)  // u8: course group; menu confirm (0x80052078, func_80051F2C)
                                 //     copies the menu group global 0x8008F248 here. The record/
                                 //     ghost loader func_80036C54 indexes its blob-id table
                                 //     0x800974F0 with group*6+track; group 0 = every entry 0
                                 //     = no blob. Real launches use 1 (tracks 0-3), 2 (4-5).
-#define MENU_GROUP 0x8008F248u  // s8: the menu-side source of RP_GROUP (kept in sync)
-#define RP_CRAFT1  0x8013FF95u  // u8: P1 craft 0-9 (craft-select writer 0x80045EF0)
-#define RP_DUPCOL  0x8013FF97u  // u8: duplicate-craft colour flag (0 in 1P)
-#define RP_TRACK   0x8013FF9Bu  // u8: track 0-5 (track-select cursor)
-#define RP_MENU9C  0x8013FF9Cu  // u8: 6 after menu-scene entry (writer 0x8003EFA8)
-#define RP_INITED  0x8013FFAAu  // u8: 1 once func_80015EC0 ran (block +0x1A)
+#define MENU_GROUP AERO_ADDR(0x8008F248u, 0x8008D1A8u)  // s8: the menu-side source of RP_GROUP (kept in sync)
+#define RP_CRAFT1  AERO_ADDR(0x8013FF95u, 0x8013D015u)  // u8: P1 craft 0-9 (craft-select writer 0x80045EF0)
+#define RP_DUPCOL  AERO_ADDR(0x8013FF97u, 0x8013D017u)  // u8: duplicate-craft colour flag (0 in 1P)
+#define RP_TRACK   AERO_ADDR(0x8013FF9Bu, 0x8013D01Bu)  // u8: track 0-5 (track-select cursor)
+#define RP_MENU9C  AERO_ADDR(0x8013FF9Cu, 0x8013D01Cu)  // u8: 6 after menu-scene entry (writer 0x8003EFA8)
+#define RP_INITED  AERO_ADDR(0x8013FFAAu, 0x8013D02Au)  // u8: 1 once func_80015EC0 ran (block +0x1A)
 
 // Current-course context: table pointer consumed per-frame by the race chain
 // (func_80007310 reads it as its ready guard — 0 means early-out; the course
@@ -82,18 +84,18 @@ void func_80036C54(uint8_t* rdram, recomp_context* ctx);
 // every clean boot launch; a warp out of a live race must restore that zero or
 // the next race's first frames walk the OLD course's tables with the NEW track
 // id and crash in unloaded memory.
-#define COURSE_TAB 0x8013FF44u
+#define COURSE_TAB AERO_ADDR(0x8013FF44u, 0x8013CFC4u)
 
 // Menu-launch side effects (RACE confirm, func_80041D2C).
-#define GO_EE9C    0x8008EE9Cu  // u32 = 1
-#define LATCH_EF50 0x8008EF50u  // u8 = 0
-#define LATCH_EF54 0x8008EF54u  // u8 = 0
-#define LATCH_EF58 0x8008EF58u  // u8 = 1
-#define STATE_F294 0x8008F294u  // u32 = 0
-#define HALF_109BDC 0x80109BDCu // u16 = 0
-#define GAME_MODE  0x8008F290u  // u32: main-menu game mode; warp forges mode 0
-#define TRACK_TAB  0x80081F30u  // u32[6]: per-track data ptr (game mode != 3)
-#define TRACK_REC  0x8008B318u  // committed per-track slot, stride 20
+#define GO_EE9C    AERO_ADDR(0x8008EE9Cu, 0x8008CDFCu)  // u32 = 1
+#define LATCH_EF50 AERO_ADDR(0x8008EF50u, 0x8008CEB0u)  // u8 = 0
+#define LATCH_EF54 AERO_ADDR(0x8008EF54u, 0x8008CEB4u)  // u8 = 0
+#define LATCH_EF58 AERO_ADDR(0x8008EF58u, 0x8008CEB8u)  // u8 = 1
+#define STATE_F294 AERO_ADDR(0x8008F294u, 0x8008D1F4u)  // u32 = 0
+#define HALF_109BDC AERO_ADDR(0x80109BDCu, 0x80106CCCu) // u16 = 0
+#define GAME_MODE  AERO_ADDR(0x8008F290u, 0x8008D1F0u)  // u32: main-menu game mode; warp forges mode 0
+#define TRACK_TAB  AERO_ADDR(0x80081F30u, 0x80081CC0u)  // u32[6]: per-track data ptr (game mode != 3)
+#define TRACK_REC  AERO_ADDR(0x8008B318u, 0x8008AEC8u)  // committed per-track slot, stride 20
 
 // Track names as printed by the ROM (name cluster at ROM 0x960A0; index order
 // corroborated by the shared course-geometry pointers of CHINATOWN/CHINATOWN JAM
@@ -237,7 +239,7 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
     // func_80002180 posts the track's song during the scene-phase walk. The
     // PI completion message contract is covered by runtime patch 0012; keep
     // that dependency detail in the runtime reference.)
-    func_80036C54(rdram, ctx);
+    LOOKUP_FUNC(AERO_ADDR(0x80036C54u, 0x80037838u))(rdram, ctx);
     uint32_t track_ptr = (uint32_t)MEM_W(0, (gpr)(int32_t)(TRACK_TAB + 4u * (uint32_t)track));
     MEM_W(0, (gpr)(int32_t)(TRACK_REC + 20u * (uint32_t)track)) = (int32_t)track_ptr;
     MEM_W(0, (gpr)(int32_t)COURSE_TAB)  = 0;
