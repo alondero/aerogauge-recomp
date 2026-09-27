@@ -30,18 +30,19 @@ ultramodern::renderer::GraphicsConfig default_graphics_config();
 // Load graphics.json (falling back to defaults for missing/invalid keys), apply it
 // via ultramodern::renderer::set_graphics_config, and write the merged file back so
 // users always have a complete, editable file on disk. Returns the applied config.
+//
+// That whole-document write is the module's only one, and it belongs here on
+// purpose: once the game is running, every settings change goes through the
+// setters below, which queue a debounced background write. Re-writing the file
+// from a live path would put a synchronous round trip back in the SDL main
+// thread and would replace the batch the writer still owns, so there is
+// deliberately no public entry point for it.
 ultramodern::renderer::GraphicsConfig load_and_apply_graphics();
 
 // Main-thread snapshot/apply helpers for the native in-game menu. apply_graphics()
 // queues the live RT64 update and persists the same value.
 ultramodern::renderer::GraphicsConfig current_graphics();
 void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live = true);
-
-// Persist the given config (full overwrite of graphics.json, synchronous).
-// Startup only: the live setters below queue a debounced background write.
-// Drains the queue before overwriting, so it carries the same "not from the
-// persistence worker" restriction as flush_config_writes().
-void save_graphics(const ultramodern::renderer::GraphicsConfig& cfg);
 
 // Block until every queued persistence write has reached the file. The live
 // setters return after recording the change in memory; a worker thread coalesces
