@@ -132,6 +132,35 @@ nlohmann::json graphics_config_json(const ultramodern::renderer::GraphicsConfig&
     };
 }
 
+// The graphics.json update that carries `cfg` over from `before`: one key per
+// GraphicsConfig field whose value changed, which is what a menu action
+// persists. apply_graphics() and apply_graphics_settings() both build their
+// queued updates from here, so the fields are listed once rather than twice and
+// a new GraphicsConfig field needs a line in this function and nowhere else on
+// the apply path. Keep the list in step with graphics_config_json() above, which
+// serialises the same fields for the whole startup document.
+//
+// This compares the fields instead of diffing the two serialisations: an enum
+// the menu cannot offer (the OptionCount sentinels) has no JSON name, and
+// serialising one throws. Both callers run in the SDL event pump, so a new throw
+// path there is not worth the shorter code.
+nlohmann::json graphics_config_updates(const ultramodern::renderer::GraphicsConfig& before,
+                                        const ultramodern::renderer::GraphicsConfig& cfg) {
+    nlohmann::json updates = nlohmann::json::object();
+    if (before.res_option != cfg.res_option) updates["res_option"] = cfg.res_option;
+    if (before.wm_option != cfg.wm_option) updates["wm_option"] = cfg.wm_option;
+    if (before.hr_option != cfg.hr_option) updates["hr_option"] = cfg.hr_option;
+    if (before.api_option != cfg.api_option) updates["api_option"] = cfg.api_option;
+    if (before.ar_option != cfg.ar_option) updates["ar_option"] = cfg.ar_option;
+    if (before.msaa_option != cfg.msaa_option) updates["msaa_option"] = cfg.msaa_option;
+    if (before.rr_option != cfg.rr_option) updates["rr_option"] = cfg.rr_option;
+    if (before.hpfb_option != cfg.hpfb_option) updates["hpfb_option"] = cfg.hpfb_option;
+    if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
+    if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
+    if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
+    return updates;
+}
+
 nlohmann::json to_json(const ultramodern::renderer::GraphicsConfig& c) {
     std::lock_guard<std::mutex> lock(g_texture_mutex);
     nlohmann::json result = graphics_config_json(c);
@@ -501,13 +530,28 @@ nlohmann::json enhancements_json(bool easy_turbo) {
 }
 
 // Startup: inline so enhancements.json exists before the game starts (matches
-// save_graphics()). A live toggle goes through save_enhancements() instead.
+// write_graphics_document()). A live toggle goes through save_enhancements()
+// instead.
 void write_enhancements(bool easy_turbo) {
     write_graphics_json(enhancements_json_path(), enhancements_json(easy_turbo));
 }
 
 void save_enhancements(bool easy_turbo) {
     queue_enhancements_document(enhancements_json(easy_turbo));
+}
+
+// Startup: the only place that writes graphics.json as a whole document, so a
+// new key lands on disk with its default after an upgrade. Deliberately not
+// reachable from the live paths -- see load_and_apply_graphics().
+void write_graphics_document(const ultramodern::renderer::GraphicsConfig& cfg) {
+    // Drain first. This writes a whole document, so a queued update left behind
+    // would be clobbered here and then merged back from a stale base by the worker.
+    aero::config::flush_config_writes();
+    const nlohmann::json document = to_json(cfg);
+    write_graphics_json(graphics_json_path(), document);
+    PersistenceState& state = persistence();
+    std::lock_guard lock(state.mutex);
+    state.base_document = document;
 }
 
 } // anonymous namespace
@@ -565,7 +609,7 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     // overwrite a file that failed to parse: a hand-edit typo must stay recoverable,
     // not be replaced by defaults.
     if (r != ReadResult::Unparseable) {
-        save_graphics(cfg);
+        write_graphics_document(cfg);
     }
     std::fprintf(stderr, "[config] graphics config: %s\n", path.string().c_str());
 
@@ -585,20 +629,8 @@ ultramodern::renderer::GraphicsConfig current_graphics() {
 void apply_graphics(const ultramodern::renderer::GraphicsConfig& cfg, bool apply_live) {
     const auto before = g_current_graphics;
     g_current_graphics = cfg;
-    nlohmann::json updates = nlohmann::json::object();
-    if (before.res_option != cfg.res_option) updates["res_option"] = cfg.res_option;
-    if (before.wm_option != cfg.wm_option) updates["wm_option"] = cfg.wm_option;
-    if (before.hr_option != cfg.hr_option) updates["hr_option"] = cfg.hr_option;
-    if (before.api_option != cfg.api_option) updates["api_option"] = cfg.api_option;
-    if (before.ar_option != cfg.ar_option) updates["ar_option"] = cfg.ar_option;
-    if (before.msaa_option != cfg.msaa_option) updates["msaa_option"] = cfg.msaa_option;
-    if (before.rr_option != cfg.rr_option) updates["rr_option"] = cfg.rr_option;
-    if (before.hpfb_option != cfg.hpfb_option) updates["hpfb_option"] = cfg.hpfb_option;
-    if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
-    if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
-    if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
     if (apply_live) ultramodern::renderer::set_graphics_config(cfg);
-    queue_graphics_updates(updates);
+    queue_graphics_updates(graphics_config_updates(before, cfg));
 }
 
 void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
@@ -610,18 +642,10 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
     const auto before = g_current_graphics;
     g_current_graphics = cfg;
 
-    nlohmann::json updates = nlohmann::json::object();
-    if (before.res_option != cfg.res_option) updates["res_option"] = cfg.res_option;
-    if (before.wm_option != cfg.wm_option) updates["wm_option"] = cfg.wm_option;
-    if (before.hr_option != cfg.hr_option) updates["hr_option"] = cfg.hr_option;
-    if (before.api_option != cfg.api_option) updates["api_option"] = cfg.api_option;
-    if (before.ar_option != cfg.ar_option) updates["ar_option"] = cfg.ar_option;
-    if (before.msaa_option != cfg.msaa_option) updates["msaa_option"] = cfg.msaa_option;
-    if (before.rr_option != cfg.rr_option) updates["rr_option"] = cfg.rr_option;
-    if (before.hpfb_option != cfg.hpfb_option) updates["hpfb_option"] = cfg.hpfb_option;
-    if (before.rr_manual_value != cfg.rr_manual_value) updates["rr_manual_value"] = cfg.rr_manual_value;
-    if (before.ds_option != cfg.ds_option) updates["ds_option"] = cfg.ds_option;
-    if (before.developer_mode != cfg.developer_mode) updates["developer_mode"] = cfg.developer_mode;
+    // The Graphics page commits all of its options as one transaction, so the
+    // page's own changes start from the shared config diff and add the window,
+    // texture, and LOD keys on top.
+    nlohmann::json updates = graphics_config_updates(before, cfg);
 
     const auto clamped_size = clamp_window_size(size);
     {
@@ -660,18 +684,6 @@ void apply_graphics_settings(const ultramodern::renderer::GraphicsConfig& cfg,
 void update_saved_window_mode(ultramodern::renderer::WindowMode wm) {
     g_current_graphics.wm_option = wm;
     queue_graphics_updates({{"wm_option", wm}});
-}
-
-void save_graphics(const ultramodern::renderer::GraphicsConfig& cfg) {
-    // Drain first. This writes a whole document, so a queued update left behind
-    // would be clobbered here and then merged back from a stale base by the worker.
-    flush_config_writes();
-    const std::filesystem::path path = graphics_json_path();
-    const nlohmann::json document = to_json(cfg);
-    write_graphics_json(path, document);
-    PersistenceState& state = persistence();
-    std::lock_guard lock(state.mutex);
-    state.base_document = document;
 }
 
 void flush_config_writes() {
