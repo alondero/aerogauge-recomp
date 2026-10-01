@@ -107,6 +107,8 @@ The current CMake file registers these tests:
 | full_track_policy | Host | No ROM |
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
+| frontend_navigation_wrap | Host | Real RecompFrontend/RmlUi directional events and nested single-item wrapping; no ROM or graphics device |
+| frontend_navigation_rebuild | Host | Real RecompFrontend/RmlUi events after replacing a focused container's descendants; no ROM or graphics device |
 | live_config_updates | Host | Runtime headers; no ROM |
 | graphics_config_threadsafe | Host | Runtime source from the initialized submodule; no ROM |
 | user_data_dir | Host | No ROM |
@@ -124,6 +126,14 @@ The ROM-backed tests are only added when RecompiledFuncs exists at configure
 time. Re-run CMake after generating the functions if they are missing from
 CTest. The Windows tests are only added on Windows. play_logging_quiet is
 also only added when the ROM exists during configuration.
+
+`frontend_navigation_wrap` sends real RmlUi directional events through nested
+single-item groups and checks that wrapping retains the current focus.
+`frontend_navigation_rebuild` also checks that a focused container is treated
+as a leaf while its descendants are alive, then repeats after deleting them.
+The live-child assertion catches stale navigation caches deterministically;
+the deletion step exercises the same traversal with freed controls.
+Both tests also check normal row/column movement in all four directions.
 
 `car_lod` executes the generated routines with synthetic car/camera data. It
 checks original and forced distance boundaries, retained near/angular rejection,

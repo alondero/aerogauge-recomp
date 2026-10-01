@@ -1,0 +1,29 @@
+diff --git a/recompui/src/elements/ui_document.cpp b/recompui/src/elements/ui_document.cpp
+--- a/recompui/src/elements/ui_document.cpp
++++ b/recompui/src/elements/ui_document.cpp
+@@ -273,7 +273,10 @@
+             float closest_distance = std::numeric_limits<float>::max();
+             for (auto &element : elements) {
+                 if (element == this_element) {
+-                    continue;
++                    // Wrapping can return to the original focus's container.
++                    // Keeping that focus is valid, even when it is the only
++                    // candidate; excluding it would produce a null target.
++                    return element;
+                 }
+ 
+                 RmlPosSize element_pos_size(element->base);
+diff --git a/recompui/src/elements/ui_element.cpp b/recompui/src/elements/ui_element.cpp
+--- a/recompui/src/elements/ui_element.cpp
++++ b/recompui/src/elements/ui_element.cpp
+@@ -731,6 +731,10 @@
+ 
+     for (auto &child : children) {
+         if (child == cur_focus_element) {
++            // The focused control is a leaf in this navigation pass. It may
++            // also be a container whose children changed since the last pass;
++            // never descend through its old (possibly freed) child pointers.
++            child->nav_children.clear();
+             nav_parent->nav_children.push_back(child);
+             continue;
+         }
