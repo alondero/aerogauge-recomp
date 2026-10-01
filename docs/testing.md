@@ -108,7 +108,11 @@ The current CMake file registers these tests:
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | frontend_navigation_wrap | Host | Real RecompFrontend/RmlUi directional events and nested single-item wrapping; no ROM or graphics device |
+| frontend_navigation_candidates | Host | Real RecompFrontend/RmlUi wrapping with multiple candidates including the current focus; no ROM or graphics device |
+| frontend_navigation_entry | Host | Real RecompFrontend/RmlUi navigation from a focused container into live children; no ROM or graphics device |
 | frontend_navigation_rebuild | Host | Real RecompFrontend/RmlUi events after replacing a focused container's descendants; no ROM or graphics device |
+| frontend_navigation_grid | Host | Real RecompFrontend/RmlUi grid navigation to and from a focusable empty row; no ROM or graphics device |
+| frontend_navigation_removal | Host | Real RecompFrontend/RmlUi navigation after removing direct and flattened descendants; no ROM or graphics device |
 | live_config_updates | Host | Runtime headers; no ROM |
 | graphics_config_threadsafe | Host | Runtime source from the initialized submodule; no ROM |
 | user_data_dir | Host | No ROM |
@@ -129,11 +133,18 @@ also only added when the ROM exists during configuration.
 
 `frontend_navigation_wrap` sends real RmlUi directional events through nested
 single-item groups and checks that wrapping retains the current focus.
-`frontend_navigation_rebuild` also checks that a focused container is treated
-as a leaf while its descendants are alive, then repeats after deleting them.
-The live-child assertion catches stale navigation caches deterministically;
-the deletion step exercises the same traversal with freed controls.
-Both tests also check normal row/column movement in all four directions.
+`frontend_navigation_candidates` verifies that wrapping still chooses the
+nearest other control when the destination contains the current focus.
+`frontend_navigation_entry` checks entry into a focused container's live
+children before and after caching them. `frontend_navigation_rebuild` checks
+immediate cache invalidation when a hidden container's children are deleted,
+retention of a focusable empty container, and entry into replacement children.
+`frontend_navigation_grid` checks movement to and from a focusable empty row
+without indexing a nonexistent child.
+`frontend_navigation_removal` checks cache invalidation for direct children and
+descendants flattened into an ancestor navigation list. The cache assertions
+use the frontend's public accessor so allocator reuse cannot mask freed pointers.
+All six tests also check normal row/column movement in all four directions.
 
 `car_lod` executes the generated routines with synthetic car/camera data. It
 checks original and forced distance boundaries, retained near/angular rejection,

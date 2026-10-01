@@ -80,7 +80,11 @@ endif()
 add_test(NAME frontend_settings COMMAND test_frontend_settings)
 add_test(NAME frontend_settings_jp COMMAND test_frontend_settings jp)
 add_test(NAME frontend_navigation_wrap COMMAND test_frontend_navigation)
+add_test(NAME frontend_navigation_candidates COMMAND test_frontend_navigation multi)
+add_test(NAME frontend_navigation_entry COMMAND test_frontend_navigation entry)
 add_test(NAME frontend_navigation_rebuild COMMAND test_frontend_navigation stale)
+add_test(NAME frontend_navigation_grid COMMAND test_frontend_navigation grid)
+add_test(NAME frontend_navigation_removal COMMAND test_frontend_navigation remove)
 endif()
 
 # Release and source-build output needs the frontend assets and RmlUi fonts

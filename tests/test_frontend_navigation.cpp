@@ -3,6 +3,7 @@
 #include "recompui/recompui.h"
 #include "elements/ui_document.h"
 #include "librecomp/game.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 #include <string_view>
@@ -74,52 +75,140 @@ int main(int argc, char** argv) {
         }
         context.open();
         require(context.get_focused_element() != nullptr, "Navigation lost focus");
-        // A focused navigation container keeps its place while its controls
-        // are replaced, as happens when a settings page changes content.
         outer->clear_children();
         auto* group = context.create_element<recompui::Element>(outer);
         group->enable_focus();
         group->set_as_navigation_container(recompui::NavigationType::Horizontal);
-        auto* child = context.create_element<recompui::Element>(group);
-        child->set_as_primary_focus(true);
-        auto* focused = child;
-        const bool stale = argc > 1 && std::string_view(argv[1]) == "stale";
-        if (!stale) {
+        // Keep context mutation separate from the real key-event path.
+        auto navigate = [&](Rml::Input::KeyIdentifier key) {
+            context.close();
+            rml->ProcessKeyDown(key, 0);
+            rml->ProcessKeyUp(key, 0);
+            rml->Update();
+            context.open();
+        };
+        auto make_control = [&](recompui::Element* parent) {
+            auto* control = context.create_element<recompui::Element>(parent);
+            control->enable_focus();
+            control->set_width(40);
+            control->set_height(20);
+            return control;
+        };
+        const std::string_view mode = argc > 1 ? argv[1] : "wrap";
+        if (mode == "multi") {
+            group->set_position(recompui::Position::Relative);
+            group->set_width(300);
+            group->set_height(300);
+            std::vector<recompui::Element*> candidates;
+            for (int offset : {0, 100, 120}) {
+                auto* control = make_control(group);
+                control->set_position(recompui::Position::Absolute);
+                control->set_left(offset);
+                control->set_top(offset);
+                candidates.push_back(control);
+            }
+            rml->Update();
+            // The middle control is included in the wrap destination, but the
+            // nearest other candidate must still win in either direction.
+            for (auto key : {Rml::Input::KI_DOWN, Rml::Input::KI_UP}) {
+                require(candidates[1]->focus(), "Multi-candidate focus failed");
+                navigate(key);
+                require(context.get_focused_element() == candidates[2],
+                        "Wrapping must select the nearest other candidate");
+            }
+        } else if (mode == "entry") {
+            auto* child = make_control(group);
+            child->set_as_primary_focus(true);
+            rml->Update();
+            require(group->focus(), "Container focus failed");
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == child,
+                    "A focused container must enter its live children without a cached tree");
+            require(group->focus(), "Container refocus failed");
+            navigate(Rml::Input::KI_UP);
+            require(context.get_focused_element() == child,
+                    "A focused container must enter its live children after rebuilding");
+        } else if (mode == "stale") {
+            auto* child = make_control(group);
+            child->set_as_primary_focus(true);
+            rml->Update();
+            require(child->focus(), "Child focus failed");
+            navigate(Rml::Input::KI_DOWN);
+            require(group->get_nav_children()->size() == 1,
+                    "The navigation pass must cache the live child");
+            require(group->focus(), "Container focus failed");
+            group->display_hide();
+            group->clear_children();
+            // This public cache accessor gives a deterministic lifetime check
+            // before any rebuild or allocator reuse can mask a freed pointer.
+            require(group->get_nav_children()->empty(),
+                    "clear_children must invalidate cached navigation descendants immediately");
+            group->display_show();
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == group,
+                    "An empty focused container must retain focus after deleting its children");
+            require(std::find(outer->get_nav_children()->begin(), outer->get_nav_children()->end(), group)
+                        != outer->get_nav_children()->end(),
+                    "A focusable empty container must remain in its parent's navigation tree");
+            auto* replacement = make_control(group);
+            replacement->set_as_primary_focus(true);
+            rml->Update();
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == replacement,
+                    "Navigation must enter replacement children of a focused container");
+        } else if (mode == "grid") {
+            outer->set_as_navigation_container(recompui::NavigationType::GridCol);
+            outer->set_nav_wrapping(false);
+            group->set_as_navigation_container(recompui::NavigationType::GridRow);
+            auto* child = make_control(group);
+            auto* empty_row = context.create_element<recompui::Element>(outer);
+            empty_row->enable_focus();
+            empty_row->set_as_navigation_container(recompui::NavigationType::GridRow);
+            rml->Update();
+            require(child->focus(), "Grid child focus failed");
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == empty_row,
+                    "Grid navigation must focus an empty row without indexing its children");
+            navigate(Rml::Input::KI_UP);
+            require(context.get_focused_element() == child,
+                    "Grid navigation must return from an empty row to the live control");
+        } else if (mode == "remove") {
+            auto* wrapper = context.create_element<recompui::Element>(group);
+            auto* child = make_control(wrapper);
+            auto* survivor = make_control(group);
+            survivor->set_as_primary_focus(true);
+            rml->Update();
+            require(child->focus(), "Removed child focus failed");
+            navigate(Rml::Input::KI_DOWN);
+            require(group->get_nav_children()->size() == 2,
+                    "The parent navigation cache must include flattened descendants");
+            require(wrapper->remove_child(child), "Removing nested child failed");
+            require(group->get_nav_children()->empty(),
+                    "Removing a flattened descendant must invalidate the ancestor navigation cache");
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == survivor,
+                    "Navigation must retain the surviving control after removal");
+            require(group->focus(), "Container focus failed");
+            require(group->remove_child(survivor), "Removing direct child failed");
+            require(group->get_nav_children()->empty(),
+                    "Removing a direct child must invalidate the navigation cache");
+            navigate(Rml::Input::KI_DOWN);
+            require(context.get_focused_element() == group,
+                    "Navigation must retain an empty container after removing its last control");
+        } else {
+            require(mode == "wrap", "Unknown navigation test mode");
+            auto* child = context.create_element<recompui::Element>(group);
+            child->set_as_primary_focus(true);
             child->set_as_navigation_container(recompui::NavigationType::Auto);
-            focused = context.create_element<recompui::Element>(child);
+            auto* focused = make_control(child);
+            rml->Update();
+            require(focused->focus(), "Child focus failed");
+            for (auto key : {Rml::Input::KI_DOWN, Rml::Input::KI_UP}) {
+                navigate(key);
+                require(context.get_focused_element() == focused,
+                        "Wrapping a single-item group must retain its focused descendant");
+            }
         }
-        focused->enable_focus();
-        rml->Update();
-        require(focused->focus(), "Child focus failed");
-        context.close();
-        rml->ProcessKeyDown(Rml::Input::KI_DOWN, 0);
-        rml->ProcessKeyUp(Rml::Input::KI_DOWN, 0);
-        context.open();
-        require(context.get_focused_element() == focused,
-                "Wrapping a single-item group must retain its focused descendant");
-        // Keep the child alive for this assertion: the old cached-tree walk
-        // deterministically refocuses it, independent of freed-memory contents.
-        require(group->focus(), "Container focus failed");
-        context.close();
-        rml->ProcessKeyDown(Rml::Input::KI_DOWN, 0);
-        rml->ProcessKeyUp(Rml::Input::KI_DOWN, 0);
-        context.open();
-        require(context.get_focused_element() == group,
-                "A focused navigation container must be treated as a leaf");
-        // Rebuild the descendant cache before exercising its destruction.
-        require(focused->focus(), "Child refocus failed");
-        context.close();
-        rml->ProcessKeyDown(Rml::Input::KI_DOWN, 0);
-        rml->ProcessKeyUp(Rml::Input::KI_DOWN, 0);
-        context.open();
-        group->clear_children();
-        require(group->focus(), "Container focus failed");
-        context.close();
-        rml->ProcessKeyDown(Rml::Input::KI_DOWN, 0);
-        rml->ProcessKeyUp(Rml::Input::KI_DOWN, 0);
-        context.open();
-        require(context.get_focused_element() == group,
-                "Wrapping a focused container must retain focus after replacing its children");
         context.close();
         recompui::destroy_context(context);
         Rml::Shutdown();
