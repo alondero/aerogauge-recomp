@@ -1,0 +1,90 @@
+diff --git a/recompui/src/elements/ui_document.cpp b/recompui/src/elements/ui_document.cpp
+index 410acde..b893c3d 100644
+--- a/recompui/src/elements/ui_document.cpp
++++ b/recompui/src/elements/ui_document.cpp
+@@ -222,6 +222,10 @@ namespace recompui {
+                 // This could be added.
+                 Element *next_el = try_get_element_at_index(cur_element_index + nav_dir_value, nav_parent->nav_children);
+                 if (next_el != nullptr) {
++                    // A focusable empty row has no column to retain.
++                    if (next_el->nav_children.empty()) {
++                        return next_el;
++                    }
+                     int safe_index = std::clamp(retained_grid_index, 0, static_cast<int>(next_el->nav_children.size()) - 1);
+                     return next_el->nav_children[safe_index];
+                 }
+@@ -315,7 +319,10 @@ namespace recompui {
+                     }
+                 }
+ 
+-                return dive_nav_from_direction(get_closest_element(original_focused_element, this_element->nav_children));
++                Element *closest = get_closest_element(original_focused_element, this_element->nav_children);
++                // A single-item wrap can contain only the original focus.
++                // Retain it only after searching for another destination.
++                return closest != nullptr ? dive_nav_from_direction(closest) : original_focused_element;
+             }
+         }
+     };
+diff --git a/recompui/src/elements/ui_element.cpp b/recompui/src/elements/ui_element.cpp
+index 4517152..ea63993 100644
+--- a/recompui/src/elements/ui_element.cpp
++++ b/recompui/src/elements/ui_element.cpp
+@@ -343,7 +343,16 @@ void Element::enable_focus() {
+     set_nav_auto(NavDirection::Right);
+ }
+ 
++void Element::invalidate_navigation() {
++    // Ancestor navigation lists can flatten descendants of non-containers.
++    // Drop all affected pointers before destroying or detaching a subtree.
++    for (Element *element = this; element != nullptr; element = element->parent) {
++        element->nav_children.clear();
++    }
++}
++
+ void Element::clear_children() {
++    invalidate_navigation();
+     if (children.empty()) {
+         return;
+     }
+@@ -366,6 +375,7 @@ bool Element::remove_child(ResourceId child, bool remove_from_context) {
+     for (auto it = children.begin(); it != children.end(); ++it) {
+         Element* cur_child = *it;
+         if (cur_child->get_resource_id() == child) {
++            invalidate_navigation();
+             children.erase(it);
+             if (remove_from_context) {
+                 context.destroy_resource(cur_child);
+@@ -730,7 +740,9 @@ void Element::build_navigation(Element *nav_parent, Element *cur_focus_element)
+     }
+ 
+     for (auto &child : children) {
+-        if (child == cur_focus_element) {
++        // Keep a focused leaf as an anchor across visibility changes, but
++        // rebuild containers so navigation can enter their live descendants.
++        if (child == cur_focus_element && !child->is_nav_container) {
+             nav_parent->nav_children.push_back(child);
+             continue;
+         }
+@@ -751,8 +763,8 @@ void Element::build_navigation(Element *nav_parent, Element *cur_focus_element)
+                 child->get_all_focusable_children(child);
+             }
+ 
+-            // didn't find any focus elements
+-            if (child->nav_children.size() == 0) {
++            // An empty container can still be a focusable destination itself.
++            if (child->nav_children.size() == 0 && child->is_focusable() != CanFocus::Yes) {
+                 nav_parent->nav_children.pop_back();
+             }
+         }
+diff --git a/recompui/src/elements/ui_element.h b/recompui/src/elements/ui_element.h
+index 34eec3f..c722a7d 100644
+--- a/recompui/src/elements/ui_element.h
++++ b/recompui/src/elements/ui_element.h
+@@ -96,6 +96,7 @@ private:
+     void ProcessEvent(Rml::Event &event) override final;
+ 
+     Element *get_nav_parent();
++    void invalidate_navigation();
+     void get_all_focusable_children(Element *nav_parent);
+     void build_navigation(Element *nav_parent, Element *cur_focus_element);
+ protected:

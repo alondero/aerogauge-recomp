@@ -12,6 +12,12 @@ restores the manager controls if loading fails and the runtime returns to the
 stopped state. Patch [0027](0027-recompfrontend-stale-focus-recovery.patch)
 recovers navigation when a focused element disappears from the rebuilt visible
 navigation tree.
+Patch [0028](0028-recompfrontend-navigation-target-lifetime.patch) invalidates
+navigation caches when children are destroyed or removed, including ancestor
+lists that flatten descendants. Focused containers rebuild their live children,
+and focusable empty containers remain navigation destinations. Wrapping retains
+the current focus only when there is no other candidate. These prevent invalid
+destination traversal without blocking movement into live settings controls.
 
 The exact diff is in each patch file. This table gives the local purpose,
 platform, and ownership question.
@@ -38,6 +44,7 @@ platform, and ownership question.
 | [0025](0025-recompfrontend-controller-cleanup.patch) | RecompFrontend | Windows, Linux, Android | Collect detached and shutdown controller states on the SDL main thread so missed removal events or window teardown cannot leave frontend handles registered. |
 | [0026](0026-recompfrontend-mod-failure-recovery.patch) | RecompFrontend | Windows, Linux, Android | Local recovery fix restores Install, Refresh, and mod-toggle controls after a failed load. This general frontend behavior is a candidate for upstream RecompFrontend. |
 | [0027](0027-recompfrontend-stale-focus-recovery.patch) | RecompFrontend | Windows, Linux, Android | Recover directional navigation when the focused element is no longer present in its parent's rebuilt visible navigation list. |
+| [0028](0028-recompfrontend-navigation-target-lifetime.patch) | RecompFrontend | Windows, Linux, Android | Invalidate navigation caches on child removal, rebuild focused containers, retain focusable empty containers, and preserve the nearest-candidate search with a single-item wrap fallback. General frontend correctness fix; candidate for upstream RecompFrontend. |
 | [0023](0023-rt64-adreno-endian-swap.patch) | RT64 | Windows, Linux, Android | Spell the 16-bit byte swap with XOR instead of OR. The Adreno system Vulkan driver returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for any compute shader containing the OR form, which previously left a null pipeline handle that crashed `vkCmdBindPipeline`. The masked fields are disjoint, so the result is identical on every driver. |
 
 ## Application order
@@ -57,9 +64,9 @@ The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
-| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0006, 0008, 0009, 0010, 0011, 0023 |
-| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025, 0026, 0027; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
-| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
+| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0006, 0008, 0009, 0010, 0011, 0023 |
+| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025, 0026, 0027, 0028; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
+| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
 
 Keep this inventory, [BUILDING.md](../BUILDING.md), and all supported build
 scripts in agreement. The documentation checker validates patch hunk counts,

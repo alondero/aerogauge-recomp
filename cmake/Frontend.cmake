@@ -54,23 +54,37 @@ target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker
 # (Threads::Threads is resolved once in the top-level CMakeLists.txt).
 target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads)
+add_executable(test_frontend_navigation tests/test_frontend_navigation.cpp)
+target_include_directories(test_frontend_navigation PRIVATE ${SDL2_INCLUDE_DIRS})
+target_link_libraries(test_frontend_navigation PRIVATE recompui recompinput librecomp ultramodern rt64)
 if(WIN32)
     target_compile_definitions(test_frontend_settings PRIVATE SDL_MAIN_HANDLED NOMINMAX)
     target_link_libraries(test_frontend_settings PRIVATE SDL2 shell32)
-    # This test links RT64 and recompui, so it needs the same runtime DLLs the
+    target_compile_definitions(test_frontend_navigation PRIVATE SDL_MAIN_HANDLED NOMINMAX)
+    target_link_libraries(test_frontend_navigation PRIVATE SDL2 shell32)
+    # These tests link RT64 and recompui, so they need the runtime DLLs the
     # game target copies. Without them CTest exits 0xC0000135 (DLL not found)
     # unless those directories happen to be on PATH.
-    add_custom_command(TARGET test_frontend_settings POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
-            ${AERO_DXC_ROOT}/bin/x64/dxcompiler.dll
-            "${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/freetype-windows-binaries/release dll/win64/freetype.dll"
-            $<TARGET_FILE_DIR:test_frontend_settings>)
+    foreach(frontend_test test_frontend_settings test_frontend_navigation)
+        add_custom_command(TARGET ${frontend_test} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+                ${AERO_DXC_ROOT}/bin/x64/dxcompiler.dll
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/freetype-windows-binaries/release dll/win64/freetype.dll"
+                $<TARGET_FILE_DIR:${frontend_test}>)
+    endforeach()
 else()
     target_link_libraries(test_frontend_settings PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(test_frontend_navigation PRIVATE ${SDL2_LIBRARIES})
 endif()
 add_test(NAME frontend_settings COMMAND test_frontend_settings)
 add_test(NAME frontend_settings_jp COMMAND test_frontend_settings jp)
+add_test(NAME frontend_navigation_wrap COMMAND test_frontend_navigation)
+add_test(NAME frontend_navigation_candidates COMMAND test_frontend_navigation multi)
+add_test(NAME frontend_navigation_entry COMMAND test_frontend_navigation entry)
+add_test(NAME frontend_navigation_rebuild COMMAND test_frontend_navigation stale)
+add_test(NAME frontend_navigation_grid COMMAND test_frontend_navigation grid)
+add_test(NAME frontend_navigation_removal COMMAND test_frontend_navigation remove)
 endif()
 
 # Release and source-build output needs the frontend assets and RmlUi fonts
