@@ -25,6 +25,23 @@ Portable mode is enabled by creating an empty file named portable.txt in the
 current working directory before launch. The file only needs to exist. Its
 contents are ignored. Run the executable from that directory.
 
+## Rendering presets
+
+Graphics offers a Low power rendering preset. It stages `res_option=Original`,
+`ds_option=1`, `msaa_option=None`, `rr_option=Original`, and `hpfb_option=Off`
+through the existing Apply/Discard flow. Default stages the platform's shipped
+rendering defaults, with MSAA disabled if the renderer cannot support it.
+The picker returns to Choose preset after filling the individual options, so
+the same preset can be selected again after an edit. It is a starting point;
+subsequent individual edits remain available.
+Only the actual graphics settings are saved, so there is no extra preset key
+in graphics.json. Window size, fullscreen, aspect, textures, enhancements and
+developer mode are preserved.
+
+Full course geometry remains a separate enhancement. On constrained hardware,
+disable it and reduce Draw distance to 1 to use the original visibility and
+far clipping. Low power does not change the game's simulation cadence.
+
 ## graphics.json
 
 The normal file contains the following keys. Enum values are case-sensitive.

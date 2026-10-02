@@ -3,7 +3,12 @@
 #include <assert.h>
 #include "../src/aero_hud_widescreen.c"
 
-uint32_t aero_ws_get_hud_rect_aspect_bits(void) { return 0; }
+static float test_aspect = 16.0f / 9.0f;
+uint32_t aero_ws_get_hud_rect_aspect_bits(void) {
+    uint32_t bits;
+    memcpy(&bits, &test_aspect, sizeof(bits));
+    return bits;
+}
 
 static uint8_t ram[8 * 1024 * 1024];
 
@@ -146,6 +151,34 @@ int main(void) {
         aero_ws_hud_frame_end(ram, NULL);
         assert((gpr)MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) == cur);
     }
-    puts("HUD message retag assertions passed");
+    // The real frame-end hook must leave the stream and needle matrix intact
+    // when the effective HUD aspect is 4:3. Changing the aspect on the next
+    // frame must re-enable both passes without a restart.
+    const gpr matrix = (gpr)(int32_t)0x80210000u;
+    for (int wide = 0; wide < 2; ++wide) {
+        test_aspect = wide ? 16.0f / 9.0f : 4.0f / 3.0f;
+        cur = start;
+        MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+        MEM_H(24, matrix) = 0;
+        MEM_HU(56, matrix) = 0;
+        aero_ws_hud_scan_begin(ram, NULL);
+        emit_at(ram, &cur, 0x01000040u, (uint32_t)matrix);
+        emit_at(ram, &cur, 0x06000000u, AERO_NEEDLE_MESH_ADDR);
+        rect(&cur, 247, 172, 53);
+        MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+        uint8_t before[40];
+        memcpy(before, ram + ((uint32_t)start & 0x1FFFFFFFu), sizeof(before));
+        aero_ws_hud_frame_end(ram, NULL);
+        end = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
+        if (wide) {
+            assert(end == cur + 80);
+            assert(MEM_H(24, matrix) != 0 || MEM_HU(56, matrix) != 0);
+        } else {
+            assert(end == cur);
+            assert(memcmp(before, ram + ((uint32_t)start & 0x1FFFFFFFu), sizeof(before)) == 0);
+            assert(MEM_H(24, matrix) == 0 && MEM_HU(56, matrix) == 0);
+        }
+    }
+    puts("HUD message retag and unchanged 4:3 assertions passed");
     return 0;
 }

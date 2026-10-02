@@ -98,6 +98,7 @@ The current CMake file registers these tests:
 | audio_playback_buffering | Host | SDL2 test libraries; no ROM |
 | controller_accessories | Host | No ROM |
 | input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
+| input_cadence | Host | 250 Hz SDL-bridge deadline and stall recovery; no ROM or SDL |
 | eeprom_exit_flush | Runtime host | Built N64ModernRuntime |
 | rsp_task_submission | Runtime host | Patched N64ModernRuntime; no ROM or audio device |
 | racer_shadow_depth | Host | Synthetic RDRAM and runtime OSTask type; no ROM or renderer |
@@ -174,6 +175,12 @@ The CTest wrappers use these skip behaviors:
   (omit `.exe` on Linux). A software-renderer run cannot validate this path.
 
 ## Standalone host tests
+
+For Windows CPU measurements, use the optional
+[performance harness](../tests/measure_performance.ps1) with an independently
+built baseline Release executable. It needs the USA ROM and a D3D12 device;
+see [the audit](performance.md) for the command, scenario and measured limits.
+It is a measurement tool, not a pass/fail claim about FPS or low-end hardware.
 
 These tests are useful but are not currently registered with CTest. Run them
 from the repository root after initialising the submodules.

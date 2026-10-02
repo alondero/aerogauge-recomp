@@ -127,6 +127,12 @@ checks RT64's live register input during startup and after entering a race.
 
 ### HUD display lists
 
+The widescreen HUD hook checks the live effective HUD aspect once per frame.
+At 4:3, including Original HUD placement on a wider output, it leaves the
+display list and needle matrix untouched. That avoids the scan, scratch copy,
+rewrite and extra extended-GBI commands when the HUD anchors do not move.
+The `hud_messages` test covers this bypass and switching back to a wider HUD.
+
 The race HUD is emitted by a shared 2D dispatcher, not by one static draw call
 per element. The dispatcher walks object lists and calls handlers indirectly.
 The display-list cursor is passed through a guest-memory holder, and the

@@ -82,6 +82,12 @@ presentation rate, anti-aliasing, window mode and size, and texture paths.
 cutoff; the Draw distance setting still controls far clipping. It is off by default.
 Press **Apply** to keep graphics changes. Press **Discard** to cancel them.
 
+For weaker hardware, choose **Rendering preset > Low power** on Graphics and
+press **Apply**. It uses native resolution, no anti-aliasing, the original
+presentation rate, and standard colour precision. For a further reduction in
+geometry work, turn off **Full course geometry** in Enhancements and set the
+draw distance multiplier to 1.
+
 The **Enhancements** page controls draw distance, full-course geometry, and
 Easy Turbo + Boost Start. These changes are saved as soon as they are made.
 Full-course geometry is experimental and can cost performance or show visual
