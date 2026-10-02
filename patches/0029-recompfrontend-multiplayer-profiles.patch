@@ -1,8 +1,16 @@
 diff --git a/recompinput/include/recompinput/players.h b/recompinput/include/recompinput/players.h
-index 6c59b61..9ef5127 100644
+index 6c59b61..696f813 100644
 --- a/recompinput/include/recompinput/players.h
 +++ b/recompinput/include/recompinput/players.h
-@@ -18,6 +18,9 @@ namespace recompinput {
+@@ -6,6 +6,7 @@
+ namespace recompinput {
+     struct Player {
+         SDL_GameController* controller = nullptr;
++        SDL_JoystickID controller_id = -1;
+         bool keyboard_enabled = false;
+         std::chrono::high_resolution_clock::duration last_button_press_timestamp = std::chrono::high_resolution_clock::duration::zero();
+ 
+@@ -18,6 +19,9 @@ namespace recompinput {
          size_t get_number_of_assigned_players();
          size_t get_max_number_of_players();
          bool is_single_player_mode();
@@ -13,10 +21,18 @@ index 6c59b61..9ef5127 100644
          void set_min_number_of_players(size_t min_players);
          void set_max_number_of_players(size_t max_players);
 diff --git a/recompinput/include/recompinput/profiles.h b/recompinput/include/recompinput/profiles.h
-index ea433f1..47d6504 100644
+index ea433f1..0732651 100644
 --- a/recompinput/include/recompinput/profiles.h
 +++ b/recompinput/include/recompinput/profiles.h
-@@ -47,6 +47,7 @@ namespace recompinput {
+@@ -37,6 +37,7 @@ namespace recompinput {
+         void clear_input_binding(int profile_index, GameInput input);
+         void reset_input_binding(int profile_index, InputDevice device, GameInput input);
+         void reset_profile_bindings(int profile_index, InputDevice device);
++        void copy_profile_bindings(int destination, int source);
+         int add_input_profile(const std::string &key, const std::string &name, InputDevice device, bool custom);
+         int get_input_profile_by_key(const std::string &key);
+         const std::string &get_input_profile_key(int profile_index);
+@@ -47,6 +48,7 @@ namespace recompinput {
          const std::vector<int> get_indices_for_custom_profiles(InputDevice device);
          void set_input_profile_for_player(int player_index, int profile_index, InputDevice device);
          int get_input_profile_for_player(int player_index, InputDevice device);
@@ -118,10 +134,17 @@ index 6273101..3bb1b5b 100644
          } else {
              ++it;
 diff --git a/recompinput/src/players.cpp b/recompinput/src/players.cpp
-index 08cb3f3..a7bcc7a 100644
+index 08cb3f3..c6a989d 100644
 --- a/recompinput/src/players.cpp
 +++ b/recompinput/src/players.cpp
-@@ -42,8 +42,19 @@ public:
+@@ -38,12 +38,26 @@ public:
+             Player &player = (*this)[count++];
+             player = Player();
+             player.controller = controller;
++            // Assignment events run on the SDL thread; render-time lookups
++            // use this cached identity without calling SDL.
++            player.controller_id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+             player.button_pressed();
          }
      }
  
@@ -142,7 +165,7 @@ index 08cb3f3..a7bcc7a 100644
      }
  };
  
-@@ -73,6 +84,21 @@ size_t players::get_max_number_of_players() {
+@@ -73,6 +87,24 @@ size_t players::get_max_number_of_players() {
      return PlayerState.max_players;
  }
  
@@ -154,7 +177,10 @@ index 08cb3f3..a7bcc7a 100644
 +    // Keep the port vacant; unplugging P1 must never move P2 into its slot.
 +    for (auto* array : {&PlayerState.players, &PlayerState.temp_players}) {
 +        for (auto& player : *array) {
-+            if (player.controller == controller) player.controller = nullptr;
++            if (player.controller == controller) {
++                player.controller = nullptr;
++                player.controller_id = -1;
++            }
 +        }
 +    }
 +    // Pending assignments can be retried immediately; committed slots stay put.
@@ -164,7 +190,7 @@ index 08cb3f3..a7bcc7a 100644
  bool players::is_single_player_mode() {
      return PlayerState.single_player_mode;
  }
-@@ -110,7 +136,10 @@ bool players::get_player_is_assigned(int player_index, bool temp_player) {
+@@ -110,7 +142,10 @@ bool players::get_player_is_assigned(int player_index, bool temp_player) {
  }
  
  bool players::has_enough_players_assigned() {
@@ -176,7 +202,7 @@ index 08cb3f3..a7bcc7a 100644
  }
  
  InputDevice players::get_player_input_device(int player_index, bool temp_player) {
-@@ -156,18 +185,32 @@ void playerassignment::commit_player_assignment() {
+@@ -156,18 +191,28 @@ void playerassignment::commit_player_assignment() {
      for (int i = 0; i < players::get_number_of_assigned_players(); i++) {
          Player &player = PlayerState.players[i];
          if (player.controller != nullptr) {
@@ -191,11 +217,7 @@ index 08cb3f3..a7bcc7a 100644
 +                profile = profiles::get_input_profile_by_key(key);
 +                if (profile < 0) {
 +                    profile = profiles::add_input_profile(key, "Controller (Player " + std::to_string(i + 1) + ")", InputDevice::Controller, true);
-+                    const int source = profiles::get_sp_controller_profile_index();
-+                    for (int input = 0; input < static_cast<int>(GameInput::COUNT); ++input)
-+                        for (size_t binding = 0; binding < num_bindings_per_input; ++binding)
-+                            profiles::set_input_binding(profile, static_cast<GameInput>(input), binding,
-+                                profiles::get_input_binding(source, static_cast<GameInput>(input), binding));
++                    profiles::copy_profile_bindings(profile, profiles::get_sp_controller_profile_index());
 +                }
 +                profiles::set_input_profile_for_player(i, profile, InputDevice::Controller);
              }
@@ -214,7 +236,7 @@ index 08cb3f3..a7bcc7a 100644
  }
  
  bool playerassignment::met_assignment_requirements() {
-@@ -260,7 +303,7 @@ void playerassignment::process_sdl_event(SDL_Event* event) {
+@@ -260,7 +305,7 @@ void playerassignment::process_sdl_event(SDL_Event* event) {
              }
          }
  
@@ -224,7 +246,7 @@ index 08cb3f3..a7bcc7a 100644
          }
  
 diff --git a/recompinput/src/profiles.cpp b/recompinput/src/profiles.cpp
-index e3a714d..bd040fd 100644
+index e3a714d..2f48a68 100644
 --- a/recompinput/src/profiles.cpp
 +++ b/recompinput/src/profiles.cpp
 @@ -20,7 +20,11 @@ struct InputProfile {
@@ -240,15 +262,50 @@ index e3a714d..bd040fd 100644
  static std::unordered_map<std::string, int> input_profile_key_index_map{};
  static std::vector<int> input_profile_custom_indices[static_cast<size_t>(recompinput::InputDevice::COUNT)]{};
  static std::mutex input_profiles_mutex;
-@@ -213,7 +217,23 @@ namespace recompinput {
+@@ -93,21 +97,25 @@ namespace recompinput {
+         return profiles::get_input_profile_by_key(profiles::get_mp_keyboard_profile_key(player_index));
+     }
+ 
++    void profiles::copy_profile_bindings(int destination, int source) {
++        for (int input = 0; input < static_cast<int>(GameInput::COUNT); ++input)
++            for (size_t binding = 0; binding < num_bindings_per_input; ++binding)
++                profiles::set_input_binding(destination, static_cast<GameInput>(input), binding,
++                    profiles::get_input_binding(source, static_cast<GameInput>(input), binding));
++    }
++
+     void profiles::reset_profile_bindings(int profile_index, InputDevice device) {
+-        // multiplayer keyboard profiles just get cleared completely because of overlapping key bindings.
+-        bool is_multiplayer_kb = false;
++        // With shared keyboards, clearing avoids introducing overlapping keys.
++        // A sole keyboard player can safely restore the normal defaults.
++        size_t keyboards = 0;
+         if (device == InputDevice::Keyboard) {
+-            for (size_t i = 0; i < recompinput::players::get_number_of_assigned_players(); i++) {
+-                if (get_mp_keyboard_profile_index(i) == profile_index) {
+-                    is_multiplayer_kb = true;
+-                    break;
+-                }
+-            }
++            for (size_t i = 0; i < players::get_number_of_assigned_players(); ++i)
++                if (players::get_player_input_device(i) == InputDevice::Keyboard) ++keyboards;
+         }
+ 
+         for (size_t i = 0; i < recompinput::num_game_inputs; i++) {
+             GameInput input = static_cast<GameInput>(i);
+-            if (is_multiplayer_kb) {
++            if (keyboards > 1) {
+                 profiles::clear_input_binding(profile_index, input);
+                 continue;
+             }
+@@ -213,7 +221,23 @@ namespace recompinput {
          }
      }
  
 +    int profiles::get_controller_profile_for_menu(SDL_JoystickID joystick_id) {
 +        if (!players::uses_single_player_input()) {
 +            for (size_t i = 0; i < players::get_max_number_of_players(); ++i) {
-+                auto* controller = players::get_player(i).controller;
-+                if (controller != nullptr && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)) == joystick_id)
++                const auto& player = players::get_player(i);
++                if (player.controller != nullptr && player.controller_id == joystick_id)
 +                    return profiles::get_input_profile_for_player(i, InputDevice::Controller);
 +            }
 +        }
@@ -264,7 +321,7 @@ index e3a714d..bd040fd 100644
          switch (device) {
          case InputDevice::Controller:
              return players_input_profile_indices[player_index].first;
-@@ -340,9 +360,8 @@ namespace recompinput {
+@@ -340,9 +364,8 @@ namespace recompinput {
          keyboard_sp_profile_index = profiles::add_input_profile(keyboard_sp_profile_key, keyboard_sp_profile_name, recompinput::InputDevice::Keyboard, false);
          controller_sp_profile_index = profiles::add_input_profile(controller_sp_profile_key, controller_sp_profile_name, recompinput::InputDevice::Controller, false);
  
@@ -276,21 +333,22 @@ index e3a714d..bd040fd 100644
      }
  
      int profiles::get_sp_controller_profile_index() {
-@@ -363,6 +382,13 @@ namespace recompinput {
+@@ -363,6 +386,14 @@ namespace recompinput {
                  false
              );
              clear_all_mappings(profile_index);
-+            // The keyboard player inherits existing single-player keys.
-+            if (player_index >= 0) {
-+                for (int input = 0; input < static_cast<int>(GameInput::COUNT); ++input)
-+                    for (size_t binding = 0; binding < num_bindings_per_input; ++binding)
-+                        profiles::set_input_binding(profile_index, static_cast<GameInput>(input), binding,
-+                            profiles::get_input_binding(keyboard_sp_profile_index, static_cast<GameInput>(input), binding));
-+            }
++            // A second shared-keyboard profile starts empty so the same key
++            // cannot drive both players by default. A sole keyboard on any
++            // port retains the existing single-player scheme.
++            size_t keyboards = 0;
++            for (size_t i = 0; i < players::get_number_of_assigned_players(); ++i)
++                if (players::get_player_input_device(i) == InputDevice::Keyboard) ++keyboards;
++            if (player_index == 0 || keyboards <= 1)
++                profiles::copy_profile_bindings(profile_index, keyboard_sp_profile_index);
          }
          return profile_index;
      }
-@@ -375,7 +401,10 @@ namespace recompinput {
+@@ -375,7 +406,10 @@ namespace recompinput {
          uint16_t cur_buttons = 0;
          float cur_x = 0.0f;
          float cur_y = 0.0f;
@@ -302,7 +360,7 @@ index e3a714d..bd040fd 100644
              auto check_buttons = [&](int profile_index) {
                  if (profile_index < 0) {
                      return;
-@@ -417,8 +446,11 @@ namespace recompinput {
+@@ -417,8 +451,11 @@ namespace recompinput {
                  cur_y += std::clamp(y_pos, 0.0f, 1.0f) - std::clamp(y_neg, 0.0f, 1.0f);
              };
              
@@ -316,7 +374,7 @@ index e3a714d..bd040fd 100644
              check_buttons(profile_index_cont);
              check_buttons(profile_index_kb);
  
-@@ -451,6 +483,13 @@ namespace recompinput {
+@@ -451,6 +488,13 @@ namespace recompinput {
          config_json["profiles"] = std::vector<json>(profile_count);
          config_json["controllers"] = std::vector<json>(controller_count);
  
@@ -330,7 +388,7 @@ index e3a714d..bd040fd 100644
          json &profiles = config_json["profiles"];
          for (int i = 0; i < profile_count; i++) {
              json &profile = profiles[i];
-@@ -565,6 +604,20 @@ namespace recompinput {
+@@ -565,6 +609,20 @@ namespace recompinput {
                  }
              }
  
@@ -423,6 +481,24 @@ index c50d342..45eec02 100644
  
                  if (check_menu_button_pressed(profile_index, recompinput::GameInput::TOGGLE_MENU, cur_event.cbutton.button)) {
                      open_config = true;
+diff --git a/recompui/src/config/ui_config_page_controls.cpp b/recompui/src/config/ui_config_page_controls.cpp
+index f379a6f..817d231 100644
+--- a/recompui/src/config/ui_config_page_controls.cpp
++++ b/recompui/src/config/ui_config_page_controls.cpp
+@@ -485,7 +485,12 @@ void ConfigPageControls::render_footer() {
+     {
+         auto footer_right = footer->get_right();
+         footer_right->clear_children();
+-        auto reset_to_defaults_button = context.create_element<Button>(footer_right, "Reset to defaults", ButtonStyle::Warning);
++        size_t keyboards = 0;
++        for (size_t i = 0; i < recompinput::players::get_number_of_assigned_players(); ++i)
++            if (recompinput::players::get_player_input_device(i) == recompinput::InputDevice::Keyboard) ++keyboards;
++        const bool shared_keyboard = get_player_input_device() == recompinput::InputDevice::Keyboard && keyboards > 1;
++        auto reset_to_defaults_button = context.create_element<Button>(footer_right,
++            shared_keyboard ? "Clear bindings" : "Reset to defaults", ButtonStyle::Warning);
+         reset_to_defaults_button->add_pressed_callback([this]() {
+             recompinput::profiles::reset_profile_bindings(this->selected_profile_index, this->get_player_input_device());
+             this->update_control_mappings();
 diff --git a/recompui/src/elements/ui_modal.cpp b/recompui/src/elements/ui_modal.cpp
 index b057f46..f9b1722 100644
 --- a/recompui/src/elements/ui_modal.cpp

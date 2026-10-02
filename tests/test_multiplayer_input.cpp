@@ -76,8 +76,8 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
     const int p2 = profiles::get_input_profile_for_player(1, InputDevice::Controller);
     assert(p1 >= 0 && p2 >= 0 && p1 != p2);
     profiles::clear_input_binding(p2, GameInput::ACCEPT_MENU);
-    profiles::set_input_binding(p2, GameInput::ACCEPT_MENU, 0, InputField::controller_digital(SDL_CONTROLLER_BUTTON_X));
-    menu_event.button = SDL_CONTROLLER_BUTTON_X;
+    profiles::set_input_binding(p2, GameInput::ACCEPT_MENU, 0, InputField::controller_digital(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
+    menu_event.button = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
     assert(cont_button_to_key(menu_event) == recompui::menu_action_mapping::accept.sdl);
     assert(recompui::get_last_controller_id() == menu_event.which);
     menu_event.which = SDL_JoystickInstanceID(sticks[0]);
@@ -119,12 +119,34 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
     press(1, SDL_CONTROLLER_BUTTON_A, true);
     assert(input(0) == 0 && (input(1) & 0x8000));
     // A keyboard can occupy port 2 without affecting the controller on port 1.
+    profiles::set_input_profile_for_player(1, -1, InputDevice::Keyboard);
     playerassignment::start(); assign(1); playerassignment::add_keyboard_player();
     commit();
     assert(players::get_player_input_device(0) == InputDevice::Controller);
     assert(players::get_player_input_device(1) == InputDevice::Keyboard);
     int p2_keyboard = profiles::get_input_profile_for_player(1, InputDevice::Keyboard);
     assert(p2_keyboard >= 0);
+    profiles::clear_input_binding(p2_keyboard, GameInput::A);
+    profiles::reset_profile_bindings(p2_keyboard, InputDevice::Keyboard);
+    assert(profiles::get_input_binding(p2_keyboard, GameInput::A, 0) == InputField::keyboard(SDL_SCANCODE_X));
+    // Share one keyboard with separate configured action keys on both ports.
+    playerassignment::start();
+    playerassignment::add_keyboard_player(); playerassignment::add_keyboard_player(); commit();
+    const int p1_keyboard = profiles::get_input_profile_for_player(0, InputDevice::Keyboard);
+    profiles::reset_profile_bindings(p1_keyboard, InputDevice::Keyboard);
+    profiles::reset_profile_bindings(p2_keyboard, InputDevice::Keyboard);
+    assert(profiles::get_input_binding(p2_keyboard, GameInput::A, 0).is_empty());
+    profiles::set_input_binding(p1_keyboard, GameInput::A, 0, InputField::keyboard(SDL_SCANCODE_X));
+    profiles::set_input_binding(p2_keyboard, GameInput::A, 0, InputField::keyboard(SDL_SCANCODE_V));
+    // SDL owns a mutable key-state buffer. Set synthetic held keys here so
+    // keyboard routing can be checked without depending on desktop focus.
+    auto* keys = const_cast<Uint8*>(SDL_GetKeyboardState(nullptr));
+    const Uint8 saved_x = keys[SDL_SCANCODE_X], saved_v = keys[SDL_SCANCODE_V];
+    keys[SDL_SCANCODE_X] = 1; keys[SDL_SCANCODE_V] = 0; poll_inputs();
+    assert((input(0) & 0x8000) && !(input(1) & 0x8000));
+    keys[SDL_SCANCODE_X] = 0; keys[SDL_SCANCODE_V] = 1; poll_inputs();
+    assert(!(input(0) & 0x8000) && (input(1) & 0x8000));
+    keys[SDL_SCANCODE_X] = saved_x; keys[SDL_SCANCODE_V] = saved_v;
     for (int i = 0; i < 2; ++i) {
         remove_controller_state(SDL_JoystickInstanceID(sticks[i]));
         SDL_GameControllerClose(pads[i]);

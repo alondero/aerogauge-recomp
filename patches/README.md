@@ -50,7 +50,8 @@ platform, and ownership question.
 
 Patch [0029](0029-recompfrontend-multiplayer-profiles.patch) enables the port's
 two-player integration: gameplay keeps the legacy P1 mapping before assignment,
-assigned devices poll only their own profiles, controller profiles are distinct
+assigned devices poll only their own profiles, menu actions and hints follow the
+controller sending them, controller profiles are distinct
 per slot even for identical pads, and selections survive controls.json reloads.
 Assignments stop at the configured player limit; detached controller references
 are cleared without compacting slots. Compared with the pinned RecompFrontend

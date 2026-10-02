@@ -41,7 +41,7 @@ request that owns the change.
 
 frontend_settings and frontend_settings_jp include SDL virtual gamepad checks
 for assignment order, independent bindings on identical pads, stick isolation,
-saved profile selections, keyboard/gamepad assignment, and vacant disconnected
+saved profile selections, keyboard/gamepad and shared-keyboard assignment, reset behavior, and vacant disconnected
 slots. multiplayer_assists uses synthetic RDRAM to check simultaneous presses,
 independent assist settings, launch controls, heat rejection, and per-player
 rumble in both regions. multiplayer_rom_input_us and multiplayer_rom_input_jp

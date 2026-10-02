@@ -10,8 +10,11 @@ and gamepads use the existing Player 1 profiles and Player 2 is neutral.
 Open Controls > Assign players and press a button on each gamepad in player
 order, or use the keyboard for one player. Confirm, then use each player's
 Edit Profile to change its bindings. Two gamepads, including identical pads,
-or a keyboard and a gamepad can drive independently. The shared assignment
-screen accepts one keyboard. Android touch input belongs to Player 1.
+or a keyboard and a gamepad can drive independently. To share one keyboard,
+assign it to Player 1, then choose the plus-keyboard button for Player 2. The
+second profile starts unbound; edit it to choose keys that do not overlap
+Player 1's bindings. The shared-keyboard editor offers Clear bindings; a sole
+keyboard player offers Reset to defaults. Android touch input belongs to Player 1.
 
 Both virtual ports stay responsive even when unassigned or disconnected.
 The ROM caches controller presence during initialization and repacks responsive
@@ -22,8 +25,8 @@ Ports 3 and 4 remain absent. Select the original game's 2 Players mode for
 split-screen racing; assigning devices alone does not change the game mode.
 
 Each player starts with its own controller profile copied from the existing
-single-player bindings; keyboard profiles also inherit the existing keyboard
-bindings when first created. Profile mappings and selections are saved in
+single-player bindings. A sole keyboard on either port inherits existing keys;
+a second shared-keyboard profile starts empty. Profile mappings and selections are saved in
 controls.json when leaving the Controls page. Device assignments last for the
 current process only. Reassign after restart or reconnecting; unplugging leaves
 that slot vacant and does not give its inputs or rumble to another player.
