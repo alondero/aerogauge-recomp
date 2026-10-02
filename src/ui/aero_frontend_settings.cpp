@@ -76,6 +76,7 @@ void seed_enhancements() {
     auto& page = recompui::config::get_config("enhancements");
     sync(page, "full_track", aero::config::full_track());
     sync(page, "easy_turbo", aero::config::easy_turbo_boost());
+    sync(page, "easy_turbo_player2", aero::config::easy_turbo_boost_player2());
     // "Unlimited" is a first-class menu choice mapping to the internal 0
     // sentinel (infinite far plane); the multiplier only applies when unticked.
     const bool unlimited = aero::config::draw_distance_scale() == 0.0f;
@@ -152,10 +153,10 @@ void configure_controls() {
     using recompinput::GameInput;
     using recompinput::InputField;
 
-    // AeroGauge is a single-player port. Keep the shared frontend profile
-    // model, but do not expose multiplayer assignment for a second
-    // controller that the port cannot report to the game.
-    recompinput::players::set_single_player_mode(true);
+    // Keep the frontend assignment and profile editor available for both ports.
+    // Before assignment, its legacy input fallback preserves keyboard/pad P1.
+    recompinput::players::set_single_player_mode(false);
+    recompinput::players::set_player_count_range(1, 2);
 
     recompinput::set_game_input_name(GameInput::A, "Accelerate / Confirm");
     recompinput::set_game_input_description(GameInput::A,
@@ -346,12 +347,18 @@ void create_settings() {
     boolean(enhancements, "full_track", "Full course geometry (experimental)",
         "Draw the whole course instead of the original visibility zones. AERO_FULL_TRACK overrides this setting.",
         port::full_track(), port::set_full_track, "AERO_FULL_TRACK");
-    boolean(enhancements, "easy_turbo", "Easy Turbo + Boost Start",
+    boolean(enhancements, "easy_turbo", "Player 1: Easy Turbo + Boost Start",
         "Simplified boost controls. Boost Start: hold Accelerate through the countdown for a launch boost. "
         "Turbo (player 1 races): press the dedicated Turbo button -- R (or E) on keyboard, right trigger "
         "(or right shoulder) on gamepad. Release and press again for another boost; normal heat and "
         "overheating rules apply. AERO_EASY_TURBO overrides this setting.",
         port::easy_turbo_boost(), port::set_easy_turbo_boost, "AERO_EASY_TURBO");
+    boolean(enhancements, "easy_turbo_player2", "Player 2: Easy Turbo + Boost Start",
+        "Hold Player 2's Accelerate control through the countdown for a launch boost. "
+        "Press Player 2's Turbo / R control for Turbo; release before another boost. "
+        "Normal heat and overheating rules apply. Configure bindings in Controls. "
+        "AERO_EASY_TURBO_P2 overrides this setting.",
+        port::easy_turbo_boost_player2(), port::set_easy_turbo_boost_player2, "AERO_EASY_TURBO_P2");
     enhancements.add_bool_option("draw_distance_unlimited", "Unlimited draw distance",
         "Remove the far clipping plane entirely so no scenery pops in. When off, the multiplier below is used. "
         "AERO_DRAW_DISTANCE_SCALE overrides this setting.",

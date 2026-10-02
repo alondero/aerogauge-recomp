@@ -31,13 +31,13 @@ The shared frontend has these pages:
 | --- | --- | --- |
 | Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
-| Controls | Single-player keyboard and controller bindings for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
+| Controls | Assign up to two players and edit each player's keyboard or controller profile for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
 | Mods | Install and manage AeroGauge code packages and RT64 texture packs | The runtime stores package enablement and order in `mods.json`; code mods load at game start, while texture packs can be toggled and reordered during play. |
 
 F11 and Alt+Enter still switch fullscreen. The shared General page is hidden
 because this port does not implement all of its audio, mouse, and gyro services.
-Multiplayer player assignment remains unavailable; the Controls page is always
-the single-player view.
+The Controls page provides Assign players and a separate profile editor for
+each player. See [Controllers](controllers.md) for setup and disconnection behavior.
 
 Full-course geometry is experimental. It can cost performance or show visual
 errors. Easy Turbo changes the driving controls and is off by default.
@@ -55,6 +55,7 @@ disabled when one is present:
 - AERO_FULL_TRACK
 - AERO_FORCE_FULL_LOD
 - AERO_EASY_TURBO
+- AERO_EASY_TURBO_P2
 - AERO_DRAW_DISTANCE_SCALE
 
 The override wins for that run. The menu must not copy an overridden value into

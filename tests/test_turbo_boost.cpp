@@ -16,7 +16,8 @@
 
 extern "C" void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx);
 static int g_enabled = 1;
-extern "C" int aero_easy_turbo_enabled(void) { return g_enabled; }
+static int g_enabled_p2 = 1;
+extern "C" int aero_easy_turbo_enabled_for_player(int player) { return player == 0 ? g_enabled : g_enabled_p2; }
 
 #define RDRAM_SIZE (8u * 1024u * 1024u)
 #define CAR         0x8013FFB0u
@@ -51,6 +52,7 @@ static void set_turn(int turn) {
 
 static void reset_guest(uint32_t phase, uint32_t step, uint8_t controls, int turn) {
     memset(rdram, 0, RDRAM_SIZE);
+    w32(CAR + 4, 0x8005C750u);
     w32(RACE_PHASE, phase);
     w32(RACE_STEP, step);
     w8(CAR + 0x40u, controls);

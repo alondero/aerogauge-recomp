@@ -48,7 +48,7 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 # game output.
 if(NOT ANDROID)
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
-    src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
+    tests/test_multiplayer_input.cpp src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
 target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker

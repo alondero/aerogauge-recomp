@@ -5,9 +5,31 @@ bindings are in the [README](../README.md).
 
 ## Player behavior
 
-The current port exposes one physical controller as Controller 1. Keyboard
-input uses the same game actions. The Controls page edits the single-player
-profiles used by both devices; multiplayer assignment is not exposed.
+The port exposes two virtual N64 controllers. Before assignment, keyboard
+and gamepads use the existing Player 1 profiles and Player 2 is neutral.
+Open Controls > Assign players and press a button on each gamepad in player
+order, or use the keyboard for one player. Confirm, then use each player's
+Edit Profile to change its bindings. Two gamepads, including identical pads,
+or a keyboard and a gamepad can drive independently. To share one keyboard,
+assign it to Player 1, then choose the plus-keyboard button for Player 2. The
+second profile starts unbound; edit it to choose keys that do not overlap
+Player 1's bindings. The shared-keyboard editor offers Clear bindings; a sole
+keyboard player offers Reset to defaults. Android touch input belongs to Player 1.
+
+Both virtual ports stay responsive even when unassigned or disconnected.
+The ROM caches controller presence during initialization and repacks responsive
+physical ports into consecutive player slots in func_800092C4 (Japan Rev A:
+0x8000982C). Keeping a vacant port neutral permits assignment after boot and
+prevents Player 2 moving into Player 1's record when Player 1 disconnects.
+Ports 3 and 4 remain absent. Select the original game's 2 Players mode for
+split-screen racing; assigning devices alone does not change the game mode.
+
+Each player starts with its own controller profile copied from the existing
+single-player bindings. A sole keyboard on either port inherits existing keys;
+a second shared-keyboard profile starts empty. Profile mappings and selections are saved in
+controls.json when leaving the Controls page. Device assignments last for the
+current process only. Reassign after restart or reconnecting; unplugging leaves
+that slot vacant and does not give its inputs or rumble to another player.
 
 The gamepad path uses SDL's standard game-controller mapping. A connected
 controller without a rumble motor can still provide input.
@@ -33,7 +55,10 @@ SDL main thread
 ~~~
 
 SDL owns the window, event pump, and physical devices. RecompFrontend owns the
-profile mapping; the game thread reads its result through the runtime callback.
+profile mapping. The SDL thread publishes a coherent input snapshot for each
+player; the game thread reads these through the runtime callback. The port
+serializes SDL sampling, assignment changes, and controller cleanup with the
+frontend presentation lock so a device cannot be closed during sampling.
 A menu event is not proof that the same input reached the race.
 
 While the settings menu has focus, RecompFrontend disables gameplay mappings and
@@ -75,16 +100,25 @@ boundary is in the [ROM reference](reference/rom.md#rom-hook-boundaries).
 ## Rumble
 
 The port turns selected game events into SDL gamepad vibration. The current
-events are collision damage and the Easy Turbo assist for Controller 1.
+events are collision damage and active Turbo for each player's assigned gamepad.
 The hook does not write guest state. Pulse lengths are host feedback settings,
 not new game mechanics.
 
 The ROM's unused motor-test routine is not the source of current race rumble.
 The haptics hook observes the collision-damage value at 0x80058AD8 and the
-turbo event at the Player 1 input seam. It filters to Controller 1 and race
-gameplay.
+turbo timer on each local car. The car's input callback identifies Player 1 or
+Player 2; AI and replay callbacks are excluded. Feedback is sampled separately
+for each assigned gamepad and cleared on reassignment, disconnection, or leaving
+race gameplay. Keyboard and touch players have no gamepad rumble sink.
 
-When Easy Turbo is enabled, the Turbo assist reads the physical N64 R button
+Easy Turbo + Boost Start has separate, default-off options for Player 1 and
+Player 2. Existing easy_turbo_boost settings and AERO_EASY_TURBO affect Player 1;
+easy_turbo_boost_player2 and AERO_EASY_TURBO_P2 affect Player 2. Each player has
+its own press/release state, so a held or simultaneous Turbo press cannot
+trigger the other car. The original timers, heat limits, steering, and drift
+controls remain under the game's control.
+
+When that player's Easy Turbo is enabled, the assist reads its N64 R button
 before the game maps semantic controls. With the default bindings this is the
 keyboard E or R key, gamepad right shoulder, or right trigger. A remapped
 control can therefore trigger both its mapped action and the assist.

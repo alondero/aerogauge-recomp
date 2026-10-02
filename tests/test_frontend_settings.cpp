@@ -14,6 +14,7 @@
 #include <vector>
 
 SDL_Window* window = nullptr;
+void test_multiplayer_input(const std::filesystem::path& controls_path);
 int aero_japan = 0;
 std::vector<recomp::GameEntry> supported_games;
 namespace {
@@ -211,8 +212,10 @@ int main(int argc, char** argv) {
                 "controls persistence failed");
         require(std::filesystem::exists(path / "controls.json"),
                 "controls file not created");
-        require(recompinput::players::is_single_player_mode(),
-                "single-player input mode not configured");
+        require(!recompinput::players::is_single_player_mode() &&
+                    recompinput::players::get_max_number_of_players() == 2,
+                "two-player assignment not configured");
+        test_multiplayer_input(path / "controls.json");
         require(std::get<uint32_t>(graphics.get_option_value("ds_option")) == 3, "supersampling import");
         require(std::get<uint32_t>(graphics.get_option_value("msaa_option")) == uint32_t(Antialiasing::MSAA8X), "MSAA import");
         for (const char* key : {"api_option", "hpfb_option", "texture_pack",
@@ -291,10 +294,16 @@ int main(int argc, char** argv) {
         enhancements.set_option_value("full_track", false);
         enhancements.set_option_value("draw_distance_unlimited", true);
         enhancements.set_option_value("easy_turbo", true);
+        enhancements.set_option_value("easy_turbo_player2", true);
         require(aero::config::full_track(), "enhancement escaped main-thread queue");
         flush();
         require(!aero::config::full_track() && aero::config::draw_distance_scale() == 0.0f, "live enhancements");
         require(aero::config::easy_turbo_boost(), "easy turbo update");
+        require(aero::config::easy_turbo_boost_player2(), "P2 easy turbo update");
+        aero::config::set_easy_turbo_boost_player2(false);
+        require(aero::config::easy_turbo_boost() && !aero::config::easy_turbo_boost_player2(),
+                "player assists must be independent");
+        aero::config::set_easy_turbo_boost_player2(true);
         // The multiplier slider is disabled while Unlimited is engaged.
         require(enhancements.is_config_option_disabled(
                     enhancements.get_config_schema().options_by_id.at("draw_distance")),
@@ -312,6 +321,7 @@ int main(int argc, char** argv) {
         require(saved.at("ds_option") == 4 && saved.at("api_option") == "Vulkan", "graphics persistence");
         require(saved.at("texture_dump") == "new-dump", "texture dump persistence");
         require(read(path / "enhancements.json").at("easy_turbo_boost") == true, "enhancement persistence");
+        require(read(path / "enhancements.json").at("easy_turbo_boost_player2") == true, "P2 enhancement persistence");
         enhancements.revert_temp_config();
         aero::config::set_full_track(true);
         aero::config::set_draw_distance_scale(75.0f);

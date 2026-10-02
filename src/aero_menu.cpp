@@ -127,6 +127,11 @@ void update() {
     for (auto& action : pending) action();
 }
 
+void run_input_update(const std::function<void()>& update) {
+    std::lock_guard lock(frontend_mutex);
+    update();
+}
+
 void attach(SDL_Window* value) {
     window = value;
     recompui::programconfig::set_program_name("AeroGauge Recompiled");

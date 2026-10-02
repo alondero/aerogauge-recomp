@@ -3,6 +3,8 @@
 #include "aero_haptics.h"
 #include "recomp.h"
 #include "aero_region.h"
+#include "aero_player.h"
+#include <array>
 
 #include <atomic>
 #include <bit>
@@ -12,8 +14,11 @@
 namespace {
 std::atomic<bool> enabled{true};
 std::atomic<bool> turbo_enabled{true};
-std::atomic<uint64_t> impact_until{0}, turbo_until{0};
-std::atomic<bool> native_motor{false};
+struct Feedback {
+    std::atomic<uint64_t> impact_until{0}, turbo_until{0};
+    std::atomic<bool> native_motor{false};
+};
+std::array<Feedback, 2> feedback;
 uint64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -31,19 +36,27 @@ void aero::haptics::configure(bool on, bool turbo) {
     stop();
 }
 void aero::haptics::stop() {
-    impact_until.store(0, std::memory_order_relaxed);
-    turbo_until.store(0, std::memory_order_relaxed);
-    native_motor.store(false, std::memory_order_relaxed);
+    stop_player(0);
+    stop_player(1);
 }
-void aero::haptics::motor(bool on) {
-    native_motor.store(on, std::memory_order_relaxed);
+void aero::haptics::stop_player(int player) {
+    if (player < 0 || player >= 2) return;
+    feedback[player].impact_until.store(0, std::memory_order_relaxed);
+    feedback[player].turbo_until.store(0, std::memory_order_relaxed);
+    feedback[player].native_motor.store(false, std::memory_order_relaxed);
 }
-aero::haptics::Motors aero::haptics::sample() {
+void aero::haptics::motor(bool on, int player) {
+    if (player >= 0 && player < 2)
+        feedback[player].native_motor.store(on, std::memory_order_relaxed);
+}
+aero::haptics::Motors aero::haptics::sample(int player) {
+    if (player < 0 || player >= 2) return {};
+    const auto& state = feedback[player];
     if (!enabled.load(std::memory_order_relaxed)) return {};
-    if (native_motor.load(std::memory_order_relaxed)) return {0xFFFF, 0xFFFF};
+    if (state.native_motor.load(std::memory_order_relaxed)) return {0xFFFF, 0xFFFF};
     const auto now = now_ms();
-    if (now < impact_until.load(std::memory_order_relaxed)) return {0xC000, 0x9000};
-    if (now < turbo_until.load(std::memory_order_relaxed)) return {0x5000, 0x7000};
+    if (now < state.impact_until.load(std::memory_order_relaxed)) return {0xC000, 0x9000};
+    if (now < state.turbo_until.load(std::memory_order_relaxed)) return {0x5000, 0x7000};
     return {};
 }
 
@@ -52,19 +65,21 @@ extern "C" void aero_haptics_frame(uint8_t* rdram, recomp_context*) {
 }
 
 // Hook at 0x80058AD8: s0 is the craft; +0x24 is this tick's collision damage.
-// +4 is its input callback: 0x8005C750 identifies the local P1, excluding AI/P2.
+// The input callback at +4 identifies the local player, excluding AI/replays.
 extern "C" void aero_haptics_race_tick(uint8_t* rdram, recomp_context* ctx) {
     if (!enabled.load(std::memory_order_relaxed) || !racing(rdram)) return;
     const auto address = static_cast<uint32_t>(ctx->r16);
-    if (address < 0x80000000u || address > 0x807FFF80u) return;
+    if (address < 0x80000000u || address > 0x807FFF80u || (address & 3u) != 0) return;
     const gpr car = static_cast<int32_t>(address);
-    if (static_cast<uint32_t>(MEM_W(4, car)) != AERO_ADDR(0x8005C750u, 0x8005CCD0u)) return;
+    const int player = aero_car_player(rdram, car);
+    if (player < 0) return;
+    auto& state = feedback[player];
     const auto now = now_ms();
     const float damage = std::bit_cast<float>(static_cast<uint32_t>(MEM_W(0x24, car)));
     // A short impact pulse remains perceptible even for a single collision tick.
     if (std::isfinite(damage) && damage > 0.0f)
-        impact_until.store(now + 120, std::memory_order_relaxed);
+        state.impact_until.store(now + 120, std::memory_order_relaxed);
     // Refresh only while the ROM timer is active; pause/stall cannot latch rumble.
-    turbo_until.store(turbo_enabled.load(std::memory_order_relaxed) && MEM_BU(0x55, car) != 0 ? now + 150 : 0,
+    state.turbo_until.store(turbo_enabled.load(std::memory_order_relaxed) && MEM_BU(0x55, car) != 0 ? now + 150 : 0,
                       std::memory_order_relaxed);
 }
