@@ -481,6 +481,40 @@ index c50d342..45eec02 100644
  
                  if (check_menu_button_pressed(profile_index, recompinput::GameInput::TOGGLE_MENU, cur_event.cbutton.button)) {
                      open_config = true;
+diff --git a/recompui/src/composites/ui_player_card.cpp b/recompui/src/composites/ui_player_card.cpp
+index 7a75884..1237149 100644
+--- a/recompui/src/composites/ui_player_card.cpp
++++ b/recompui/src/composites/ui_player_card.cpp
+@@ -63,7 +63,6 @@ PlayerCard::PlayerCard(
+     icon->set_display(Display::None);
+ 
+     if (!is_assignment_card) {
+-        auto player = recompinput::players::get_player(player_index, is_assignment_card);
+         update_player_card_icon();
+ 
+         auto profile_label = context.create_element<Label>(this, "Profile", LabelStyle::Small);
+@@ -77,9 +76,10 @@ PlayerCard::PlayerCard(
+ 
+         std::vector<SelectOption> options;
+ 
+-        int device_profile_index = has_controller
+-            ? recompinput::profiles::get_controller_profile_index_from_sdl_controller(player.controller)
+-            : recompinput::profiles::get_or_create_mp_keyboard_profile_index(player_index);
++        // Assignment owns profile creation. Rendering vacant slots must not
++        // seed keyboard defaults before we know whether the keyboard is shared.
++        bool player_is_assigned = recompinput::players::get_player_is_assigned(player_index, is_assignment_card);
++        int device_profile_index = player_is_assigned ? cur_profile : -1;
+ 
+         if (device_profile_index >= 0) {
+             options.emplace_back(
+@@ -117,7 +117,6 @@ PlayerCard::PlayerCard(
+         });
+         select->set_width(100.0f, Unit::Percent);
+ 
+-        bool player_is_assigned = recompinput::players::get_player_is_assigned(player_index, is_assignment_card);
+         select->set_enabled(player_is_assigned);
+ 
+         edit_profile_button = context.create_element<Button>(this, "Edit Profile", ButtonStyle::Secondary, ButtonSize::Medium);
 diff --git a/recompui/src/config/ui_config_page_controls.cpp b/recompui/src/config/ui_config_page_controls.cpp
 index f379a6f..817d231 100644
 --- a/recompui/src/config/ui_config_page_controls.cpp

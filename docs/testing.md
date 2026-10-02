@@ -41,8 +41,14 @@ request that owns the change.
 
 frontend_settings and frontend_settings_jp include SDL virtual gamepad checks
 for assignment order, independent bindings on identical pads, stick isolation,
-saved profile selections, keyboard/gamepad and shared-keyboard assignment, reset behavior, and vacant disconnected
-slots. multiplayer_assists uses synthetic RDRAM to check simultaneous presses,
+saved profile selections, keyboard/gamepad and shared-keyboard assignment,
+reset behavior, and vacant disconnected slots. They construct the real Controls
+player cards before assignment and verify the second shared-keyboard profile
+starts empty. On Windows, the test closes and detaches its virtual pads but
+retains SDL's global driver state until process exit: the pinned SDL 2.26.3 can
+deliver a Windows Gaming Input callback after freeing its joystick lock during
+shutdown. The tests do not validate physical driver teardown.
+multiplayer_assists uses synthetic RDRAM to check simultaneous presses,
 independent assist settings, launch controls, heat rejection, and per-player
 rumble in both regions. multiplayer_rom_input_us and multiplayer_rom_input_jp
 run the ROM's own pad reader to verify neutral ports preserve player order.

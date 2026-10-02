@@ -6,6 +6,21 @@
 #include "recompinput/players.h"
 #include "recompinput/profiles.h"
 #include "recompui/recompui.h"
+#include "composites/ui_player_card.h"
+#include "elements/ui_document.h"
+
+namespace {
+class NullRenderer : public Rml::RenderInterface {
+    Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex>, Rml::Span<const int>) override { return 1; }
+    void RenderGeometry(Rml::CompiledGeometryHandle, Rml::Vector2f, Rml::TextureHandle) override {}
+    void ReleaseGeometry(Rml::CompiledGeometryHandle) override {}
+    Rml::TextureHandle LoadTexture(Rml::Vector2i&, const Rml::String&) override { return 0; }
+    Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte>, Rml::Vector2i) override { return 0; }
+    void ReleaseTexture(Rml::TextureHandle) override {}
+    void EnableScissorRegion(bool) override {}
+    void SetScissorRegion(Rml::Rectanglei) override {}
+};
+}
 
 int cont_button_to_key(SDL_ControllerButtonEvent&);
 
@@ -47,6 +62,26 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
         return buttons;
     };
     assert(players::uses_single_player_input());
+    // Opening Controls before assignment must not precreate overlapping keys.
+    NullRenderer renderer;
+    Rml::SetRenderInterface(&renderer);
+    assert(Rml::Initialise());
+    auto* rml = Rml::CreateContext("player-card-test", {800, 600});
+    assert(rml);
+    auto context = recompui::create_context(rml->CreateDocument());
+    context.open();
+    for (int i = 0; i < 2; ++i)
+        context.create_element<recompui::PlayerCard>(context.get_root_element(), i);
+    context.close();
+    for (int i = 0; i < 2; ++i)
+        assert(profiles::get_input_profile_by_key(profiles::get_mp_keyboard_profile_key(i)) < 0);
+    recompui::destroy_context(context);
+    Rml::Shutdown();
+    auto commit = [&] {
+        playerassignment::commit_player_assignment();
+        SDL_Event event{};
+        playerassignment::process_sdl_event(&event); // drain deferred modal close
+    };
     SDL_ControllerButtonEvent menu_event{};
     menu_event.which = SDL_JoystickInstanceID(sticks[1]);
     menu_event.button = SDL_CONTROLLER_BUTTON_A;
@@ -54,17 +89,16 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
     press(1, SDL_CONTROLLER_BUTTON_A, true);
     assert(input(0) == 0x8000 && input(1) == 0); // legacy P1 only
     press(1, SDL_CONTROLLER_BUTTON_A, false);
+    playerassignment::start();
+    playerassignment::add_keyboard_player(); playerassignment::add_keyboard_player(); commit();
+    const int initial_p2_keyboard = profiles::get_input_profile_for_player(1, InputDevice::Keyboard);
+    assert(profiles::get_input_binding(initial_p2_keyboard, GameInput::A, 0).is_empty());
     auto assign = [&](int pad) {
         SDL_Event event{};
         event.type = SDL_CONTROLLERBUTTONDOWN;
         event.cbutton.which = SDL_JoystickInstanceID(sticks[pad]);
         event.cbutton.button = SDL_CONTROLLER_BUTTON_A;
         playerassignment::process_sdl_event(&event);
-    };
-    auto commit = [&] {
-        playerassignment::commit_player_assignment();
-        SDL_Event event{};
-        playerassignment::process_sdl_event(&event); // drain deferred modal close
     };
     playerassignment::start();
     assign(0); assign(0); // one device cannot occupy both ports
@@ -152,5 +186,11 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
         SDL_GameControllerClose(pads[i]);
     }
     for (int i = 1; i >= 0; --i) SDL_JoystickDetachVirtual(indices[i]);
+#ifndef _WIN32
     SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+#else
+    // Pinned SDL 2.26.3 can deliver a Windows Gaming Input callback after
+    // freeing its joystick mutex. All test-owned devices are closed above;
+    // retain global driver state until process exit, outside this input test.
+#endif
 }
