@@ -222,6 +222,12 @@ text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo
 
 
 [[patches.hook]]
+func = "jp_func_8005CDF4"
+before_vram = 0x8005CE4C
+text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
+
+
+[[patches.hook]]
 func = "jp_func_80058308"
 before_vram = 0x80058D2C
 text = "extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_haptics_race_tick(rdram, ctx);"

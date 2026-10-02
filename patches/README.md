@@ -45,7 +45,18 @@ platform, and ownership question.
 | [0026](0026-recompfrontend-mod-failure-recovery.patch) | RecompFrontend | Windows, Linux, Android | Local recovery fix restores Install, Refresh, and mod-toggle controls after a failed load. This general frontend behavior is a candidate for upstream RecompFrontend. |
 | [0027](0027-recompfrontend-stale-focus-recovery.patch) | RecompFrontend | Windows, Linux, Android | Recover directional navigation when the focused element is no longer present in its parent's rebuilt visible navigation list. |
 | [0028](0028-recompfrontend-navigation-target-lifetime.patch) | RecompFrontend | Windows, Linux, Android | Invalidate navigation caches on child removal, rebuild focused containers, retain focusable empty containers, and preserve the nearest-candidate search with a single-item wrap fallback. General frontend correctness fix; candidate for upstream RecompFrontend. |
+| [0029](0029-recompfrontend-multiplayer-profiles.patch) | RecompFrontend | Windows, Linux, Android | Legacy fallback before assignment, isolated and persisted player profiles, bounded assignment, and clearing detached references. Candidate for upstream RecompFrontend. |
 | [0023](0023-rt64-adreno-endian-swap.patch) | RT64 | Windows, Linux, Android | Spell the 16-bit byte swap with XOR instead of OR. The Adreno system Vulkan driver returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for any compute shader containing the OR form, which previously left a null pipeline handle that crashed `vkCmdBindPipeline`. The masked fields are disjoint, so the result is identical on every driver. |
+
+Patch [0029](0029-recompfrontend-multiplayer-profiles.patch) enables the port's
+two-player integration: gameplay keeps the legacy P1 mapping before assignment,
+assigned devices poll only their own profiles, controller profiles are distinct
+per slot even for identical pads, and selections survive controls.json reloads.
+Assignments stop at the configured player limit; detached controller references
+are cleared without compacting slots. Compared with the pinned RecompFrontend
+b1a1477, this adds behavior missing from its existing assignment/profile APIs.
+These are reusable frontend changes; the two-player limit, responsive virtual
+ports, SDL/presentation synchronization, and assist policy stay in AeroGauge.
 
 ## Application order
 
@@ -64,9 +75,9 @@ The host scripts are the executable build contract:
 
 | Host | Applied patches |
 | --- | --- |
-| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0006, 0008, 0009, 0010, 0011, 0023 |
-| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025, 0026, 0027, 0028; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
-| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
+| Linux | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0029, 0006, 0008, 0009, 0010, 0011, 0023 |
+| Android | Runtime: 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018; frontend: 0016, 0022, 0024, 0025, 0026, 0027, 0028, 0029; RT64: 0006, 0008, 0009, 0010, 0011, 0019, 0023; Plume: 0020; SDL: 0021 |
+| Windows | 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018, 0016, 0024, 0025, 0026, 0027, 0028, 0029, 0006, 0008, 0009, 0010, 0011, 0023, 0005, 0004 |
 
 Keep this inventory, [BUILDING.md](../BUILDING.md), and all supported build
 scripts in agreement. The documentation checker validates patch hunk counts,

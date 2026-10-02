@@ -130,6 +130,9 @@ extern "C" int aero_force_full_lod_enabled(void);
 // Persisted in enhancements.json (default false), overridable by AERO_EASY_TURBO=1/0.
 bool easy_turbo_boost();
 void set_easy_turbo_boost(bool enabled);
+// P2 defaults off independently; AERO_EASY_TURBO_P2 overrides only this player.
+bool easy_turbo_boost_player2();
+void set_easy_turbo_boost_player2(bool enabled);
 
 // C-linkage bridge so the plain-C hook (src/aero_turbo_boost.c) can read the
 // toggle without dragging the C++ config machinery into its TU.
@@ -137,6 +140,7 @@ void set_easy_turbo_boost(bool enabled);
 extern "C" {
 #endif
 int aero_easy_turbo_enabled(void);
+int aero_easy_turbo_enabled_for_player(int player);
 #ifdef __cplusplus
 }
 #endif

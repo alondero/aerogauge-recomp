@@ -133,6 +133,7 @@ PATCHES=(
     "lib/RecompFrontend:0026-recompfrontend-mod-failure-recovery.patch"
     "lib/RecompFrontend:0027-recompfrontend-stale-focus-recovery.patch"
     "lib/RecompFrontend:0028-recompfrontend-navigation-target-lifetime.patch"
+    "lib/RecompFrontend:0029-recompfrontend-multiplayer-profiles.patch"
     "lib/rt64:0006-rt64-interp-angular-velocity-matching.patch"
     "lib/rt64:0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
     "lib/rt64:0009-rt64-widescreen-split-subviewport.patch"

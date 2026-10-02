@@ -99,6 +99,7 @@ HOOKS = [
     (0x8001AA6C, 0x8001B000, 0x00002025, 'extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0x94, ctx->r29));'),
     (0x8001AA6C, 0x8001B190, 0x8FBF003C, 'extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x94, ctx->r29));'),
     (0x8005CCD0, 0x8005CD28, 0x3C188014, 'extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);'),
+    (0x8005CDF4, 0x8005CE4C, 0x92020002, 'extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);'),
     (0x80058308, 0x80058D2C, 0xC60C0024, 'extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_haptics_race_tick(rdram, ctx);'),
     (0x800165FC, None, None, 'extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);'),
 ]

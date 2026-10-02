@@ -37,6 +37,23 @@ A test that is skipped because its prerequisite is missing does not prove that
 the missing behavior works. Record the skip reason in the issue or pull
 request that owns the change.
 
+## Multiplayer checks
+
+frontend_settings and frontend_settings_jp include SDL virtual gamepad checks
+for assignment order, independent bindings on identical pads, stick isolation,
+saved profile selections, keyboard/gamepad assignment, and vacant disconnected
+slots. multiplayer_assists uses synthetic RDRAM to check simultaneous presses,
+independent assist settings, launch controls, heat rejection, and per-player
+rumble in both regions. multiplayer_rom_input_us and multiplayer_rom_input_jp
+run the ROM's own pad reader to verify neutral ports preserve player order.
+
+Physical acceptance: assign two gamepads, edit each profile, select 2 Players,
+and race in split screen. Check each player's steering, Turbo and launch assist
+with the other assist disabled, collision rumble, pause/settings focus, and
+disconnect/reassign. Repeat with keyboard/gamepad in both player orders, restart
+to check saved bindings, and check Android Player 1 touch with a Player 2 pad.
+Virtual pads and synthetic memory do not establish physical rumble or visuals.
+
 ## CTest
 
 When Japanese generated code is present, `car_lod_jp`, `scene_scissor_jp`, and

@@ -83,13 +83,19 @@ cutoff; the Draw distance setting still controls far clipping. It is off by defa
 Press **Apply** to keep graphics changes. Press **Discard** to cancel them.
 
 The **Enhancements** page controls draw distance, full-course geometry, and
-Easy Turbo + Boost Start. These changes are saved as soon as they are made.
+separate Player 1 and Player 2 Easy Turbo + Boost Start options. These changes are saved as soon as they are made.
 Full-course geometry is experimental and can cost performance or show visual
 errors. Easy Turbo changes the driving controls; it is off by default.
 With Easy Turbo on, press the R button during a race to start Turbo and use the
 assisted Boost Start.
 
-The **Controls** page edits the single-player keyboard and controller bindings.
+For two players, open **Controls > Assign players**. Press a button on each
+gamepad in player order, or assign the keyboard to one player, then confirm.
+Use each player's **Edit Profile** to configure driving and menu bindings.
+Choose the game's **2 Players** mode to race in split screen. Assign devices
+again after restarting or reconnecting a controller; saved bindings and profile
+choices are retained. Before assignment, keyboard and gamepads share Player 1.
+See [Controllers](docs/controllers.md) for device and assist behavior.
 F11 and Alt+Enter switch fullscreen. Graphics API and texture-path changes take
 effect after a restart.
 
@@ -121,7 +127,6 @@ that folder before testing a new build.
 ## Known limitations
 
 - Supported ROMs are USA and Japan Rev A. Local USA-only builds remain possible.
-- The settings screen does not support multiplayer player assignment.
 - Full-course geometry is experimental.
 - Texture dumping remains a developer feature.
 - Mod support is experimental, and packages must target AeroGauge Recompiled.

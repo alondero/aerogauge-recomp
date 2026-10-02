@@ -518,15 +518,20 @@ before_vram = 0x8001A724
 text = "extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x94, ctx->r29));"
 
 # Accelerator-only Boost Start + button-operated race Turbo (src/aero_turbo_boost.c).
-# Hooked in the real P1 vehicle-input callback immediately after func_8005C9E4
+# Hooked in both local vehicle-input callbacks immediately after func_8005C9E4
 # maps the configured physical buttons/stick into semantic car controls at +0x40.
 # Boost Start reads those semantic controls; race Turbo reads the raw N64 R button
-# from the P1 pad block, so the drift action is never consumed. This preserves
+# from the respective pad block, so the drift action is never consumed. This preserves
 # custom bindings; the ROM retains boost physics and heat handling.
 # Disabled by default; persisted in enhancements.json or overridden by AERO_EASY_TURBO=1.
 [[patches.hook]]
 func = "func_8005C750"
 before_vram = 0x8005C7A8
+text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8005C878"
+before_vram = 0x8005C8D0
 text = "extern void aero_turbo_boost_tick(uint8_t*, recomp_context*); aero_turbo_boost_tick(rdram, ctx);"
 
 # Port haptics observe the ROM's collision damage, after every branch has stored

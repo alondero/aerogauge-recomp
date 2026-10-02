@@ -1,5 +1,5 @@
 // Accelerator-only Boost Start + button-operated race Turbo (opt-in).
-// Runs after func_8005C9E4 maps P1's configured controls at 0x8005C7A8.
+// Runs after func_8005C9E4 maps each player's controls, at 0x8005C7A8/8005C8D0.
 // In races the dedicated N64 R button becomes Turbo. Turbo is keyed to a raw
 // physical button, never to a semantic action, so the configured drift button
 // keeps its original meaning and drifting is never consumed. Steering,
@@ -12,6 +12,7 @@
 
 #include "recomp.h"
 #include "aero_region.h"
+#include "aero_player.h"
 
 #define RACE_PHASE AERO_ADDR(0x8013FF88u, 0x8013D008u)
 #define RACE_STEP  AERO_ADDR(0x8013FF38u, 0x8013CFB8u)
@@ -26,7 +27,7 @@
 #define CONTROL_ACCEL 0x80u
 #define CONTROL_BRAKE 0x40u
 
-// Raw P1 controller state. func_800092C4 runs osContGetReadData and repacks each
+// Raw controller state (port 0 base). func_800092C4 runs osContGetReadData and repacks each
 // pad into an 8-byte block at 0x8010CAB0 (port p at 0x8010CAB0 + p*8); the button
 // halfword is at +0x2, which func_80009438 returns to the ROM. Reading it here
 // keys Turbo to the physical N64 R button rather than to any semantic control
@@ -45,15 +46,15 @@
 #define SETTINGS_TURBO_DURATION 0x28u
 #define TURBO_PENDING_FLAG 0x00001000u
 
-extern int aero_easy_turbo_enabled(void);
+extern int aero_easy_turbo_enabled_for_player(int player);
 
 // Require a release after losing the car/context. Track the button even when
 // disabled and during countdown so enabling the option or GO isn't a press.
-static int g_button_down = 1;
+static int g_button_down[2] = {1, 1};
 
 void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     if (rdram == NULL || ctx == NULL) {
-        g_button_down = 1;
+        g_button_down[0] = g_button_down[1] = 1;
         return;
     }
     // Recompiled guest pointers are 32-bit addresses carried in a 64-bit gpr.
@@ -61,17 +62,19 @@ void aero_turbo_boost_tick(uint8_t* rdram, recomp_context* ctx) {
     // the low 32 bits still address the canonical RDRAM window.
     const gpr car = (gpr)(int32_t)ctx->r16;
     const uint32_t car_address = (uint32_t)car;
-    if (car_address < 0x80000000u || car_address > 0x807FFDD0u) {
-        g_button_down = 1;
+    if (car_address < 0x80000000u || car_address > 0x807FFDD0u || (car_address & 3u) != 0) {
+        g_button_down[0] = g_button_down[1] = 1;
         return;
     }
+    const int player = aero_car_player(rdram, car);
+    if (player < 0) return;
     // Turbo is the raw physical N64 R button, independent of the game's
     // control-config mapping, so the drift action is never stolen or consumed.
-    const uint16_t pad = (uint16_t)MEM_HU(0, (gpr)(int32_t)P1_PAD_BUTTONS);
+    const uint16_t pad = (uint16_t)MEM_HU(0, (gpr)(int32_t)(P1_PAD_BUTTONS + player * 8));
     const int button_down = (pad & N64_R) != 0;
-    const int pressed = button_down && !g_button_down;
-    g_button_down = button_down;
-    if (!aero_easy_turbo_enabled()) return;
+    const int pressed = button_down && !g_button_down[player];
+    g_button_down[player] = button_down;
+    if (!aero_easy_turbo_enabled_for_player(player)) return;
 
     const uint32_t phase = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_PHASE);
     const uint32_t step = (uint32_t)MEM_W(0, (gpr)(int32_t)RACE_STEP);

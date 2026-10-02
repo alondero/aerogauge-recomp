@@ -203,6 +203,7 @@ portable API for another ROM.
 | 0x80075290 | 32-byte Controller Pak block read | aero_pak.cpp |
 | 0x80077260 | 32-byte Controller Pak block write | aero_pak.cpp |
 | 0x8005C7A8 | Post-map seam in the Player 1 vehicle-input callback | Easy Turbo and Boost Start |
+| 0x8005C8D0 | Post-map seam in the Player 2 vehicle-input callback (Japan Rev A: 0x8005CE4C) | Easy Turbo and Boost Start |
 | 0x80058AD8 | Collision-damage value before the ROM accumulates it | Haptics observer |
 
 The generated symbol input records these routes in

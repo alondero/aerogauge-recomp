@@ -104,6 +104,7 @@ int main() {
     MEM_W(4, car) = (int32_t)0x8005C878; // another player's callback
     aero_haptics_race_tick(rdram, &ctx);
     assert(sample().low == 0);
+    assert(sample(1).low == 0xC000); // P2 damage is routed to P2 only
     MEM_W(4, car) = (int32_t)0x8005C750;
     aero_haptics_race_tick(rdram, &ctx);
     MEM_W(0, (gpr)(int32_t)0x8013FF88) = 4; // pause

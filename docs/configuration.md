@@ -7,7 +7,7 @@ Controls page first saves its bindings. The mod manager creates `mods.json` and
 
 - graphics.json stores renderer, window, and visual enhancement settings.
 - enhancements.json stores gameplay assists.
-- controls.json stores the single-player keyboard and controller bindings.
+- controls.json stores keyboard and controller bindings and per-player profile selections.
 - mods.json stores installed package enablement and order.
 - mod_config/ stores per-package settings.
 - mods/ contains installed packages.
@@ -82,11 +82,12 @@ For example, this branch has no supported macOS window path.
 
 ## enhancements.json
 
-The file currently contains one key:
+The file contains separate player assist settings:
 
 | Key | Values | Default | Meaning |
 | --- | --- | --- | --- |
-| easy_turbo_boost | true or false | false | Enables the port's Boost Start and R-button Turbo assist |
+| easy_turbo_boost | true or false | false | Enables Player 1's Boost Start and R-button Turbo assist |
+| easy_turbo_boost_player2 | true or false | false | Enables Player 2's Boost Start and R-button Turbo assist |
 
 The assist preserves the game's own boost timer, heat, and overheat logic. It
 only adds the input path described in the [README](../README.md).
@@ -119,7 +120,8 @@ setting, its value wins for that run.
 | AERO_DRAW_DISTANCE_SCALE | number | Overrides draw_distance_scale |
 | AERO_FULL_TRACK | 0 or 1 | Overrides full_track |
 | AERO_FORCE_FULL_LOD | 0 or 1 | Overrides force_full_lod |
-| AERO_EASY_TURBO | 0 or 1 | Overrides easy_turbo_boost |
+| AERO_EASY_TURBO | 0 or 1 | Overrides Player 1's easy_turbo_boost |
+| AERO_EASY_TURBO_P2 | 0 or 1 | Overrides Player 2's easy_turbo_boost_player2 |
 | AERO_HEADLESS | 1 | Skips the window and RT64 and uses the software test renderer |
 
 AERO_GRAPHICS_CONFIG and AERO_ENHANCEMENTS_CONFIG point the two JSON loaders

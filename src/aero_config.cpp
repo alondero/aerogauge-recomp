@@ -67,7 +67,7 @@ std::atomic_bool g_force_full_lod{false};
 
 // Accelerator-only Boost Start and player-directed Turbo assist. This changes
 // handling, so it is explicitly opt-in and defaults to the original game.
-std::atomic_bool g_easy_turbo_boost{false};
+std::atomic_bool g_easy_turbo_boost{false}, g_easy_turbo_boost_player2{false};
 
 // The menu queues config operations onto the main SDL thread. This snapshot
 // avoids reading ultramodern's reference-returning getter while RT64 applies a
@@ -248,7 +248,7 @@ std::filesystem::path enhancements_json_path() {
     return aero::config::app_config_dir() / kEnhancementsFile;
 }
 
-ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_turbo) {
+ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_turbo, bool& player2) {
     std::ifstream in{path};
     if (!in.good()) return ReadResult::Missing;
     try {
@@ -256,6 +256,8 @@ ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_
         in >> j;
         if (!j.is_object()) return ReadResult::Unparseable;
         from_or_default(j, "easy_turbo_boost", easy_turbo);
+        // Existing single-player settings do not silently enable P2 assistance.
+        from_or_default(j, "easy_turbo_boost_player2", player2);
         return ReadResult::Ok;
     } catch (const nlohmann::json::exception& e) {
         std::fprintf(stderr, "[config] %s unparseable (%s); using defaults IN MEMORY\n",
@@ -526,7 +528,7 @@ void queue_enhancements_document(nlohmann::json document) {
 }
 
 nlohmann::json enhancements_json(bool easy_turbo) {
-    return nlohmann::json{{"easy_turbo_boost", easy_turbo}};
+    return nlohmann::json{{"easy_turbo_boost", easy_turbo}, {"easy_turbo_boost_player2", g_easy_turbo_boost_player2.load()}};
 }
 
 // Startup: inline so enhancements.json exists before the game starts (matches
@@ -613,10 +615,11 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     }
     std::fprintf(stderr, "[config] graphics config: %s\n", path.string().c_str());
 
-    bool easy_turbo = false;
+    bool easy_turbo = false, player2_turbo = false;
     const std::filesystem::path enhancements_path = enhancements_json_path();
-    const ReadResult enhancements_result = read_enhancements_file(enhancements_path, easy_turbo);
+    const ReadResult enhancements_result = read_enhancements_file(enhancements_path, easy_turbo, player2_turbo);
     g_easy_turbo_boost.store(easy_turbo);
+    g_easy_turbo_boost_player2.store(player2_turbo);
     if (enhancements_result != ReadResult::Unparseable) write_enhancements(easy_turbo);
     std::fprintf(stderr, "[config] enhancements config: %s\n", enhancements_path.string().c_str());
     return cfg;
@@ -846,6 +849,25 @@ bool easy_turbo_boost() {
 void set_easy_turbo_boost(bool enabled) {
     g_easy_turbo_boost.store(enabled);
     save_enhancements(enabled);
+}
+
+bool easy_turbo_boost_player2() {
+    static const int env_override = []() {
+        const char* value = std::getenv("AERO_EASY_TURBO_P2");
+        if (value == nullptr || value[0] == '\0') return -1;
+        return value[0] == '1' ? 1 : 0;
+    }();
+    if (env_override >= 0) return env_override != 0;
+    return g_easy_turbo_boost_player2.load();
+}
+
+void set_easy_turbo_boost_player2(bool enabled) {
+    g_easy_turbo_boost_player2.store(enabled);
+    save_enhancements(g_easy_turbo_boost.load());
+}
+
+extern "C" int aero_easy_turbo_enabled_for_player(int player) {
+    return player == 0 ? easy_turbo_boost() : player == 1 ? easy_turbo_boost_player2() : false;
 }
 
 // C-linkage bridge for src/aero_turbo_boost.c (plain C TU).
