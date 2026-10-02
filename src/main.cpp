@@ -51,6 +51,7 @@
 #include "aero_mods.h"
 #include "aero_menu.h"
 #include "aero_input.h"
+#include "aero_input_cadence.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 #include "recompinput/input_events.h"
 #include "recompinput/input_binding.h"
@@ -476,6 +477,8 @@ static void update_gfx_stub(void* /*gfx_data*/) {
     // frontend consumes the queue so binding scans and UI navigation see the
     // same events as gameplay.
     if (aero_rt64::enabled()) {
+        static AeroInputCadence cadence;
+        if (!cadence.due(AeroInputCadence::Clock::now())) return;
         aero::menu::update();
         aero::menu::run_input_update([] {
             recompinput::handle_events();

@@ -61,6 +61,13 @@ serializes SDL sampling, assignment changes, and controller cleanup with the
 frontend presentation lock so a device cannot be closed during sampling.
 A menu event is not proof that the same input reached the race.
 
+The SDL bridge limits event pumping, profile sampling, controller maintenance
+and rumble updates to 250 Hz, even though the runtime calls it about every
+millisecond. This adds up to 4 ms of polling delay before the next runtime
+callback; operating-system scheduling can add more. After a stall it pumps
+once immediately and starts a fresh deadline. Guest updates and VI timing
+keep their existing cadence. `input_cadence` checks the limit and recovery.
+
 While the settings menu has focus, RecompFrontend disables gameplay mappings and
 the port queues raw SDL events for the frontend. The race is not paused. Closing
 the menu returns input to the game.

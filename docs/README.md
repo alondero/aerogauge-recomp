@@ -34,6 +34,8 @@ Developers need clear build steps, evidence, and ownership.
   threads, guest memory, renderer, audio, input, saves, and patches.
 - [Testing](testing.md) lists host, ROM-backed, and end-to-end checks with
   prerequisites and exact commands.
+- [Performance audit](performance.md) ranks ten opportunities for weaker
+  hardware, records the implemented changes, and links follow-up issues.
 - [Debugging](debugging.md) describes logs, captures, debugger use, and
   reproducible failures.
 - [Settings frontend](frontend.md) describes the current menu boundary and

@@ -340,6 +340,83 @@ int main(int argc, char** argv) {
         require(!aero::config::current_graphics().developer_mode, "debug change escaped queue");
         flush();
         require(aero::config::current_graphics().developer_mode, "debug toggle apply");
+        // Presets stage real fields in the existing Apply/Discard transaction.
+        // Discard must restore every custom value, and Apply must preserve
+        // unrelated window, backend, texture, enhancement and developer state.
+        const auto before_preset = aero::config::current_graphics();
+        const auto size_before_preset = aero::config::window_size();
+        const auto pack_before_preset = aero::config::texture_pack_path();
+        const bool course_before_preset = aero::config::full_track();
+        graphics.clear_config_option_updates();
+        graphics.set_option_value("rendering_preset", uint32_t(1)); // Low power
+        require(aero::config::current_graphics() == before_preset && pending.empty(),
+                "preset escaped the confirmation transaction");
+        require(std::get<uint32_t>(graphics.get_temp_option_value("res_option")) == uint32_t(Resolution::Original),
+                "preset did not stage native resolution");
+        for (const char* key : {"res_option", "ds_option", "msaa_option", "rr_option", "hpfb_option"}) {
+            const auto index = graphics.get_config_schema().options_by_id.at(key);
+            bool notified = false;
+            for (const auto& update : graphics.get_config_option_updates()) {
+                if (update.option_index != index) continue;
+                for (auto type : update.updates)
+                    notified |= type == recomp::config::ConfigOptionUpdateType::Value;
+            }
+            require(notified, "preset did not notify the individual UI control");
+        }
+        graphics.set_option_value("msaa_option", uint32_t(Antialiasing::MSAA8X));
+        graphics.set_option_value("rendering_preset", uint32_t(1));
+        require(std::get<uint32_t>(graphics.get_temp_option_value("msaa_option")) == uint32_t(Antialiasing::None),
+                "same preset cannot be reapplied after an individual edit");
+        graphics.revert_temp_config();
+        for (const char* key : {"res_option", "ds_option", "msaa_option", "rr_option", "hpfb_option"})
+            require(graphics.get_temp_option_value(key) == graphics.get_option_value(key),
+                    "preset discard lost custom settings");
+        require(!graphics.is_dirty(), "preset discard left dirty options");
+        graphics.set_option_value("rendering_preset", uint32_t(1));
+        graphics.save_config();
+        require(aero::config::current_graphics() == before_preset, "preset Apply escaped main-thread queue");
+        flush();
+        const auto low_power = aero::config::current_graphics();
+        require(low_power.res_option == Resolution::Original && low_power.ds_option == 1 &&
+                low_power.msaa_option == Antialiasing::None && low_power.rr_option == RefreshRate::Original &&
+                low_power.hpfb_option == HighPrecisionFramebuffer::Off, "low-power Apply failed");
+        require(low_power.api_option == before_preset.api_option && low_power.wm_option == before_preset.wm_option &&
+                low_power.ar_option == before_preset.ar_option && low_power.hr_option == before_preset.hr_option &&
+                low_power.developer_mode == before_preset.developer_mode &&
+                aero::config::texture_pack_path() == pack_before_preset &&
+                aero::config::window_size().width == size_before_preset.width &&
+                aero::config::window_size().height == size_before_preset.height &&
+                aero::config::full_track() == course_before_preset, "preset overwrote unrelated settings");
+        aero::config::flush_config_writes();
+        auto saved_preset = read(path / "graphics.json");
+        require(saved_preset.at("res_option") == "Original" && saved_preset.at("msaa_option") == "None" &&
+                saved_preset.at("rr_option") == "Original" && saved_preset.at("hpfb_option") == "Off" &&
+                saved_preset.at("ds_option") == 1, "preset persistence failed");
+        require(saved_preset.at("future_option") == "preserve me", "preset lost unrelated JSON keys");
+        graphics.set_option_value("rendering_preset", uint32_t(2)); // Platform defaults
+        graphics.save_config();
+        flush();
+        const auto defaults = aero::config::default_graphics_config();
+        const auto restored = aero::config::current_graphics();
+        require(restored.res_option == defaults.res_option && restored.ds_option == defaults.ds_option &&
+                restored.msaa_option == defaults.msaa_option && restored.rr_option == defaults.rr_option &&
+                restored.hpfb_option == defaults.hpfb_option, "default rendering preset failed");
+        // Default must not bypass renderer capability gates, either for the
+        // whole MSAA control or for a single unsupported sample count.
+        graphics.update_option_disabled("msaa_option", true);
+        graphics.set_option_value("rendering_preset", uint32_t(2));
+        require(std::get<uint32_t>(graphics.get_temp_option_value("msaa_option")) == uint32_t(Antialiasing::None),
+                "preset bypassed disabled MSAA control");
+        graphics.revert_temp_config();
+        require(!graphics.is_dirty() && graphics.get_temp_option_value("msaa_option") ==
+                graphics.get_option_value("msaa_option"), "disabled-MSAA preset discard failed");
+        graphics.update_option_disabled("msaa_option", false);
+        graphics.update_enum_option_disabled("msaa_option", uint32_t(Antialiasing::MSAA2X), true);
+        graphics.set_option_value("rendering_preset", uint32_t(2));
+        require(std::get<uint32_t>(graphics.get_temp_option_value("msaa_option")) == uint32_t(Antialiasing::None),
+                "preset bypassed disabled MSAA sample count");
+        graphics.revert_temp_config();
+        graphics.update_enum_option_disabled("msaa_option", uint32_t(Antialiasing::MSAA2X), false);
         // Drain the writer before IsolatedConfig tears the directory down.
         aero::config::flush_config_writes();
         std::cout << "Frontend settings integration passed\n";

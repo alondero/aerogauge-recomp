@@ -536,6 +536,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_test(NAME input_stick_scaling COMMAND test_input_scaling)
     set_tests_properties(input_stick_scaling PROPERTIES TIMEOUT 10)
 
+    add_executable(test_input_cadence tests/test_input_cadence.cpp)
+    target_include_directories(test_input_cadence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME input_cadence COMMAND test_input_cadence)
+
     # Single per-user data folder: graphics.json, saves, and RT64 logs.
     add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
     target_include_directories(test_user_data_dir PRIVATE

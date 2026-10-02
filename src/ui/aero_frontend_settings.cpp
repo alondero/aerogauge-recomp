@@ -40,6 +40,21 @@ uint32_t preset_from_size(int width, int height) {
     return kWindowPresetCustom;
 }
 
+enum class RenderingPreset : uint32_t { Choose, LowPower, Default };
+
+ultramodern::renderer::GraphicsConfig rendering_preset(RenderingPreset preset) {
+    auto cfg = aero::config::default_graphics_config();
+    if (preset == RenderingPreset::LowPower) {
+        using namespace ultramodern::renderer;
+        cfg.res_option = Resolution::Original;
+        cfg.ds_option = 1;
+        cfg.msaa_option = Antialiasing::None;
+        cfg.rr_option = RefreshRate::Original;
+        cfg.hpfb_option = HighPrecisionFramebuffer::Off;
+    }
+    return cfg;
+}
+
 void sync(Config& page, const char* id, ConfigValueVariant value) {
     if (page.get_option_value(id) == value) return;
     page.update_option_value(id, value);
@@ -53,6 +68,7 @@ void seed_graphics() {
     ENUM(res_option); ENUM(wm_option); ENUM(hr_option); ENUM(api_option);
     ENUM(ar_option); ENUM(msaa_option); ENUM(rr_option); ENUM(hpfb_option); ENUM(ds_option);
 #undef ENUM
+    sync(page, "rendering_preset", uint32_t(RenderingPreset::Choose));
     sync(page, "rr_manual_value", double(seeded.rr_manual_value));
     seeded_pack = aero::config::texture_pack_path();
     seeded_dump = aero::config::texture_dump_dir();
@@ -308,6 +324,35 @@ void create_settings() {
     graphics.external_storage = true;
     graphics.set_load_callback(seed_graphics);
     graphics.set_save_callback(save_graphics);
+    graphics.add_enum_option("rendering_preset", "Rendering preset",
+        "Choose a starting point, then adjust individual options. Low power uses native resolution, "
+        "no anti-aliasing, the original frame rate and standard colour precision. "
+        "Apply keeps changes; Discard restores them. For less geometry, also turn off Full course geometry in Enhancements.",
+        {{uint32_t(RenderingPreset::Choose), "Choose", "Choose preset"},
+         {uint32_t(RenderingPreset::LowPower), "LowPower", "Low power"},
+         {uint32_t(RenderingPreset::Default), "Default", "Default"}},
+        uint32_t(RenderingPreset::Choose));
+    graphics.add_option_change_callback("rendering_preset",
+        [](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+            const auto preset = static_cast<RenderingPreset>(std::get<uint32_t>(value));
+            if (context != OptionChangeContext::Temporary || preset == RenderingPreset::Choose) return;
+            // Stage the actual settings in the same confirmation-backed page.
+            // The preset is a shortcut, not a second persisted configuration.
+            auto& page = recompui::config::get_graphics_config();
+            auto cfg = rendering_preset(preset);
+            const auto msaa_index = page.get_config_schema().options_by_id.at("msaa_option");
+            if (page.is_config_option_disabled(msaa_index) ||
+                page.get_enum_option_disabled(msaa_index, uint32_t(cfg.msaa_option))) {
+                cfg.msaa_option = ultramodern::renderer::Antialiasing::None;
+            }
+#define STAGE(field) page.update_option_value(#field, uint32_t(cfg.field))
+            STAGE(res_option); STAGE(ds_option); STAGE(msaa_option);
+            STAGE(rr_option); STAGE(hpfb_option);
+#undef STAGE
+            // This is a shortcut, not a mode. Reset the picker so choosing the
+            // same preset after an individual edit stages its settings again.
+            page.update_option_value("rendering_preset", uint32_t(RenderingPreset::Choose));
+        });
     graphics.add_bool_option("force_full_lod", "Force Full LOD",
         "Keep cars at maximum model detail and remove their distance cutoff. "
         "The Draw distance setting still controls far clipping. May reduce performance.",

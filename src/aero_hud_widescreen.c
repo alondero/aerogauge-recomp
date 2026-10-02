@@ -136,11 +136,7 @@ static int aero_ws_pinnable_hud(uint8_t* rdram) {
                             (uint32_t)MEM_W(0, (gpr)(int32_t)AERO_RACE_CDOWN_STEP));
 }
 
-static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end) {
-    float scale = aero_ws_needle_shift_scale();
-    if (scale <= 0.0f) {
-        return; /* 4:3 / non-Expand output: the ring pins don't travel either */
-    }
+static void aero_ws_needle_shift(uint8_t* rdram, gpr start, gpr end, float scale) {
     float dx = AERO_WS_NEEDLE_DX;
     const char* env = getenv("AERO_WS_NEEDLE_DX");
     if (env != NULL) {
@@ -419,6 +415,11 @@ void aero_ws_hud_frame_end(uint8_t* rdram, recomp_context* ctx) {
     }
     gpr start = s_hud_scan_start;
     gpr end = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
-    aero_ws_needle_shift(rdram, start, end);
+    // Read the live effective aspect once for both operations. At zero travel
+    // (4:3, non-Expand, or Original HUD) neither the matrix nor rects move, so
+    // avoid scanning, copying and growing an otherwise unchanged display list.
+    float scale = aero_ws_needle_shift_scale();
+    if (scale <= 0.0f) return;
+    aero_ws_needle_shift(rdram, start, end, scale);
     aero_ws_retag_rects(rdram, start, end);
 }
