@@ -484,6 +484,17 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)
 
+    # Native registrars with synthetic course tables and recorded ROM-helper calls.
+    add_executable(test_full_track_registration
+        tests/test_full_track_registration.cpp src/aero_full_track.cpp)
+    target_include_directories(test_full_track_registration PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${N64MR}/N64Recomp/include
+        ${N64MR}/ultramodern/include ${N64MR}/thirdparty)
+    target_compile_definitions(test_full_track_registration PRIVATE AERO_JAPAN_SUPPORT)
+    target_compile_options(test_full_track_registration PRIVATE -fno-strict-aliasing)
+    add_test(NAME full_track_registration COMMAND test_full_track_registration)
+    add_test(NAME full_track_registration_jp COMMAND test_full_track_registration jp)
+
     # Semantic-control state machine (src/aero_turbo_boost.c). Plain C with a
     # stubbed aero_easy_turbo_enabled(); no ROM needed.
     add_executable(test_turbo_boost tests/test_turbo_boost.cpp src/aero_turbo_boost.c)

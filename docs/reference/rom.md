@@ -227,6 +227,25 @@ two render flags. Object entries use a 0x28-byte stride and may include a
 one-shot node initializer. The original registrars use those callbacks and
 the 47 usable slots in each 48-slot node arena.
 
+The section-group/object-table adjacency does not derive a valid zone count
+for Chinatown or Chinatown Jam. A fresh-boot USA RDRAM capture and a walk of
+the course's own three-zone visibility rows reach 28 zones for Chinatown:
+0..5 and 10..31. Chinatown Jam reaches all 33 zones, 0..32. The fallback must
+retain the actual zone IDs for both registrars; treating its count as a
+consecutive range drops Chinatown's zones 28..31. Zone 29 contains 28 instances
+of lantern display list `0x803FB648` and the floor display list `0x803FB3A0`.
+These are object entries, rather than section display lists.
+
+The same captures contain 123 type-0/8 objects for Chinatown and 150 for
+Chinatown Jam. Each full-track object list now has 128 side slots in addition
+to the original 47, so the late-course objects fit. The side arenas remain
+inside the reserved 0x80700000..0x807FFFFF range, ahead of the two synthetic-DL
+banks. The [registration test](../../tests/test_full_track_registration.cpp)
+exercises sparse zone IDs, the 150-object case, and repeated registration at
+the native ROM-helper boundary with synthetic data in both regional layouts.
+The zone IDs, object counts, and display-list addresses above were measured
+from the USA ROM; the host test does not establish Japanese course visuals.
+
 Most enclosed course shells carry the ROM's hw4 bit 0x10 and must remain PVS
 gated when full-track mode is enabled. Two unflagged Bikini Island entries are
 also PVS gated by the current port policy. Keep their exact display-list
