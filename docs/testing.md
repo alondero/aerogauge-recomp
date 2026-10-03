@@ -129,6 +129,7 @@ The current CMake file registers these tests:
 | hud_messages | Host | RT64 headers from the initialized submodule |
 | race_intro | Host | RT64 headers from the initialized submodule |
 | full_track_policy | Host | No ROM |
+| full_track_registration and full_track_registration_jp | Host | Synthetic sparse course tables and 150-object registration in both regional address layouts; runtime headers, no ROM |
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | frontend_navigation_wrap | Host | Real RecompFrontend/RmlUi directional events and nested single-item wrapping; no ROM or graphics device |

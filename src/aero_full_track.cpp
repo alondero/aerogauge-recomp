@@ -58,7 +58,10 @@ constexpr uint32_t RES_BASE     = 0x80700000;
 constexpr uint32_t RES_COUNTERS = RES_BASE;            // 4 registration counters
 constexpr uint32_t RES_SIDE_PAD = RES_BASE + 0x20;     // absorbs helper's prev-link write
 constexpr uint32_t RES_SIDE     = RES_BASE + 0x40;     // side arenas (per craft x list)
-constexpr uint32_t SIDE_SLOTS   = 64;
+// Chinatown Jam registers 150 type-0/8 objects across the course. The original
+// 47 slots plus 64 side slots dropped its late decorations; 128 side slots
+// hold the complete list while retaining room for both synthetic-DL banks.
+constexpr uint32_t SIDE_SLOTS   = 128;
 constexpr uint32_t MAX_CRAFTS   = 4;
 constexpr uint32_t SIDE_ARENA_BYTES = SIDE_SLOTS * NODE_SIZE;
 constexpr uint32_t RES_FAKES    = RES_SIDE + MAX_CRAFTS * 3 * SIDE_ARENA_BYTES;
@@ -144,6 +147,9 @@ struct BuiltCourse {
     CourseKey key;
     bool valid = false;
     int zones = 0;
+    // The visibility closure can contain holes (Chinatown omits zones 6..9).
+    // Keep its IDs as well as its size so both registrars visit the same zones.
+    uint8_t zone_ids[MAX_ZONES] = {};
     std::vector<Bucket> buckets;
     // Craft registry for side arenas (2P+ have separate list chains).
     uint32_t crafts[MAX_CRAFTS] = {};
@@ -210,7 +216,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
     g_course.key = k;
 
     int zones = zone_count_adjacent(rdram, k);
-    uint8_t zone_ids[MAX_ZONES];
+    uint8_t* zone_ids = g_course.zone_ids;
     if (zones > 0) {
         for (int z = 0; z < zones; z++) zone_ids[z] = (uint8_t)z;
     } else {
@@ -495,7 +501,7 @@ extern "C" void aeroRegisterZoneObjects(uint8_t* rdram, recomp_context* ctx) {
     int nz;
     if (full) {
         nz = g_course.zones;
-        for (int z = 0; z < nz; z++) zone_ids[z] = (uint8_t)z;
+        for (int z = 0; z < nz; z++) zone_ids[z] = g_course.zone_ids[z];
     } else {
         nz = 3;
         for (int i = 0; i < 3; i++)
