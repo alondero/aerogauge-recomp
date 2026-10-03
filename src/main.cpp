@@ -126,7 +126,7 @@ static StartupMode desktop_startup_mode() {
         std::getenv("AERO_WARP_AT") != nullptr || std::getenv("AERO_CRASH_TEST") != nullptr) {
         return StartupMode::AutoStart;
     }
-    return StartupMode::Launcher;
+    return StartupMode::AutoStart;
 }
 static std::atomic<bool> g_menu_toggle_requested{false};
 static constexpr size_t kScancodeWords = (SDL_NUM_SCANCODES + 63) / 64;
@@ -991,9 +991,9 @@ int main(int argc, char** argv) {
     const char* pak_enabled = std::getenv("AERO_CONTROLLER_PAK");
     aero::pak::configure(pak_path, !pak_enabled || std::strcmp(pak_enabled, "0") != 0);
 
-    // The launcher lets players install and configure packages before the
-    // runtime scans their files. Windowed automation still starts the game
-    // when a finite VI budget, warp, or crash harness is configured.
+    // When enabled, the launcher lets players install and configure packages
+    // before the runtime scans their files. Automation starts the game unless
+    // AERO_LAUNCHER explicitly requests the launcher.
     std::thread starter([game_id]() {
         StartupMode mode;
         {

@@ -7,7 +7,8 @@ Android game paths. Android presents it from the in-game menu and omits the
 desktop-only window, API, and developer-tool controls. It still needs a
 graphics device.
 
-The desktop app opens to a launcher with Start Game, Settings, and Mods options.
+The desktop app starts the game directly by default. Set `AERO_LAUNCHER=1` to
+open the launcher with Start Game, Settings, and Mods options before gameplay.
 The Mods manager must scan and install packages before gameplay begins because
 its refresh closes package handles used by the running game. The same Mods tab
 remains available from Settings while playing for runtime-toggleable content.
