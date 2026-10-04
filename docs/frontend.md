@@ -9,11 +9,11 @@ graphics device.
 
 The desktop app starts the game directly by default. Set `AERO_LAUNCHER=1` to
 open the launcher with Start Game, Settings, and Mods options before gameplay.
-The Mods manager cannot scan and install packages during gameplay because its
-refresh closes package handles used by the running game, so install from the
-launcher or install and then restart. The Mods tab remains available from
-Settings while playing for runtime-toggleable content, and the launcher is the
-only screen that can change the selected ROM.
+Package installation needs that pre-game launcher, because the Mods manager
+disables its scan and install operations during gameplay: its refresh closes
+package handles used by the running game. The Mods tab stays available from
+Settings while playing, for listing packages, toggling runtime-toggleable
+content, and disabling a package that failed to load.
 
 Headless test runs do not show the menu.
 

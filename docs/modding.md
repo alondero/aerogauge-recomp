@@ -7,17 +7,16 @@ addresses differ, so code packages are not interchangeable.
 
 ## Install and manage packages
 
-Open **Settings** and choose **Mods**; the game is already running by the time
-you get there. Install and scan packages before restarting the game, because
-RecompFrontend keeps those file operations disabled during play: refreshing the
-list closes the package handles used by the running game. The in-game Mods tab
-shows installed packages and supports runtime-toggleable content such as
-texture packs.
+The in-game tab, reached with **Settings** then **Mods**, lists installed
+packages, toggles runtime-toggleable content such as texture packs, and lets you
+disable a code package that failed to load. It cannot install or scan packages
+while the game is running: RecompFrontend keeps those file operations disabled
+during play because refreshing the list closes the package handles the running
+game is using.
 
-Installing from the launcher is also possible: set `AERO_LAUNCHER=1` to open the
-launcher before the game starts, where **Mods** is one of its options. This is
-the better choice when you are installing a **code** package, because the
-launcher lets you enable it and start the game in one step. See
+Installing needs the pre-game launcher. Set `AERO_LAUNCHER=1` and choose **Mods**
+before the game starts; that is where packages are added and scanned, and it is
+also where you can enable a **code** package and start the game in one step. See
 [Configuration](configuration.md) for the variable.
 
 Packages and settings use the same per-user or portable directory as the rest
@@ -32,12 +31,12 @@ Supported package types are:
 - `.nrm` code packages with a manifest targeting the selected region's game ID;
 - `.rtz` RT64 texture archives containing `rt64.json` at the archive root.
 
-Code packages load when the game starts. Enable them, then restart AeroGauge;
-changing code-mod selection requires a restart. Texture packs can be enabled,
-disabled, and reordered during play. Earlier packages in
-the manager's order have higher texture priority. The existing Graphics
-texture path, including `AERO_TEXTURE_PACK`, has priority over managed texture
-packs.
+Code packages load when the game starts, so one has to be enabled before that
+start. Enable it in the launcher's Mods option, or change the selection in the
+Mods tab and restart AeroGauge; the change applies at the next start. Texture
+packs can be enabled, disabled, and reordered during play. Earlier packages in
+the manager's order have higher texture priority. The existing Graphics texture
+path, including `AERO_TEXTURE_PACK`, has priority over managed texture packs.
 
 If a code package fails to load, the runtime error opens over Settings > Mods.
 Disable the incompatible package, close Settings, and start AeroGauge again. A

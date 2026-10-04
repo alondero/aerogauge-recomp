@@ -158,7 +158,7 @@ interface.
 | Variable | Form | Effect |
 | --- | --- | --- |
 | AERO_AUTOSTART | 1 | No-op. Starts the game, which is already the default; retained because run scripts still set it |
-| AERO_LAUNCHER | 1 | Opens the desktop launcher and its ROM selection before the game starts; any other value, including 0, starts the game |
+| AERO_LAUNCHER | 1 | Opens the desktop launcher before the game starts, with its Start Game, Settings, and Mods options; any other value, including 0, starts the game |
 | AERO_WARP | track or track:craft | One-shot race warp; track is 1-6 and craft is 1-10 |
 | AERO_WARP_AT | vi:track or vi:track:craft | Schedules a warp at a VI count |
 | AERO_STATE_FILE | file path | F7/F8 save-state slot |
@@ -185,10 +185,11 @@ interface.
 Desktop runs start the game automatically, whether or not an automation
 variable such as AERO_MODERN_MAX_VIS, AERO_WARP, AERO_WARP_AT, or
 AERO_CRASH_TEST is set. AERO_LAUNCHER=1 is the only way to open the launcher,
-it takes precedence over every other variable, and it is also the only screen
-that can change the selected ROM. AERO_LAUNCHER=0 and AERO_AUTOSTART=1 are
-retained no-op aliases for the default. See the [settings frontend](frontend.md)
-for what the launcher and the Mods tab can each reach.
+and it takes precedence over every other variable. The launcher's game options
+also offer a start-game-or-load-ROM choice, so use AERO_LAUNCHER=1 for a run
+that has to select a ROM. AERO_LAUNCHER=0 and AERO_AUTOSTART=1 are retained
+no-op aliases for the default. See the [settings frontend](frontend.md) for
+what the launcher and the Mods tab can each reach.
 
 ### Renderer and display-list probes
 
