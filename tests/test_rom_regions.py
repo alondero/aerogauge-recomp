@@ -24,7 +24,13 @@ def run(exe, rom, region, order=1, course=None):
         path = root / "input.rom"
         path.write_bytes(data)
         env = {key: value for key, value in os.environ.items() if not key.startswith("AERO_")}
-        vis = 1300 if course else 60
+        # The course cases must reach race phase 3, which takes roughly 550 VIs
+        # after the warp fires -- and the warp is an input pulse, so on a loaded
+        # CI runner it can land far later than on a developer machine. A 1300-VI
+        # cap left too little room between warp and phase 3 and failed both
+        # desktop jobs. Keep a wide margin; the per-case subprocess timeout is
+        # 90s and a case runs the whole budget.
+        vis = 2600 if course else 60
         env.update(AERO_HEADLESS="1", AERO_MODERN_MAX_VIS=str(vis))
         if course:
             env.update(AERO_INPUT_PULSE="1000:120:12:20:3", AERO_WARP=f"{course}:1",
