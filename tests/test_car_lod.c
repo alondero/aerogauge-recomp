@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "recomp.h"
 
@@ -26,6 +27,17 @@ void func_8005A2D4(uint8_t*, recomp_context*);
 void aero_car_lod_model(uint8_t*, recomp_context*);
 static int enabled;
 int aero_force_full_lod_enabled(void) { return enabled; }
+// The extracted car-LOD closure contains a jump-table switch whose default arm
+// calls switch_error (N64Recomp cgenerator.cpp, emit_switch_error). librecomp
+// defines that symbol, but this host test links no runtime, and the closure is
+// regenerated whenever the ROM translation changes -- so the reference appears
+// and disappears with the generated code, and Windows CI hit it as an undefined
+// symbol. Keep the same failing contract here: an arm no fixture drives is a
+// test bug, not a pass.
+void switch_error(const char* func, uint32_t vram, uint32_t jtbl) {
+    fprintf(stderr, "switch_error in %s at 0x%08X for jump table 0x%08X\n", func, vram, jtbl);
+    abort();
+}
 _Alignas(8) static uint8_t ram[8 * 1024 * 1024];
 static uint8_t* rdram = ram;
 static const gpr car = (gpr)(int32_t)CAR_BASE;
