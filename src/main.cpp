@@ -1,6 +1,7 @@
 #include "aero_haptics.h"
 #include "aero_pak.h"
 #include "aero_region.h"
+#include "aero_startup.h"
 
 // Main program and runtime bridge.
 //
@@ -26,6 +27,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -104,29 +106,20 @@ static std::atomic<int>  g_max_state{0};
 static std::atomic<int>  g_swaps{0};
 static std::array<SDL_GameController*, 2> g_pads{};
 static std::atomic<bool> g_window_close_requested{false};
-enum class StartupMode { Pending, AutoStart, Launcher };
+// create_window() resolves the startup mode once and publishes it to the
+// starter thread in main(); empty means "not resolved yet". The decision
+// itself lives in aero_startup.h so it is host-testable, and that header owns
+// the environment contract. The Android and headless paths never consult it
+// and resolve straight to AutoStart.
 static std::mutex g_startup_mode_mutex;
 static std::condition_variable g_startup_mode_changed;
-static StartupMode g_startup_mode = StartupMode::Pending;
-static void resolve_startup_mode(StartupMode mode) {
+static std::optional<aero::startup::Mode> g_startup_mode;
+static void resolve_startup_mode(aero::startup::Mode mode) {
     {
         std::lock_guard lock(g_startup_mode_mutex);
         g_startup_mode = mode;
     }
     g_startup_mode_changed.notify_all();
-}
-static bool environment_is(const char* name, const char* expected) {
-    const char* value = std::getenv(name);
-    return value != nullptr && std::strcmp(value, expected) == 0;
-}
-static StartupMode desktop_startup_mode() {
-    if (environment_is("AERO_LAUNCHER", "1")) return StartupMode::Launcher;
-    if (environment_is("AERO_AUTOSTART", "1") || environment_is("AERO_LAUNCHER", "0") ||
-        std::getenv("AERO_MODERN_MAX_VIS") != nullptr || std::getenv("AERO_WARP") != nullptr ||
-        std::getenv("AERO_WARP_AT") != nullptr || std::getenv("AERO_CRASH_TEST") != nullptr) {
-        return StartupMode::AutoStart;
-    }
-    return StartupMode::Launcher;
 }
 static std::atomic<bool> g_menu_toggle_requested{false};
 static constexpr size_t kScancodeWords = (SDL_NUM_SCANCODES + 63) / 64;
@@ -395,7 +388,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
             std::fprintf(stderr, "[rt64] SDL_InitSubSystem(VIDEO|GAMECONTROLLER) failed: %s -- staying headless\n",
                          SDL_GetError());
-            resolve_startup_mode(StartupMode::AutoStart);
+            resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         SDL_SetEventFilter(sdl_event_filter, nullptr);
@@ -431,18 +424,18 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         if (window == nullptr) {
             std::fprintf(stderr, "[rt64] SDL_CreateWindow failed: %s -- staying headless\n",
                          SDL_GetError());
-            resolve_startup_mode(StartupMode::AutoStart);
+            resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         set_application_icon(window);
         aero::menu::attach(window);
 #if defined(__ANDROID__)
-        resolve_startup_mode(StartupMode::AutoStart);
+        resolve_startup_mode(aero::startup::Mode::AutoStart);
         return ultramodern::renderer::WindowHandle{window};
 #elif defined(__linux__)
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",
                      win_size.width, win_size.height);
-        resolve_startup_mode(desktop_startup_mode());
+        resolve_startup_mode(aero::startup::desktop_mode());
         return ultramodern::renderer::WindowHandle{window};
 #elif defined(_WIN32)
         // Native Windows: ultramodern's WindowHandle is {HWND, thread_id} and
@@ -454,21 +447,21 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
             std::fprintf(stderr, "[rt64] SDL_GetWindowWMInfo failed: %s -- staying headless\n",
                          SDL_GetError());
             SDL_DestroyWindow(window);
-            resolve_startup_mode(StartupMode::AutoStart);
+            resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
         std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Win32 HWND -> D3D12)\n",
                      win_size.width, win_size.height);
-        resolve_startup_mode(desktop_startup_mode());
+        resolve_startup_mode(aero::startup::desktop_mode());
         return ultramodern::renderer::WindowHandle{wmInfo.info.win.window, GetCurrentThreadId()};
 #else
         std::fprintf(stderr, "[rt64] window handle wiring not implemented on this platform\n");
         SDL_DestroyWindow(window);
-        resolve_startup_mode(StartupMode::AutoStart);
+        resolve_startup_mode(aero::startup::Mode::AutoStart);
         return ultramodern::renderer::WindowHandle{};
 #endif
     }
-    resolve_startup_mode(StartupMode::AutoStart);
+    resolve_startup_mode(aero::startup::Mode::AutoStart);
     return ultramodern::renderer::WindowHandle{}; // headless: null handle
 }
 
@@ -991,19 +984,27 @@ int main(int argc, char** argv) {
     const char* pak_enabled = std::getenv("AERO_CONTROLLER_PAK");
     aero::pak::configure(pak_path, !pak_enabled || std::strcmp(pak_enabled, "0") != 0);
 
-    // The launcher lets players install and configure packages before the
-    // runtime scans their files. Windowed automation still starts the game
-    // when a finite VI budget, warp, or crash harness is configured.
+    // Desktop startup is decided in aero_startup.h: the game starts by default,
+    // and AERO_LAUNCHER=1 is the only way to hold at the launcher. This thread
+    // owns the only call to start_game, so in Launcher mode it must return
+    // without calling it and leave the launcher's Start Game option in charge.
     std::thread starter([game_id]() {
-        StartupMode mode;
+        aero::startup::Mode mode;
         {
             std::unique_lock lock(g_startup_mode_mutex);
             g_startup_mode_changed.wait(lock, [] {
-                return g_startup_mode != StartupMode::Pending;
+                return g_startup_mode.has_value();
             });
-            mode = g_startup_mode;
+            mode = *g_startup_mode;
         }
-        if (mode == StartupMode::Launcher) return;
+        if (mode == aero::startup::Mode::Launcher) return;
+        // The startup mode is resolved in create_window, which runs before the
+        // main thread enters the RT64 present loop. This fixed delay lets that
+        // loop reach a swap before the game starts submitting frames. It is a
+        // delay, not a synchronization primitive: nothing waits on it, and the
+        // wait above is the only ordering guarantee. The value is pre-existing
+        // and now sits on every launch, so a run that starts cleanly at a
+        // shorter delay may reduce it.
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         std::fprintf(stderr, "[probe] calling start_game\n");
         std::u8string gid = game_id;

@@ -170,6 +170,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/main.cpp
         src/aero_haptics.cpp   # race-event feedback and motor callback publisher
         src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
+        src/aero_startup.cpp   # desktop startup decision: game by default, AERO_LAUNCHER=1 for the launcher
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/aero_scene_scissor.c # remove full-screen world overscan clipping
         src/aero_car_lod.c      # optional maximum car detail and distance visibility
@@ -483,6 +484,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
     target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME full_track_policy COMMAND test_full_track_policy)
+
+    # Desktop startup classification (src/aero_startup.cpp). The game is the
+    # default and only AERO_LAUNCHER=1 selects the launcher, so a silent return
+    # to the launcher-first default fails here instead of on a player's first
+    # launch. Host-only: no ROM, no renderer, no SDL.
+    add_executable(test_startup_mode tests/test_startup_mode.cpp src/aero_startup.cpp)
+    target_include_directories(test_startup_mode PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME startup_mode COMMAND test_startup_mode)
 
     # Native registrars with synthetic course tables and recorded ROM-helper calls.
     add_executable(test_full_track_registration

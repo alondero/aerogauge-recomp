@@ -7,10 +7,13 @@ Android game paths. Android presents it from the in-game menu and omits the
 desktop-only window, API, and developer-tool controls. It still needs a
 graphics device.
 
-The desktop app opens to a launcher with Start Game, Settings, and Mods options.
-The Mods manager must scan and install packages before gameplay begins because
-its refresh closes package handles used by the running game. The same Mods tab
-remains available from Settings while playing for runtime-toggleable content.
+The desktop app starts the game directly by default. Set `AERO_LAUNCHER=1` to
+open the launcher with Start Game, Settings, and Mods options before gameplay.
+Package installation needs that pre-game launcher, because the Mods manager
+disables its scan and install operations during gameplay: its refresh closes
+package handles used by the running game. The Mods tab stays available from
+Settings while playing, for listing packages, toggling runtime-toggleable
+content, and disabling a package that failed to load.
 
 Headless test runs do not show the menu.
 
@@ -43,7 +46,8 @@ Full-course geometry is experimental. It can cost performance or show visual
 errors. Easy Turbo changes the driving controls and is off by default.
 Mod loading is experimental. If an enabled package fails at startup, the
 settings overlay opens on Mods with the runtime error so the package can be
-disabled before starting the game again from the launcher.
+disabled before starting AeroGauge again. A failed package does not retry by
+itself and does not cause a boot loop.
 
 ## Environment overrides
 
