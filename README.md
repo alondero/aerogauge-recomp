@@ -71,8 +71,8 @@ The port exposes one physical controller as Controller 1.
 ## Settings
 
 The desktop app starts AeroGauge directly. Set `AERO_LAUNCHER=1` to open the
-launcher first and choose **Start Game**, **Settings**, or **Mods**. During
-play, open Settings with
+launcher first and choose **Start Game**, **Settings**, or **Mods**; it is also
+the only way to change the selected ROM. During play, open Settings with
 **Escape**, **F10**, or controller **Back**. This also works in fullscreen.
 Use the mouse, keyboard, or controller D-pad; the screen shows the active
 button prompts.

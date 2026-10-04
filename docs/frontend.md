@@ -9,9 +9,11 @@ graphics device.
 
 The desktop app starts the game directly by default. Set `AERO_LAUNCHER=1` to
 open the launcher with Start Game, Settings, and Mods options before gameplay.
-The Mods manager must scan and install packages before gameplay begins because
-its refresh closes package handles used by the running game. The same Mods tab
-remains available from Settings while playing for runtime-toggleable content.
+The Mods manager cannot scan and install packages during gameplay because its
+refresh closes package handles used by the running game, so install from the
+launcher or install and then restart. The Mods tab remains available from
+Settings while playing for runtime-toggleable content, and the launcher is the
+only screen that can change the selected ROM.
 
 Headless test runs do not show the menu.
 
@@ -44,7 +46,8 @@ Full-course geometry is experimental. It can cost performance or show visual
 errors. Easy Turbo changes the driving controls and is off by default.
 Mod loading is experimental. If an enabled package fails at startup, the
 settings overlay opens on Mods with the runtime error so the package can be
-disabled before starting the game again from the launcher.
+disabled before starting AeroGauge again. A failed package does not retry by
+itself and does not cause a boot loop.
 
 ## Environment overrides
 
