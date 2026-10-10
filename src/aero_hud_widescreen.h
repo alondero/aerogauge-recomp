@@ -12,8 +12,15 @@
 // The aspect argument is the effective rect-pin aspect, not always the raw
 // output aspect. Keep that distinction aligned with rt64_renderer.cpp.
 static inline float aero_ws_hud_shift_scale_for_aspect(float aspect) {
-    float scale = aspect * 2.25f - 3.0f;
-    return scale > 0.0f ? scale : 0.0f;
+    // Subtract the source aspect first, then scale. Written as
+    // `aspect * 2.25f - 3.0f` this is a multiply-add that GCC contracts into a
+    // fused FMA on ARM64 (-ffp-contract=fast is the default outside strict ISO
+    // mode). The single rounding turns the exact zero at 4:3 into about 9e-8,
+    // so the zero-travel path in aero_ws_hud_frame_end never triggered there.
+    // A subtraction followed by a multiply cannot be contracted, and
+    // (4/3 - 4/3) is exactly zero on every host.
+    float travel = aspect - (4.0f / 3.0f);
+    return travel > 0.0f ? travel * 2.25f : 0.0f;
 }
 
 // The rect pins do NOT always travel to the real output edges: RT64's extended GBI
