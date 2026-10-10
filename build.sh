@@ -65,11 +65,18 @@ log "[repo] $(pwd)"
 for tool in cmake gcc g++ ninja git; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         die "missing tool: $tool. Install with:
+  Debian/Ubuntu:
   sudo apt-get install -y --no-install-recommends \\
     build-essential cmake ninja-build python3 pkg-config \\
-    libsdl2-dev libvulkan-dev \\
+    libsdl2-dev libvulkan-dev libfreetype-dev \\
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \\
-    libdbus-1-dev"
+    libdbus-1-dev
+  Fedora:
+  sudo dnf install -y \\
+    gcc gcc-c++ cmake ninja-build python3 pkgconf-pkg-config \\
+    SDL2-devel vulkan-loader-devel vulkan-headers freetype-devel \\
+    libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel \\
+    dbus-devel"
     fi
 done
 

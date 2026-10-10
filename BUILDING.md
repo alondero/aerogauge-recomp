@@ -20,11 +20,21 @@ For the ARM64 Android APK, follow [Android building and signing](docs/android.md
 | --- | --- | --- | --- |
 | 64-bit Windows | MinGW-w64 GCC and G++ | RT64 with Direct3D 12 | Supported |
 | 64-bit Linux | GCC and G++ | RT64 with Vulkan | Supported |
+| ARM64 Linux | GCC and G++ | RT64 with Vulkan | Source build only; see below |
 | ARM64 Android | Android NDK 28 and Gradle | RT64 with Vulkan (system or imported driver) | Supported |
 | macOS | - | - | Not supported by this branch |
 
 The source tree does not provide the macOS window and input wiring. An upstream
 renderer backend does not change that port status.
+
+The Linux release archive is x64 only. ARM64 Linux uses the same script,
+compiler, and renderer path as x64 Linux, but no release is published for it,
+so build from source. The flow in this page was run once on Fedora Asahi Remix
+44 (Apple M2 Pro, GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the
+build script completed, the 34 registered CTest tests built and passed, the
+headless smoke run reached its VI budget, and the windowed program created a
+Vulkan surface and initialised RT64 on the Apple GPU. That is one machine and
+one session, not a support promise for every ARM64 Linux system.
 
 ## Prerequisites
 
@@ -43,6 +53,29 @@ On Debian or Ubuntu, the release workflow uses:
 ~~~bash
 sudo apt-get install -y --no-install-recommends   build-essential cmake ninja-build python3 pkg-config   libsdl2-dev libvulkan-dev libfreetype-dev   libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev   libdbus-1-dev
 ~~~
+
+On Fedora, the same set is:
+
+~~~bash
+sudo dnf install -y \
+  gcc gcc-c++ cmake ninja-build python3 pkgconf-pkg-config \
+  SDL2-devel vulkan-loader-devel vulkan-headers freetype-devel \
+  libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel \
+  dbus-devel
+~~~
+
+Fedora notes:
+
+- Current Fedora releases (checked on Fedora 44) ship SDL2 as `sdl2-compat`,
+  the SDL2 API on top of SDL3. `dnf install SDL2-devel` resolves to
+  `sdl2-compat-devel`, and CMake's `find_package(SDL2)` finds it.
+  `rpm -q SDL2-devel` reports "not installed" for that package name; use
+  `rpm -q --whatprovides SDL2-devel` instead.
+- On Fedora Asahi Remix the Vulkan driver for the Apple GPU (Honeykrisp) is the
+  `asahi` ICD inside `mesa-vulkan-drivers`. Make sure that package is
+  installed; no other driver package is needed.
+- On ARM64, N64ModernRuntime compiles its SSE code through `sse2neon`, which
+  prints one `#warning` per translation unit (`-Wcpp`). That is expected.
 
 Windows needs MinGW-w64 GCC, CMake, and Ninja. Put the MinGW `bin` directory
 on `PATH` so GCC can find its own runtime DLLs. CMake downloads
@@ -244,6 +277,8 @@ conditions.
 
 ## Common build failures
 
+- **`./build.sh: Permission denied`:** the executable bit was lost, which
+  happens with a source archive download. Run `bash build.sh` instead.
 - **Submodule missing:** run `git submodule update --init --recursive`.
 - **Patch does not apply:** check for submodule drift and refresh the patch; do
   not force it.
