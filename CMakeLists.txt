@@ -306,10 +306,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # PI entrypoints have fail-fast stubs, so this needs neither ROM nor RT64.
     add_executable(test_eeprom_flush tests/test_eeprom_flush.cpp
         ${N64MR}/librecomp/src/pi.cpp ${N64MR}/librecomp/src/files.cpp)
+    # librecomp/rsp_vu.hpp includes <sse2neon.h> on ARM64 (x86_64 uses the
+    # compiler's own intrinsics header), so this target needs the same
+    # thirdparty/sse2neon include that ultramodern's own CMake adds.
     target_include_directories(test_eeprom_flush PRIVATE
         ${N64MR}/N64Recomp/include ${N64MR}/ultramodern/include
         ${N64MR}/librecomp/include ${N64MR}/librecomp/include/librecomp
-        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue)
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue
+        ${N64MR}/thirdparty/sse2neon)
     target_compile_options(test_eeprom_flush PRIVATE -ffunction-sections -fdata-sections)
     target_link_options(test_eeprom_flush PRIVATE -Wl,--gc-sections)
     add_test(NAME eeprom_exit_flush COMMAND test_eeprom_flush)
