@@ -19,22 +19,33 @@ For the ARM64 Android APK, follow [Android building and signing](docs/android.md
 | Host | Compiler | Renderer path | Status |
 | --- | --- | --- | --- |
 | 64-bit Windows | MinGW-w64 GCC and G++ | RT64 with Direct3D 12 | Supported |
-| 64-bit Linux | GCC and G++ | RT64 with Vulkan | Supported |
-| ARM64 Linux | GCC and G++ | RT64 with Vulkan | Source build only; see below |
+| x64 Linux | GCC and G++ | RT64 with Vulkan | Supported |
+| ARM64 Linux | GCC and G++ | RT64 with Vulkan | Supported |
 | ARM64 Android | Android NDK 28 and Gradle | RT64 with Vulkan (system or imported driver) | Supported |
 | macOS | - | - | Not supported by this branch |
 
 The source tree does not provide the macOS window and input wiring. An upstream
 renderer backend does not change that port status.
 
-The Linux release archive is x64 only. ARM64 Linux uses the same script,
-compiler, and renderer path as x64 Linux, but no release is published for it,
-so build from source. The flow in this page was run once on Fedora Asahi Remix
-44 (Apple M2 Pro, GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the
-build script completed, the 34 registered CTest tests built and passed, the
-headless smoke run reached its VI budget, and the windowed program created a
-Vulkan surface and initialised RT64 on the Apple GPU. That is one machine and
-one session, not a support promise for every ARM64 Linux system.
+Linux releases include `aerogauge-recomp-linux-x64.zip` and
+`aerogauge-recomp-linux-arm64.zip`. Both use the same build script and RT64
+Vulkan renderer. The ARM64 archive is built natively on Ubuntu 24.04 and
+requires glibc 2.39 or newer, SDL2, FreeType, the Vulkan loader, and a
+compatible Vulkan GPU driver. Older distributions can build from source.
+
+The source flow was also checked on Fedora Asahi Remix 44 (Apple M2 Pro,
+GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the build script
+completed, the 34 registered CTest tests passed, the headless smoke run
+reached its VI budget, and the windowed program created a Vulkan surface
+and initialised RT64 on the Apple GPU. Other ARM64 GPUs and drivers need
+separate validation.
+
+ARM64 release CI builds all test targets, runs the headless-compatible CTest
+suites, and checks both ROMs through every course before packaging. The
+`vi_special_features` test requires a desktop GPU and is excluded in CI. Compiler floating-point
+contraction settings remain unchanged; the HUD scaling fix explicitly
+preserves separate rounding where needed. A wider contraction policy would
+need separate validation across the port and both generated translations.
 
 ## Prerequisites
 
