@@ -48,10 +48,13 @@ headless-compatible CTest suites, and check both ROMs through every course
 before packaging. The `vi_special_features` test requires a desktop GPU and
 is excluded in CI.
 
-On desktop ARM64 Linux, `RecompiledFuncs`, `RecompiledFuncsJP`, and `aerogauge_modern` use
-`-ffp-contract=off` to preserve separate multiply/add rounding as on the x64
-baseline. This applies to both generated translations and native hooks;
-the HUD helper also preserves its exact-zero check explicitly.
+On desktop ARM64 Linux, `-ffp-contract=off` is a directory-level CPU
+compile option inherited by the port, both generated translations, RT64,
+N64ModernRuntime, RecompFrontend, and host tests. This preserves separate
+multiply/add rounding as on the x64 baseline and keeps the HUD helpers and
+RT64's mirrored math under the same policy. It also covers source-built
+CPU dependencies and build tools; GPU shader compilation has its own
+pipeline. Android and x64 flags are unchanged.
 
 ## Prerequisites
 

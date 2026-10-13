@@ -75,15 +75,19 @@ For a first release with no previous tag, pass the SHA of the first commit on
 With explicit authorization to use private ROM inputs and CI minutes, run:
 
 ```bash
-gh workflow run "Build & Release" --ref <branch-or-commit> \
-  -f tag=<existing-tag> -f publish=false
+gh workflow run "Build & Release" --ref <branch-or-tag> \
+  -f publish=false
 ```
 
 `publish=false` builds the dispatched commit, including pending CMake changes,
-then uploads all four artifacts without creating or changing a release.
+then uploads the desktop archives and a debug-key Android APK without
+creating or changing a release. Release signing credentials are only used
+when publishing. No tag is needed for a dry run; the debug version records
+the dispatched commit.
 Wait for every build to pass, check the ZIP integrity result, and record each
 Linux binary's measured GLIBC requirement from `linux-build-info.txt` and the
-run URL in the PR. A dry run does not use `verify-release.sh`, which requires
+run URL in the PR. Confirm the `release` job is skipped and the Android
+release-signing steps are skipped. A dry run does not use `verify-release.sh`, which requires
 an actual published release. Normal release dispatches default to
 `publish=true` and build the requested tag.
 

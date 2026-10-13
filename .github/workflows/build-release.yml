@@ -16,8 +16,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to create (e.g. v0.1.0)"
-        required: true
+        description: "Release tag to create (required when publish is true)"
+        required: false
       publish:
         description: "Publish release (false builds the dispatched ref without publishing)"
         type: boolean
@@ -39,7 +39,21 @@ env:
   JAPAN_ROM_FILENAME: "AeroGauge (Japan) (Rev A).n64"
 
 jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a tag for publication
+        env:
+          PUBLISH: ${{ (inputs.publish == true || inputs.publish == 'true') }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$PUBLISH" = true ] && [ -z "$RELEASE_TAG" ]; then
+            echo "::error::A release tag is required when publish is true."
+            exit 1
+          fi
+
   build-linux:
+    needs: validate-inputs
     name: build-linux-${{ matrix.arch }}
     strategy:
       fail-fast: false
@@ -58,7 +72,7 @@ jobs:
         with:
           # Publish builds use the tag; dry runs use the dispatched commit so
           # pending build-input changes can be validated before tagging.
-          ref: ${{ inputs.publish && inputs.tag || github.sha }}
+          ref: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || github.sha }}
           submodules: recursive
 
       - name: Install build dependencies
@@ -149,6 +163,7 @@ jobs:
           retention-days: 14
 
   build-windows:
+    needs: validate-inputs
     runs-on: windows-latest
     steps:
       - name: Enable long paths
@@ -161,7 +176,7 @@ jobs:
         with:
           # Publish builds use the tag; dry runs use the dispatched commit so
           # pending build-input changes can be validated before tagging.
-          ref: ${{ inputs.publish && inputs.tag || github.sha }}
+          ref: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || github.sha }}
           submodules: recursive
 
       - name: Install MinGW-w64 GCC, CMake, Ninja
@@ -284,9 +299,14 @@ jobs:
           retention-days: 14
 
   build-android:
+    needs: validate-inputs
     runs-on: ubuntu-latest
+    env:
+      AERO_VERSION: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || format('0.0.0-dryrun-{0}', github.sha) }}
+      ANDROID_APK_PATH: ${{ (inputs.publish == true || inputs.publish == 'true') && 'dist/aerogauge-recomp-android-arm64.apk' || 'dist/aerogauge-recomp-android-arm64-debug.apk' }}
     steps:
       - name: Check Android signing configuration
+        if: ${{ (inputs.publish == true || inputs.publish == 'true') }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -301,10 +321,10 @@ jobs:
           done
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.jks"
 
-      - name: Checkout tagged source
+      - name: Checkout build source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.publish && inputs.tag || github.sha }}
+          ref: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || github.sha }}
           submodules: recursive
 
       - name: Set up Java
@@ -334,19 +354,29 @@ jobs:
           token: ${{ secrets.ROM_ASSETS_PAT }}
           path: rom-assets
 
-      - name: Build and verify signed APK
+      - name: Place ROMs
+        run: |
+          cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
+          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
+
+      - name: Build release-signed APK
+        if: ${{ (inputs.publish == true || inputs.publish == 'true') }}
         env:
-          AERO_VERSION: ${{ inputs.tag }}
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 scripts/build_android.py --release
+
+      - name: Build debug APK for dry run
+        if: ${{ !(inputs.publish == true || inputs.publish == 'true') }}
+        # Gradle uses its disposable debug key; release credentials are absent.
+        run: python3 scripts/build_android.py
+
+      - name: Verify APK signature and alignment
         run: |
-          cp "rom-assets/$ROM_FILENAME" "./$ROM_FILENAME"
-          cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
-          python3 scripts/build_android.py --release
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/aerogauge-recomp-android-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 dist/aerogauge-recomp-android-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$ANDROID_APK_PATH"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$ANDROID_APK_PATH"
 
       - name: Remove private build inputs
         if: always()
@@ -357,13 +387,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: aerogauge-recomp-android-arm64
-          path: dist/aerogauge-recomp-android-arm64.apk
+          name: ${{ (inputs.publish == true || inputs.publish == 'true') && 'aerogauge-recomp-android-arm64' || 'aerogauge-recomp-android-arm64-debug' }}
+          path: ${{ env.ANDROID_APK_PATH }}
           if-no-files-found: error
           retention-days: 14
 
   release:
-    if: ${{ inputs.publish }}
+    if: ${{ (inputs.publish == true || inputs.publish == 'true') }}
     needs: [build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
