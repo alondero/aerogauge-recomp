@@ -83,7 +83,8 @@ gh workflow run "Build & Release" --ref <branch-or-tag> \
 then uploads the desktop archives and a debug-key Android APK without
 creating or changing a release. Release signing credentials are only used
 when publishing. No tag is needed for a dry run; the debug version records
-the dispatched commit.
+the dispatched commit. Its `0.0.1-dryrun-<sha>` version produces Android
+version code 1.
 Wait for every build to pass, check the ZIP integrity result, and record each
 Linux binary's measured GLIBC requirement from `linux-build-info.txt` and the
 run URL in the PR. Confirm the `release` job is skipped and the Android

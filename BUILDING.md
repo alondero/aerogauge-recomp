@@ -34,14 +34,17 @@ requires SDL2, FreeType, the Vulkan loader, and a compatible Vulkan GPU
 driver. CI measures the executable's highest required `GLIBC_*` symbol
 version with `objdump -T` and records it in `linux-build-info.txt` in each
 archive and in the build log. This is the executable's glibc requirement;
-distribution libraries may impose additional requirements. Older distributions can build from source.
+distribution libraries may impose additional requirements. Older
+distributions can build from source.
 
-The source flow was also checked on Fedora Asahi Remix 44 (Apple M2 Pro,
+Before the contraction policy below was introduced, the source flow was
+checked on Fedora Asahi Remix 44 (Apple M2 Pro,
 GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the build script
 completed, the 34 registered CTest tests passed, the headless smoke run
 reached its VI budget, and the windowed program created a Vulkan surface
-and initialised RT64 on the Apple GPU. Other ARM64 GPUs and drivers need
-separate validation.
+and initialised RT64 on the Apple GPU. That historical run does not
+validate the current contraction policy or release archive on that GPU.
+Other ARM64 GPUs and drivers need separate validation.
 
 Both Linux matrix entries build all test targets, run the same
 headless-compatible CTest suites, and check both ROMs through every course

@@ -302,7 +302,7 @@ jobs:
     needs: validate-inputs
     runs-on: ubuntu-latest
     env:
-      AERO_VERSION: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || format('0.0.0-dryrun-{0}', github.sha) }}
+      AERO_VERSION: ${{ (inputs.publish == true || inputs.publish == 'true') && inputs.tag || format('0.0.1-dryrun-{0}', github.sha) }}
       ANDROID_APK_PATH: ${{ (inputs.publish == true || inputs.publish == 'true') && 'dist/aerogauge-recomp-android-arm64.apk' || 'dist/aerogauge-recomp-android-arm64-debug.apk' }}
     steps:
       - name: Check Android signing configuration

@@ -3,7 +3,9 @@
 ## Android checks
 
 Run `python -B tests/test_android_build.py` for patch-series idempotence,
-desktop-prefix compatibility and preservation of conflicting local edits.
+desktop-prefix compatibility, preservation of conflicting local edits, and
+a positive Android version code for the workflow's dry-run version. The
+version-code check mirrors Gradle's formula without requiring the Android SDK.
 Run `python -B tests/test_shader_endian_swap.py` for the Adreno byte-swap
 regression. It checks that the expression patch 0023 removes and the expression
 it adds are bit-identical over the full 16-bit domain, that the removed one

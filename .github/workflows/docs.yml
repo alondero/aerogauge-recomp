@@ -10,6 +10,8 @@ on:
       - "patches/**"
       - ".claude/**"
       - "scripts/check_docs.py"
+      - "scripts/build_android.py"
+      - "tests/test_android_build.py"
       - "CMakeLists.txt"
       - ".github/workflows/**"
       - ".github/ISSUE_TEMPLATE/**"
@@ -25,6 +27,8 @@ on:
       - "patches/**"
       - ".claude/**"
       - "scripts/check_docs.py"
+      - "scripts/build_android.py"
+      - "tests/test_android_build.py"
       - "CMakeLists.txt"
       - ".github/workflows/**"
       - ".github/ISSUE_TEMPLATE/**"
@@ -53,6 +57,8 @@ jobs:
           printf '%s  %s\n' "$ACTIONLINT_SHA256" "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -shellcheck=shellcheck
+      - name: Check Android build regressions
+        run: python3 -B tests/test_android_build.py
       - name: Check documentation
         run: python3 scripts/check_docs.py
       - name: Check whitespace (pull request)
