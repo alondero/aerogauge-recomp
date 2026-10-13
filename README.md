@@ -16,9 +16,10 @@ Release targets are:
 
 - Windows 10 or later, 64-bit, with Direct3D 12 support.
 - Linux, x64 or ARM64 (aarch64), with Vulkan support. Choose the archive
-  matching your architecture. ARM64 binaries require glibc 2.39 or newer
-  (Ubuntu 24.04 or equivalent); see [BUILDING.md](BUILDING.md) for dependencies
-  and source builds on older distributions.
+  matching your architecture. ARM64 binaries are built on Ubuntu 24.04;
+  `linux-build-info.txt` in the archive records the measured glibc symbol
+  requirement. See [BUILDING.md](BUILDING.md) for dependencies and source
+  builds on older distributions.
 - Android 9 or later, ARM64, with a compatible Vulkan driver. See
   [Android setup](docs/android.md) for touch controls, ROM import, and GPU drivers.
 

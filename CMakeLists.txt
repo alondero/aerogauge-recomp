@@ -27,6 +27,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ARM64 FMA would round translated a*b+c once, unlike the x64 baseline.
+# Apply the same separate-rounding policy to both regions and native hooks.
+set(AERO_FP_COMPILE_OPTIONS)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID
+   AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    list(APPEND AERO_FP_COMPILE_OPTIONS -ffp-contract=off)
+endif()
+
 set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
 if(ANDROID)
     include(cmake/Android.cmake)
@@ -125,6 +133,7 @@ if(FUNC_C_SOURCES OR FUNC_CXX_SOURCES)
     target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
 
     target_compile_options(RecompiledFuncs PRIVATE
+        ${AERO_FP_COMPILE_OPTIONS}
         -fno-strict-aliasing
         # Runtime mod replacement writes an architecture-sized jump at each
         # function entry. Keep room at aligned, distinct function addresses.
@@ -153,7 +162,8 @@ if(JP_FUNC_SOURCES)
     set(AERO_HAS_JAPAN 1)
     add_library(RecompiledFuncsJP STATIC ${JP_FUNC_SOURCES})
     target_compile_definitions(RecompiledFuncsJP PRIVATE recomp_entrypoint=recomp_entrypoint_jp)
-    target_compile_options(RecompiledFuncsJP PRIVATE -fno-strict-aliasing -ggdb
+    target_compile_options(RecompiledFuncsJP PRIVATE ${AERO_FP_COMPILE_OPTIONS}
+        -fno-strict-aliasing -ggdb
         -fpatchable-function-entry=16 -falign-functions=16
         $<$<C_COMPILER_ID:GNU>:-fno-ipa-icf>
         -Wno-unused-variable -Wno-implicit-function-declaration)
@@ -247,6 +257,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(aerogauge_modern PRIVATE RecompiledFuncsJP)
     endif()
     target_compile_options(aerogauge_modern PRIVATE
+        ${AERO_FP_COMPILE_OPTIONS}
         -fno-strict-aliasing
         -fms-extensions
         -ggdb

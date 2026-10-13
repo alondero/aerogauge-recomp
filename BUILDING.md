@@ -30,8 +30,11 @@ renderer backend does not change that port status.
 Linux releases include `aerogauge-recomp-linux-x64.zip` and
 `aerogauge-recomp-linux-arm64.zip`. Both use the same build script and RT64
 Vulkan renderer. The ARM64 archive is built natively on Ubuntu 24.04 and
-requires glibc 2.39 or newer, SDL2, FreeType, the Vulkan loader, and a
-compatible Vulkan GPU driver. Older distributions can build from source.
+requires SDL2, FreeType, the Vulkan loader, and a compatible Vulkan GPU
+driver. CI measures the executable's highest required `GLIBC_*` symbol
+version with `objdump -T` and records it in `linux-build-info.txt` in each
+archive and in the build log. This is the executable's glibc requirement;
+distribution libraries may impose additional requirements. Older distributions can build from source.
 
 The source flow was also checked on Fedora Asahi Remix 44 (Apple M2 Pro,
 GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the build script
@@ -40,12 +43,15 @@ reached its VI budget, and the windowed program created a Vulkan surface
 and initialised RT64 on the Apple GPU. Other ARM64 GPUs and drivers need
 separate validation.
 
-ARM64 release CI builds all test targets, runs the headless-compatible CTest
-suites, and checks both ROMs through every course before packaging. The
-`vi_special_features` test requires a desktop GPU and is excluded in CI. Compiler floating-point
-contraction settings remain unchanged; the HUD scaling fix explicitly
-preserves separate rounding where needed. A wider contraction policy would
-need separate validation across the port and both generated translations.
+Both Linux matrix entries build all test targets, run the same
+headless-compatible CTest suites, and check both ROMs through every course
+before packaging. The `vi_special_features` test requires a desktop GPU and
+is excluded in CI.
+
+On desktop ARM64 Linux, `RecompiledFuncs`, `RecompiledFuncsJP`, and `aerogauge_modern` use
+`-ffp-contract=off` to preserve separate multiply/add rounding as on the x64
+baseline. This applies to both generated translations and native hooks;
+the HUD helper also preserves its exact-zero check explicitly.
 
 ## Prerequisites
 

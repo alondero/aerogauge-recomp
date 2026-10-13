@@ -14,7 +14,8 @@ fills in the prose.
 
 The expected output is a published GitHub release for the requested tag with
 `draft: false, prerelease: false`, titled `AeroGauge Recompiled <version>`, the
-workflow's three build artifacts (Linux, Windows, and Android) attached, and a
+workflow's four build artifacts (Linux x64, Linux ARM64, Windows x64, and
+Android ARM64) attached, and a
 rich release-notes body replacing the `Automated build from commit ...`
 placeholder.
 
@@ -69,6 +70,23 @@ Read each PR's body via `gh pr view <N>` for the prose context.
 For a first release with no previous tag, pass the SHA of the first commit on
 `main` instead of a tag — the script accepts any `git rev-parse`-able ref.
 
+### Dry-run validation before tagging
+
+With explicit authorization to use private ROM inputs and CI minutes, run:
+
+```bash
+gh workflow run "Build & Release" --ref <branch-or-commit> \
+  -f tag=<existing-tag> -f publish=false
+```
+
+`publish=false` builds the dispatched commit, including pending CMake changes,
+then uploads all four artifacts without creating or changing a release.
+Wait for every build to pass, check the ZIP integrity result, and record each
+Linux binary's measured GLIBC requirement from `linux-build-info.txt` and the
+run URL in the PR. A dry run does not use `verify-release.sh`, which requires
+an actual published release. Normal release dispatches default to
+`publish=true` and build the requested tag.
+
 ### 2. Tag the merge commit and dispatch the workflow
 
 ```
@@ -112,8 +130,8 @@ Checks, in order:
 3. `html_url` ends with `releases/tag/<version>` (NOT `untagged-<id>`)
 4. `isDraft: false`, `isPrerelease: false`
 5. All expected assets uploaded
-   (`aerogauge-recomp-{linux,windows}-x64.zip` and
-   `aerogauge-recomp-android-arm64.apk`)
+   (`aerogauge-recomp-linux-x64.zip`, `aerogauge-recomp-linux-arm64.zip`,
+   `aerogauge-recomp-windows-x64.zip`, and `aerogauge-recomp-android-arm64.apk`)
 
 If any check fails, prints a diagnostic and exits non-zero. Common failures:
 

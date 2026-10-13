@@ -85,10 +85,13 @@ Omit `--all-courses` for a shorter first-course check. These are headless checks
 they do not establish GPU visuals, physical-controller behavior, or audible
 announcer quality.
 
-The Windows and Linux release jobs build both regions' car LOD, scissor,
-Controller Pak, and race-intro tests explicitly, then run them alongside the
-audio submission test. They also run the full shared-executable regression
-above with SDL dummy video/audio drivers before removing the private ROMs.
+The Windows release job explicitly builds both regions' car LOD, scissor,
+Controller Pak, and race-intro tests, then runs them alongside the audio
+submission test. Both Linux release matrix entries (x64 and ARM64) build
+all targets and run every registered Linux CTest except `vi_special_features`,
+which needs a desktop GPU. All desktop jobs run the full shared-executable
+regression above with SDL dummy video/audio drivers before removing the
+private ROMs.
 Missing Japanese test targets fail the build; this coverage runs on release
 workflow dispatch, not on the ROM-free pull-request documentation workflow.
 
