@@ -26,6 +26,11 @@ changing a subsystem.
    issue only preserves the question while it is being worked out and is
    not a substitute for those once the answer is known.
 
+When a change moves a public claim, such as a release target, a supported ROM,
+or the project status, update `.recomp.json` in the same change. External
+lists read that file as this project's own description of itself, so a stale
+entry misinforms every list that reads it.
+
 ## File ownership
 
 | Path | Owner | Normal change |
