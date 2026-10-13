@@ -15,7 +15,8 @@ check the release notes before expecting newly merged features.
 Release targets are:
 
 - Windows 10 or later, 64-bit, with Direct3D 12 support.
-- Linux, 64-bit, with Vulkan support.
+- Linux, 64-bit x86 (x64), with Vulkan support. There is no ARM64 Linux
+  release archive; build from source following [BUILDING.md](BUILDING.md).
 - Android 9 or later, ARM64, with a compatible Vulkan driver. See
   [Android setup](docs/android.md) for touch controls, ROM import, and GPU drivers.
 
