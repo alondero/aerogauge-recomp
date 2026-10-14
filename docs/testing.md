@@ -3,7 +3,9 @@
 ## Android checks
 
 Run `python -B tests/test_android_build.py` for patch-series idempotence,
-desktop-prefix compatibility and preservation of conflicting local edits.
+desktop-prefix compatibility, preservation of conflicting local edits, and
+a positive Android version code for the workflow's dry-run version. The
+version-code check mirrors Gradle's formula without requiring the Android SDK.
 Run `python -B tests/test_shader_endian_swap.py` for the Adreno byte-swap
 regression. It checks that the expression patch 0023 removes and the expression
 it adds are bit-identical over the full 16-bit domain, that the removed one
@@ -85,10 +87,13 @@ Omit `--all-courses` for a shorter first-course check. These are headless checks
 they do not establish GPU visuals, physical-controller behavior, or audible
 announcer quality.
 
-The Windows and Linux release jobs build both regions' car LOD, scissor,
-Controller Pak, and race-intro tests explicitly, then run them alongside the
-audio submission test. They also run the full shared-executable regression
-above with SDL dummy video/audio drivers before removing the private ROMs.
+The Windows release job explicitly builds both regions' car LOD, scissor,
+Controller Pak, and race-intro tests, then runs them alongside the audio
+submission test. Both Linux release matrix entries (x64 and ARM64) build
+all targets and run every registered Linux CTest except `vi_special_features`,
+which needs a desktop GPU. All desktop jobs run the full shared-executable
+regression above with SDL dummy video/audio drivers before removing the
+private ROMs.
 Missing Japanese test targets fail the build; this coverage runs on release
 workflow dispatch, not on the ROM-free pull-request documentation workflow.
 

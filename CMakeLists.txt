@@ -27,6 +27,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ARM64 FMA would round translated a*b+c once, unlike the x64 baseline.
+# Keep the port, both regions, RT64, runtime, frontend, and host tests under
+# the same rounding policy. Directory options propagate into dependencies.
+set(AERO_FP_COMPILE_OPTIONS)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID
+   AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    list(APPEND AERO_FP_COMPILE_OPTIONS -ffp-contract=off)
+endif()
+add_compile_options(${AERO_FP_COMPILE_OPTIONS})
+
 set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
 if(ANDROID)
     include(cmake/Android.cmake)
@@ -153,7 +163,8 @@ if(JP_FUNC_SOURCES)
     set(AERO_HAS_JAPAN 1)
     add_library(RecompiledFuncsJP STATIC ${JP_FUNC_SOURCES})
     target_compile_definitions(RecompiledFuncsJP PRIVATE recomp_entrypoint=recomp_entrypoint_jp)
-    target_compile_options(RecompiledFuncsJP PRIVATE -fno-strict-aliasing -ggdb
+    target_compile_options(RecompiledFuncsJP PRIVATE
+        -fno-strict-aliasing -ggdb
         -fpatchable-function-entry=16 -falign-functions=16
         $<$<C_COMPILER_ID:GNU>:-fno-ipa-icf>
         -Wno-unused-variable -Wno-implicit-function-declaration)

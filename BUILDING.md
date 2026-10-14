@@ -19,22 +19,45 @@ For the ARM64 Android APK, follow [Android building and signing](docs/android.md
 | Host | Compiler | Renderer path | Status |
 | --- | --- | --- | --- |
 | 64-bit Windows | MinGW-w64 GCC and G++ | RT64 with Direct3D 12 | Supported |
-| 64-bit Linux | GCC and G++ | RT64 with Vulkan | Supported |
-| ARM64 Linux | GCC and G++ | RT64 with Vulkan | Source build only; see below |
+| x64 Linux | GCC and G++ | RT64 with Vulkan | Supported |
+| ARM64 Linux | GCC and G++ | RT64 with Vulkan | Supported |
 | ARM64 Android | Android NDK 28 and Gradle | RT64 with Vulkan (system or imported driver) | Supported |
 | macOS | - | - | Not supported by this branch |
 
 The source tree does not provide the macOS window and input wiring. An upstream
 renderer backend does not change that port status.
 
-The Linux release archive is x64 only. ARM64 Linux uses the same script,
-compiler, and renderer path as x64 Linux, but no release is published for it,
-so build from source. The flow in this page was run once on Fedora Asahi Remix
-44 (Apple M2 Pro, GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the
-build script completed, the 34 registered CTest tests built and passed, the
-headless smoke run reached its VI budget, and the windowed program created a
-Vulkan surface and initialised RT64 on the Apple GPU. That is one machine and
-one session, not a support promise for every ARM64 Linux system.
+Linux releases include `aerogauge-recomp-linux-x64.zip` and
+`aerogauge-recomp-linux-arm64.zip`. Both use the same build script and RT64
+Vulkan renderer. The ARM64 archive is built natively on Ubuntu 24.04 and
+requires SDL2, FreeType, the Vulkan loader, and a compatible Vulkan GPU
+driver. CI measures the executable's highest required `GLIBC_*` symbol
+version with `objdump -T` and records it in `linux-build-info.txt` in each
+archive and in the build log. This is the executable's glibc requirement;
+distribution libraries may impose additional requirements. Older
+distributions can build from source.
+
+Before the contraction policy below was introduced, the source flow was
+checked on Fedora Asahi Remix 44 (Apple M2 Pro,
+GCC 16, CMake 4.3, Mesa 26.2 Honeykrisp Vulkan driver): the build script
+completed, the 34 registered CTest tests passed, the headless smoke run
+reached its VI budget, and the windowed program created a Vulkan surface
+and initialised RT64 on the Apple GPU. That historical run does not
+validate the current contraction policy or release archive on that GPU.
+Other ARM64 GPUs and drivers need separate validation.
+
+Both Linux matrix entries build all test targets, run the same
+headless-compatible CTest suites, and check both ROMs through every course
+before packaging. The `vi_special_features` test requires a desktop GPU and
+is excluded in CI.
+
+On desktop ARM64 Linux, `-ffp-contract=off` is a directory-level CPU
+compile option inherited by the port, both generated translations, RT64,
+N64ModernRuntime, RecompFrontend, and host tests. This preserves separate
+multiply/add rounding as on the x64 baseline and keeps the HUD helpers and
+RT64's mirrored math under the same policy. It also covers source-built
+CPU dependencies and build tools; GPU shader compilation has its own
+pipeline. Android and x64 flags are unchanged.
 
 ## Prerequisites
 

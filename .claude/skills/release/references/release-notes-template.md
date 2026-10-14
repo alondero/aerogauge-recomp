@@ -42,8 +42,10 @@ Use current issues for detailed follow-up work.>
 
 ### Linux
 
-Extract the Linux archive, place `AeroGauge (USA).z64` beside the binary,
-and run `aerogauge_modern`.
+Choose `aerogauge-recomp-linux-x64.zip` for x64 or
+`aerogauge-recomp-linux-arm64.zip` for ARM64 (aarch64). Extract it, place
+`AeroGauge (USA).z64` beside the binary, and run `aerogauge_modern`.
+Check `linux-build-info.txt` for the measured glibc symbol requirement.
 
 ### Windows
 
