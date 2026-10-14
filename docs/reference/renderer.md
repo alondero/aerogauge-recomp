@@ -61,6 +61,28 @@ reduced to a small renderer test and proposed upstream.
 
 ## AeroGauge display-list behavior
 
+### Overlapping Chinatown roads
+
+Chinatown's zone-4 section `0x803C8220` has upward-facing wall tops at height
+150, coplanar with the elevated road in zone 26. The original three-zone PVS
+hides those tops from the later road, but the section has no hw4 bit `0x10`.
+Always drawing it in full-course mode causes coloured strips to fight with the
+floor. Chinatown Jam's corresponding wall-top mesh is zone 9's `0x803CD540`.
+Japan Rev A relocates these meshes to `0x803C82B0` and `0x803CD5D0`; their
+vertices and zone assignments match the USA meshes.
+
+The existing section policy keeps these exact track/zone/display-list matches
+on the original PVS path. They still render when the craft reaches the earlier
+road, while ordinary neighbouring meshes keep full-course visibility. The
+policy and registrar tests cover entry, exit, course-cache reuse, and both
+regional layouts.
+
+The USA reproduction uses the saved Chinatown section 133, whose zone 19 sees
+zones 26/27/25. Windows D3D12 captures at 1280x720, 4x MSAA, and draw-distance
+multiplier 100 show the floor strip before the fix and a clean floor after it.
+The test replay forces a section transition so the game's cached section lists
+are rebuilt; merely restoring a stationary snapshot can keep the old lists.
+
 ### Racer shadows and tunnel occlusion
 
 In the USA race display list, the course writes depth with render modes
