@@ -143,6 +143,37 @@ void test_dense_landmarks() {
     assert(call(aeroRegisterZoneObjects) == 153);
     assert(object_entries[0].back() == object_group(0) + 149 * 0x28);
 }
+
+void test_overlapping_sections(uint8_t track, uint8_t early_zone, uint32_t dl) {
+    setup(track, {0, early_zone, 25, 26, 27}, false);
+    uint32_t group = 0x80405000 + early_zone * 0x20;
+    put_word(group, dl);
+    put_word(group + 8, section_dl(early_zone)); // Ordinary neighbouring mesh.
+    put_byte(map, 26); // The elevated road sees 26/27/25, excluding early_zone.
+    full_track_enabled = true;
+    call(aeroRegisterTrackSections);
+    assert(std::count(section_dls.begin(), section_dls.end(), dl) == 0);
+    assert(std::count(section_dls.begin(), section_dls.end(), section_dl(early_zone)) == 1);
+
+    // Keep the course cache and re-register sections as the craft changes zones.
+    section_dls.clear();
+    put_byte(map, early_zone);
+    call(aeroRegisterTrackSections);
+    assert(std::count(section_dls.begin(), section_dls.end(), dl) == 1);
+    section_dls.clear();
+    put_byte(map, 26);
+    call(aeroRegisterTrackSections);
+    assert(std::count(section_dls.begin(), section_dls.end(), dl) == 0);
+
+    full_track_enabled = false;
+    section_dls.clear();
+    call(aeroRegisterTrackSections);
+    assert(std::count(section_dls.begin(), section_dls.end(), dl) == 0);
+    section_dls.clear();
+    put_byte(map, early_zone);
+    call(aeroRegisterTrackSections);
+    assert(std::count(section_dls.begin(), section_dls.end(), dl) == 1);
+}
 } // namespace
 
 recomp_func_t* get_function(int32_t vram) {
@@ -160,4 +191,6 @@ int main(int argc, char** argv) {
     aero_japan = argc > 1 && std::strcmp(argv[1], "jp") == 0;
     test_sparse_zones();
     test_dense_landmarks();
+    test_overlapping_sections(2, 4, AERO_ADDR(0x803C8220u, 0x803C82B0u));
+    test_overlapping_sections(4, 9, AERO_ADDR(0x803CD540u, 0x803CD5D0u));
 }

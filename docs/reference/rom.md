@@ -247,9 +247,12 @@ The zone IDs, object counts, and display-list addresses above were measured
 from the USA ROM; the host test does not establish Japanese course visuals.
 
 Most enclosed course shells carry the ROM's hw4 bit 0x10 and must remain PVS
-gated when full-track mode is enabled. Two unflagged Bikini Island entries are
-also PVS gated by the current port policy. Keep their exact display-list
-addresses in [the policy header](../../src/aero_full_track_policy.h) and its
+gated when full-track mode is enabled. The policy also gates two unflagged
+Bikini Island entries and the overlapping Chinatown/Chinatown Jam wall tops.
+The Chinatown tops use different display-list addresses in USA and Japan Rev A;
+see [the renderer reference](renderer.md#overlapping-chinatown-roads).
+Keep their exact display-list addresses in
+[the policy header](../../src/aero_full_track_policy.h) and its
 [host test](../../tests/test_full_track_policy.cpp), rather than copying the
 exceptions into unrelated hooks.
 

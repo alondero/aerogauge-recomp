@@ -167,6 +167,13 @@ windowed-restore failure is tracked by the
 [save-state issue](https://github.com/alondero/aerogauge-recomp/issues/22).
 Use the headless round-trip script while investigating the state format.
 
+Course section lists are cached in the snapshot. The game refreshes them when
+its section-transition check succeeds, rather than on every stationary frame.
+When comparing section-registration changes, cross a section boundary or force
+that check to rebuild the lists in a temporary diagnostic copy of the state.
+Changing a visibility setting alone can otherwise leave the saved synthetic
+section lists on screen and invalidate the comparison.
+
 ## Unresolved findings
 
 Open a regular issue for a ROM, guest-memory, runtime, or renderer question

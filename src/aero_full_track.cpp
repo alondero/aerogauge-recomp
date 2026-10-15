@@ -244,9 +244,9 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
             int list = bucket_list_for(hw4);
             if (list < 0 || !vptr(dl)) continue;
             // Enclosed-shell geometry the artists rely on the PVS to hide stays
-            // on the faithful per-frame window instead of being merged into an
+            // on the original visibility window instead of being merged into an
             // always-drawn bucket. This is normally hw4 bit 0x10; the policy also
-            // records verified Bikini authoring exceptions (including their
+            // records verified unflagged authoring exceptions (including their
             // display-list addresses so a table reorder cannot retarget a rule).
             if (aero::full_track::pvs_gated_section(
                     static_cast<uint8_t>(k.track), zone_ids[zi], dl, hw4)) continue;
