@@ -107,8 +107,11 @@ jobs:
           cp "rom-assets/$JAPAN_ROM_FILENAME" "./$JAPAN_ROM_FILENAME"
           rm -rf rom-assets
 
+      - name: Verify both regional generated inputs
+        run: python3 -B scripts/check_docs.py --require-generated us jp
+
       - name: Build via shared script
-        # build.sh owns submodule resets, patching, generation, and compilation.
+        # build.sh owns patching, generation, and compilation.
         run: bash build.sh
 
       - name: Build and run headless CTest suites
@@ -221,19 +224,11 @@ jobs:
           Copy-Item "rom-assets\$env:JAPAN_ROM_FILENAME" ".\$env:JAPAN_ROM_FILENAME"
           Remove-Item -Recurse -Force rom-assets
 
-      - name: Reset submodules before patching
+      - name: Verify both regional generated inputs
         shell: pwsh
-        # Defensive: a previous run that patched partially would otherwise
-        # leave the next apply failing with "patch failed: ...". The Windows
-        # build script then re-applies its pinned patch sequence idempotently.
-        # autocrlf=false also neutralises CRLF the Windows runner's git
-        # might inject.
         run: |
-          git config --global core.autocrlf false
-          git -C lib/N64ModernRuntime checkout -- .
-          git -C lib/RecompFrontend checkout -- .
-          git -C lib/rt64 checkout -- .
-          git -C lib/rt64/src/contrib/plume checkout -- .
+          python -B scripts/check_docs.py --require-generated us jp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build via shared script
         shell: pwsh

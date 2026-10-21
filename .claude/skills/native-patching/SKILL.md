@@ -52,8 +52,9 @@ For runtime/renderer bugs (e.g. 0012 PI DMA OSIoMesg). Workflow:
 2. Generate the patch with `git diff --no-index` against a pristine snapshot —
    plain `git -C lib/rt64 diff` bundles the already-applied patches' hunks.
 3. Number it after the last patch; **apply order matters** (0011 must follow
-   0008/0009 — its context contains their lines). build.ps1 replays the series
-   onto a reset submodule; it fails on an already-patched tree.
+   0008/0009 — its context contains their lines). Add it to patches/series.json
+   with its target platforms. All build paths use the shared applicator, which
+   preserves local edits and accepts an already-applied series.
 4. If RT64 has duplicated logic, patch every copy (`coversWholeWidth` exists in
    both rt64_projection_processor.cpp and rt64_framebuffer_renderer.cpp).
 

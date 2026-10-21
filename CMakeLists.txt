@@ -37,6 +37,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID
 endif()
 add_compile_options(${AERO_FP_COMPILE_OPTIONS})
 
+option(AERO_HOST_TESTS_ONLY "Build dependency-free host tests without ROMs or submodules" OFF)
+if(AERO_HOST_TESTS_ONLY)
+    enable_testing()
+    include(cmake/HostTests.cmake)
+    return()
+endif()
+
 set(N64MR ${CMAKE_CURRENT_SOURCE_DIR}/lib/N64ModernRuntime)
 if(ANDROID)
     include(cmake/Android.cmake)
@@ -280,6 +287,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # `ctest --test-dir build` or execute build/test_hud_shift_scale directly.
     if(NOT ANDROID)
     enable_testing()
+    include(cmake/HostTests.cmake)
     add_executable(test_audio_playback tests/test_audio_playback.cpp)
     target_include_directories(test_audio_playback PRIVATE
         ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
@@ -469,12 +477,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             set_tests_properties(controller_pak_rom_filesystem_jp PROPERTIES TIMEOUT 30)
         endif()
     endif()
-    add_executable(test_hud_shift_scale tests/test_hud_shift_scale.c)
-    target_include_directories(test_hud_shift_scale PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    if(NOT WIN32)
-        target_link_libraries(test_hud_shift_scale PRIVATE m)
-    endif()
-    add_test(NAME hud_shift_scale COMMAND test_hud_shift_scale)
     add_executable(test_hud_messages tests/test_hud_messages.c)
     target_include_directories(test_hud_messages PRIVATE
         ${N64MR}/N64Recomp/include
@@ -496,18 +498,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         target_link_libraries(test_race_intro_jp PRIVATE m)
     endif()
     add_test(NAME race_intro_jp COMMAND test_race_intro_jp)
-    add_executable(test_full_track_policy tests/test_full_track_policy.cpp)
-    target_include_directories(test_full_track_policy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    add_test(NAME full_track_policy COMMAND test_full_track_policy)
-
-    # Desktop startup classification (src/aero_startup.cpp). The game is the
-    # default and only AERO_LAUNCHER=1 selects the launcher, so a silent return
-    # to the launcher-first default fails here instead of on a player's first
-    # launch. Host-only: no ROM, no renderer, no SDL.
-    add_executable(test_startup_mode tests/test_startup_mode.cpp src/aero_startup.cpp)
-    target_include_directories(test_startup_mode PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    add_test(NAME startup_mode COMMAND test_startup_mode)
-
     # Native registrars with synthetic course tables and recorded ROM-helper calls.
     add_executable(test_full_track_registration
         tests/test_full_track_registration.cpp src/aero_full_track.cpp)
@@ -570,16 +560,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     endif()
     add_test(NAME input_stick_scaling COMMAND test_input_scaling)
     set_tests_properties(input_stick_scaling PROPERTIES TIMEOUT 10)
-
-    add_executable(test_input_cadence tests/test_input_cadence.cpp)
-    target_include_directories(test_input_cadence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    add_test(NAME input_cadence COMMAND test_input_cadence)
-
-    # Single per-user data folder: graphics.json, saves, and RT64 logs.
-    add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
-    target_include_directories(test_user_data_dir PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    add_test(NAME user_data_dir COMMAND test_user_data_dir)
 
     # Live graphics-configuration handoff (issue #25). Patch 0018 makes the runtime's accessor
     # return a snapshot copy instead of an unlocked reference. This links the dependency's

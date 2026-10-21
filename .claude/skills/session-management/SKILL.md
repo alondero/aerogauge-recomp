@@ -19,9 +19,9 @@ description: Close a work session — validate, reflect progress in the GitHub i
      the next developer.
 4. **Tracker**: `gh issue comment <n>` with a one-paragraph status (what landed,
    what's blocking), or close it. Reference exact files/functions.
-5. **Handoff** (`nextsessionprompt.md`, gitignored — REWRITE, don't append):
-   date, accomplishments (exact files/functions), blockers (with symptoms), and
-   the grounded next *area* — a theory to test, NOT an implementation plan.
+5. **Handoff**: use the installed `/handoff` skill. It owns
+   the destination and format. If it is unavailable, report that limitation
+   rather than creating a separate workspace handoff convention.
 
 ## Rules
 

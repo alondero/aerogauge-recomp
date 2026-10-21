@@ -10,10 +10,11 @@ operation and explains which hand-written input should be changed instead.
 """
 import json
 import sys
-from pathlib import PurePath
+from pathlib import PurePosixPath
 
-GENERATED_BASENAMES = {"aerogauge.us.toml", "aerogauge.syms.toml"}
-GENERATED_PARTS = {"RecompiledFuncs"}
+GENERATED_BASENAMES = {"aerogauge.us.toml", "aerogauge.syms.toml",
+                       "aerogauge.jp.toml", "aerogauge.jp.syms.toml"}
+GENERATED_PARTS = {"RecompiledFuncs", "RecompiledFuncsJP"}
 GENERATED_PATHS = {("src", "aspMain.cpp")}
 
 
@@ -25,13 +26,14 @@ def main():
     path = (payload.get("tool_input") or {}).get("file_path") or ""
     if not path:
         return 0
-    p = PurePath(path)
+    p = PurePosixPath(path.replace("\\", "/"))
     if p.name in GENERATED_BASENAMES:
         print(
             f"BLOCKED: {p.name} is generator output -- hand edits are silently "
             "dropped on the next regen. Edit scripts/gen_syms_toml.py "
             "(LIBULTRA_NAMES / HOOK_NAMES / PATCH_BLOCKS / INDIRECT_STARTS) "
             "instead, then run `python scripts/gen_syms_toml.py` and rebuild. "
+            "For Japan use --region jp (regional input: scripts/japan_rev_a.py). "
             "See BUILDING.md and CONTRIBUTING.md.",
             file=sys.stderr,
         )

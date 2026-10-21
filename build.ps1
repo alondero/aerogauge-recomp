@@ -12,12 +12,9 @@
          and MinGW's bin ahead of any cc shim.
       2. Initialise submodules (recursive; long paths for RT64's deep nesting).
       3. ROM check (skippable via -RomPath).
-      4. Defensive submodule reset before patching (a half-applied patch from a
-         prior run would otherwise break the next apply).
-      5. Apply submodule patches (runtime 0001, 0007, 0012, 0013, 0014, 0015, 0017,
-         0018; frontend 0016, 0024, 0025, 0026, 0027, 0028; RT64 0006, 0008, 0009, 0010, 0011;
-         MinGW 0005, 0004)
-         with --ignore-whitespace (CRLF mismatches on Windows git).
+      4. Preflight the shared dependency patch plan and local changes.
+      5. Apply patches/series.json through scripts/dependency_patches.py.
+         Already-applied patches and unrelated local edits are preserved.
       6. First CMake configure (without RecompiledFuncs/ yet — that's the
          whole point: build the recompiler tools first).
       7. Build N64RecompCLI + RSPRecomp.
@@ -134,64 +131,10 @@ try {
     git submodule update --init --recursive | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'submodule update failed.' }
 
-    # --- 5. Defensive submodule reset -----------------------------------------
-    Write-Host "[2/5] Resetting submodules to clean state before patching..." -ForegroundColor Cyan
-    git -C lib/N64ModernRuntime checkout -- . | Out-Null
-    git -C lib/RecompFrontend checkout -- . | Out-Null
-    git -C lib/rt64 checkout -- . | Out-Null
-    git -C lib/rt64/src/contrib/plume checkout -- . | Out-Null
-
-    # --- 6. Apply submodule patches in canonical order (runtime, frontend, RT64, platform)
-    # 0001 then 0007 both patch N64ModernRuntime with disjoint hunks (verified
-    # to apply sequentially on the pinned commit). Patch paths MUST be absolute
-    # — `git -C $sub apply $relpath` runs from inside the submodule, where the
-    # relative path doesn't resolve.
-    Write-Host "[2/5] Applying submodule patches..." -ForegroundColor Cyan
-    $patches = @(
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0001-ultramodern-runtime-scheduler-audio-vi.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0007-ultramodern-savestate-thread-context-relink.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0012-librecomp-pi-dma-completion-osiomesg.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0013-ultramodern-sp-task-synchronous-failsoft.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0014-librecomp-flush-eeprom-on-exit.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0015-runtime-host-config-storage.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0017-runtime-game-presentation.patch' },
-        @{ Sub = 'lib/N64ModernRuntime';       Patch = 'patches/0018-ultramodern-graphics-config-snapshot.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0016-recompfrontend-integration.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0024-recompfrontend-input-synchronization.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0025-recompfrontend-controller-cleanup.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0026-recompfrontend-mod-failure-recovery.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0027-recompfrontend-stale-focus-recovery.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0028-recompfrontend-navigation-target-lifetime.patch' },
-        @{ Sub = 'lib/RecompFrontend';         Patch = 'patches/0029-recompfrontend-multiplayer-profiles.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0006-rt64-interp-angular-velocity-matching.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0008-rt64-skybox-stretch-parallaxless-backdrop.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0009-rt64-widescreen-split-subviewport.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0010-rt64-viewproj-decompose-axis-aligned-pivot.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0011-rt64-aspect-adjust-overscan-inset-viewport.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0023-rt64-adreno-endian-swap.patch' },
-        @{ Sub = 'lib/rt64';                   Patch = 'patches/0005-rt64-mingw-gcc-compat.patch' },
-        @{ Sub = 'lib/rt64/src/contrib/plume'; Patch = 'patches/0004-plume-d3d12-mingw-com-abi-struct-return.patch' }
-    )
-    foreach ($p in $patches) {
-        $PatchAbs = Join-Path $RepoRoot $p.Patch
-        # Idempotency check: distinguish three states.
-        #   (a) --check 0      -> not yet applied, will apply cleanly
-        #   (b) --check !=0 && --reverse --check 0 -> already applied
-        #   (c) --check !=0 && --reverse --check !=0 -> context drift (submodule changed)
-        & git.exe -C $p.Sub apply --ignore-whitespace --check $PatchAbs 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            & git.exe -C $p.Sub apply --ignore-whitespace $PatchAbs 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "patch failed: $($p.Sub) <- $($p.Patch)" }
-            Write-Host "  applied  $($p.Sub) <- $($p.Patch)" -ForegroundColor Green
-        } else {
-            & git.exe -C $p.Sub apply --ignore-whitespace --reverse --check $PatchAbs 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  skipped  $($p.Sub) <- $($p.Patch) (already applied)" -ForegroundColor DarkGray
-            } else {
-                throw "patch $($p.Patch) does not apply cleanly to $($p.Sub) and is not already applied - likely submodule drift (upstream context changed). Re-pull the submodule or refresh the patch."
-            }
-        }
-    }
+    # --- 5. Apply the shared platform patch plan, preserving local edits ------
+    Write-Host "[2/5] Applying dependency patches..." -ForegroundColor Cyan
+    & $python -B scripts/dependency_patches.py --platform windows
+    if ($LASTEXITCODE -ne 0) { throw 'Dependency patch setup failed; local edits were preserved.' }
 
     # --- 7. Optional clean ----------------------------------------------------
     if ($Clean -and (Test-Path build)) {
