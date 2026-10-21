@@ -22,6 +22,13 @@ class HostInventoryTests(unittest.TestCase):
     def test_expected_suite_passes(self):
         self.check(self.names)
 
+    def test_registration_uses_the_requested_build_configuration(self):
+        response = json.dumps({"tests": [{"name": name} for name in self.names]})
+        with patch("check_host_tests.subprocess.check_output", return_value=response) as ctest:
+            check_host_tests.check_inventory(Path("build"), config="RelWithDebInfo")
+        command = ctest.call_args.args[0]
+        self.assertEqual(command[command.index("-C") + 1], "RelWithDebInfo")
+
     def test_silent_omission_is_an_error(self):
         with self.assertRaisesRegex(RuntimeError, "missing=.*" + self.names[-1]):
             self.check(self.names[:-1])

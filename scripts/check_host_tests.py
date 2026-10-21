@@ -8,10 +8,10 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def check_inventory(build_directory):
+def check_inventory(build_directory, config="Release"):
     expected = set((ROOT / "tests/host_test_names.txt").read_text(encoding="utf-8").split())
     result = subprocess.check_output(
-        ["ctest", "--test-dir", str(build_directory), "--show-only=json-v1"], text=True)
+        ["ctest", "--test-dir", str(build_directory), "-C", config, "--show-only=json-v1"], text=True)
     actual = {test["name"] for test in json.loads(result)["tests"]}
     if not expected or actual != expected:
         raise RuntimeError(f"Host test registration mismatch: missing={sorted(expected - actual)}, "
@@ -24,7 +24,7 @@ def main():
     parser.add_argument("build_directory", type=Path)
     parser.add_argument("--config", default="Release")
     args = parser.parse_args()
-    check_inventory(args.build_directory)
+    check_inventory(args.build_directory, args.config)
     subprocess.run(["ctest", "--test-dir", str(args.build_directory),
                     "-C", args.config, "--output-on-failure", "--no-tests=error"], check=True)
 
