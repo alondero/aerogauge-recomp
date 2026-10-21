@@ -51,6 +51,11 @@ Dependency patches changed:
 
 ## Review checklist
 
+Apply [Reviewing behavioral tests](../CONTRIBUTING.md#reviewing-behavioral-tests).
+
+- [ ] Test expectations have independent ROM, API, or workflow evidence.
+- [ ] Regression coverage includes behavior the fix must preserve.
+
 - [ ] Guest/host ownership and thread boundaries are documented where needed.
 - [ ] Fixed guest addresses include units, byte order, and evidence.
 - [ ] Comments explain purpose or invariants rather than repeating code.

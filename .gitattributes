@@ -2,3 +2,9 @@
 # line appears in a hunk as a context line holding only the required leading space,
 # so trailing-whitespace checks do not apply to them.
 patches/*.patch -whitespace
+
+# Generated TOMLs are compared byte-for-byte with the generator on every host.
+aerogauge.syms.toml text eol=lf
+aerogauge.us.toml text eol=lf
+aerogauge.jp.syms.toml text eol=lf
+aerogauge.jp.toml text eol=lf

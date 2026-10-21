@@ -106,16 +106,17 @@ add a general guest-memory API to make one hook convenient.
 ## Dependency patches
 
 Read the [patch inventory](patches/README.md) before editing a dependency.
-The supported build scripts reset tracked submodule files and apply patches
-from the pinned commits.
+The supported build scripts apply patches from the pinned commits using
+patches/series.json. They preserve local edits and stop on conflicts.
 
 1. Start at the pinned dependency commit.
 2. Apply the existing patches in the documented order.
 3. Make the smallest dependency change and add a focused test when possible.
 4. Export the change as a numbered patch.
 5. Compare it with the dependency's current source.
-6. Update both build paths, the patch inventory, and the relevant test or
-   reference page in one pull request.
+6. Update patches/series.json, the patch inventory, and the relevant test or
+   reference page in one pull request. The manifest owns patch order and
+   platform selection for Windows, Linux, and Android.
 
 Decide whether the change is game-specific, a temporary compatibility fix, or
 a candidate for the dependency's upstream project. A general upstream
@@ -169,6 +170,20 @@ When documentation changes, run:
 python -B scripts/check_docs.py
 git diff --check
 ~~~
+
+## Reviewing behavioral tests
+
+The reviewer checks expected behavior independently of the proposed fix. For
+ROM behavior, trace the original routine or compare a recorded reference run;
+for host behavior, use the owning API contract or the established user workflow.
+Name that evidence in the review. An expected value copied from the new code
+or a passing test alone does not establish correctness.
+
+Check that tests cover the reported failure and behavior the fix must preserve.
+For example, rejecting an overheated boost must use the engine's heat limit;
+repairing stale navigation must still allow entry into live children and
+selection among multiple candidates. Separate intentional behavior changes
+from behavior-preserving fixes, and report unavailable reference evidence.
 
 ## Pull requests
 

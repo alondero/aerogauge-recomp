@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -142,40 +144,45 @@ def heading_anchors(text: str) -> set[str]:
     return anchors
 
 
-def check_generated_syms() -> list[str]:
-    # Run scripts/gen_syms_toml.py and verify that the working tree was not
-    # mutated by it. The check never compares against HEAD; it only tests that
-    # the developer's working copy matches what the generator produces. The
-    # generator's output paths are hard-coded to the repo root, so the working
-    # tree is snapshotted before the run and restored from memory afterwards.
-    # The check is skipped when the ROM is missing.
-    rom_path = ROOT / 'AeroGauge (USA).z64'
-    out_syms = ROOT / 'aerogauge.syms.toml'
-    out_cfg = ROOT / 'aerogauge.us.toml'
-    if not rom_path.is_file() or not out_syms.is_file() or not out_cfg.is_file():
-        return []
+def check_generated_syms(required_regions=()) -> list[str]:
+    # The generator writes into the repo. Restore exact output bytes even on
+    # failure; compare against the working copy, which may include new inputs.
     import subprocess
-    snapshot = {out_syms: out_syms.read_bytes(), out_cfg: out_cfg.read_bytes()}
-    try:
-        result = subprocess.run(
-            [sys.executable, str(ROOT / 'scripts' / 'gen_syms_toml.py')],
-            cwd=str(ROOT), capture_output=True, text=True,
-        )
-        if result.returncode != 0:
-            return ['scripts/gen_syms_toml.py failed: ' + (result.stderr or result.stdout).strip()]
-        errors: list[str] = []
-        for path in (out_syms, out_cfg):
-            rel = path.relative_to(ROOT)
-            post = path.read_bytes()
-            if post != snapshot[path]:
-                errors.append(
-                    f'{rel}: generator output differs from working copy; '
-                    'run scripts/gen_syms_toml.py, then commit the updated file.'
-                )
-        return errors
-    finally:
-        for path, data in snapshot.items():
-            path.write_bytes(data)
+    errors = []
+    for region, stem, variable, outputs in (
+        ("us", "AeroGauge (USA)", "ROM_FILENAME", ("aerogauge.syms.toml", "aerogauge.us.toml")),
+        ("jp", "AeroGauge (Japan) (Rev A)", "JAPAN_ROM_FILENAME", ("aerogauge.jp.syms.toml", "aerogauge.jp.toml")),
+    ):
+        configured = os.environ.get(variable)
+        candidates = [ROOT / configured] if configured else [
+            ROOT / f"{stem}.{extension}" for extension in ("z64", "n64", "v64")]
+        rom_path = next((path for path in candidates if path.is_file()), None)
+        paths = [ROOT / name for name in outputs]
+        if rom_path is None or any(not path.is_file() for path in paths):
+            if region in required_regions:
+                errors.append(f"{region}: required generated-output check is missing its ROM or tracked TOML files")
+            else:
+                print(f"Skipped {region} TOML sync check (ROM or tracked outputs not present).")
+            continue
+        snapshot = {path: path.read_bytes() for path in paths}
+        try:
+            result = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/gen_syms_toml.py"),
+                 "--region", region, "--rom", str(rom_path.resolve())],
+                cwd=str(ROOT), capture_output=True, text=True)
+            if result.returncode != 0:
+                errors.append(f"{region}: scripts/gen_syms_toml.py failed: "
+                              + (result.stderr or result.stdout).strip())
+                continue
+            for path in paths:
+                if not path.is_file() or path.read_bytes() != snapshot[path]:
+                    errors.append(f"{path.relative_to(ROOT)}: generator output differs from working copy; "
+                                  f"run scripts/gen_syms_toml.py --region {region}, then commit the updated file.")
+            print(f"Checked {region} generated TOML against scripts/gen_syms_toml.py.")
+        finally:
+            for path, data in snapshot.items():
+                path.write_bytes(data)
+    return errors
 
 
 def check_patch_hunks() -> list[str]:
@@ -283,6 +290,9 @@ def check_release_assets() -> list[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--require-generated", nargs="+", choices=("us", "jp"), default=[])
+    args = parser.parse_args()
     errors: list[str] = []
 
     for path in REQUIRED:
@@ -362,7 +372,7 @@ def main() -> int:
             errors.append(f"docs/testing.md does not document standalone test: {test_path}")
 
     errors.extend(check_patch_hunks())
-    errors.extend(check_generated_syms())
+    errors.extend(check_generated_syms(args.require_generated))
     errors.extend(check_release_assets())
 
     if errors:
@@ -378,10 +388,6 @@ def main() -> int:
         f"Checked {len(list((ROOT / 'patches').glob('*.patch')))} patch files for "
         "matching hunk counts."
     )
-    if (ROOT / 'AeroGauge (USA).z64').is_file():
-        print('Ran scripts/gen_syms_toml.py to check TOML sync with the tracked output.')
-    else:
-        print('Skipped TOML sync check (ROM not present).')
     if RELEASE_VERIFY_SCRIPT.is_file() and RELEASE_WORKFLOW.is_file():
         print('Checked release assets agree between the workflow and verify-release.sh.')
     return 0

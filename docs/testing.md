@@ -1,10 +1,59 @@
 # Testing
 
+## Automatic pull-request checks
+
+Every push and pull request runs workflow linting, documentation and whitespace
+checks, the shared patch inventory and application tests, generated-file guard
+and consistency tests, Android build-script checks, and host-test registration
+checks. These checks also run for changes confined to tests or build scripts.
+
+The Linux and Windows host jobs build five existing tests without ROMs,
+submodules, SDL, or a renderer: full_track_policy, hud_shift_scale, input_cadence,
+startup_mode, and user_data_dir. Their target definitions are shared with the
+full build in cmake/HostTests.cmake. To run this tier locally:
+
+~~~text
+cmake -S . -B build/host-checks -DAERO_HOST_TESTS_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build/host-checks --config Release --parallel 2
+python -B scripts/check_host_tests.py build/host-checks
+~~~
+
+The runner compares CTest's actual registration with tests/host_test_names.txt
+before executing tests. Removing or unexpectedly adding a test fails the check;
+update the reviewed roster when intentionally changing this tier.
+
+Run the tooling regressions with:
+
+~~~text
+python -B scripts/dependency_patches.py --check
+python -B tests/test_dependency_patches.py
+python -B tests/test_generated_files.py
+python -B tests/test_host_checks.py
+python -B tests/test_android_build.py
+~~~
+
+The patch tests cover repeated application, already-applied prefixes, and local
+edit preservation. The generated-file tests exercise both regional outputs and
+both path separator styles. They also verify missing required inputs fail and
+that generation mismatches restore the developer's original output bytes.
+
+Trusted desktop release jobs run this check after obtaining the ROMs and before
+any build step can regenerate the tracked outputs:
+
+~~~text
+python -B scripts/check_docs.py --require-generated us jp
+~~~
+
+This regenerates and compares both regions' tracked TOML outputs, preserving the
+working files. Required mode fails when either ROM or tracked output is missing.
+Ordinary documentation checks skip unavailable regions explicitly, so public
+pull requests need no private ROM access. Full CTest, ROM-backed, renderer, and
+device checks below remain separate from this small automatic host tier.
+
 ## Android checks
 
-Run `python -B tests/test_android_build.py` for patch-series idempotence,
-desktop-prefix compatibility, preservation of conflicting local edits, and
-a positive Android version code for the workflow's dry-run version. The
+Run `python -B tests/test_android_build.py` for a positive Android version code
+for the workflow's dry-run version. Shared patch-series checks are listed above. The
 version-code check mirrors Gradle's formula without requiring the Android SDK.
 Run `python -B tests/test_shader_endian_swap.py` for the Adreno byte-swap
 regression. It checks that the expression patch 0023 removes and the expression

@@ -183,15 +183,16 @@ Both scripts:
 
 1. check the host tools and ROM;
 2. initialise the submodules;
-3. reset tracked submodule files and apply this repository's patches;
+3. apply the platform patch plan from patches/series.json, preserving local edits;
 4. configure CMake once to build N64Recomp and RSPRecomp;
 5. generate the ROM-derived CPU and audio code;
 6. configure CMake again so the generated files are included; and
 7. build `aerogauge_modern`.
 
-The reset in step 3 is important. Do not keep unexported changes in a submodule
-when running a build. Export a dependency change as a patch first; see
-[Contributing](CONTRIBUTING.md).
+Patch setup preflights the complete series before changing any dependency.
+Already-applied patches are accepted; conflicting local edits stop the build
+without resetting the working tree or index. Export lasting dependency changes
+as patches; see [Contributing](CONTRIBUTING.md).
 
 The output program is `build\aerogauge_modern.exe` on Windows and
 `build/aerogauge_modern` on Linux.
@@ -199,7 +200,8 @@ The output program is `build\aerogauge_modern.exe` on Windows and
 ## Dependency patches
 
 The patch files are the source of truth for local dependency changes. See the
-[patch inventory](patches/README.md) for their purpose and application order.
+[patch inventory](patches/README.md) for their purpose and
+[series.json](patches/series.json) for order and platform selection.
 The host scripts are the executable build contract. Linux does not use the
 Windows-only patches 0005 or 0004. Patch 0013 fixes audio task submission on
 both supported platforms.

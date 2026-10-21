@@ -1,0 +1,5 @@
+full_track_policy
+hud_shift_scale
+input_cadence
+startup_mode
+user_data_dir

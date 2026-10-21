@@ -6,8 +6,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 import zipfile
+
+from dependency_patches import apply_platform_patches
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / "build-android"
@@ -17,54 +18,14 @@ DEPS = {
     "freetype": ("https://github.com/freetype/freetype.git", "42608f77f20749dd6ddc9e0536788eaad70ea4b5"),
     "adrenotools": ("https://github.com/bylaws/libadrenotools.git", "8fae8ce254dfc1344527e05301e43f37dea2df80"),
 }
-PATCHES = {
-    "lib/N64ModernRuntime": ["0001", "0007", "0012", "0013", "0014", "0015", "0017", "0018"],
-    "lib/RecompFrontend": ["0016", "0022", "0024", "0025", "0026", "0027", "0028", "0029"],
-    "lib/rt64": ["0006", "0008", "0009", "0010", "0011", "0019", "0023"],
-    "lib/rt64/src/contrib/plume": ["0020"],
-}
 
 
 def run(*args, cwd=ROOT):
     subprocess.run([str(a) for a in args], cwd=cwd, check=True)
 
 
-def apply_patch_series(directory, patches):
-    # Later patches can change earlier hunks. Validate the composed result,
-    # using a temporary index without modifying the user's index or files.
-    git = ["git", "-C", str(directory)]
-    with tempfile.TemporaryDirectory(prefix="aero-patches-") as temporary:
-        environment = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / "index"))
-        subprocess.run(git + ["read-tree", "HEAD"], env=environment, check=True)
-        trees = [subprocess.check_output(git + ["write-tree"], env=environment).decode().strip()]
-        for patch in patches:
-            subprocess.run(git + ["apply", "--cached", "--ignore-whitespace", str(patch)], env=environment, check=True)
-            trees.append(subprocess.check_output(git + ["write-tree"], env=environment).decode().strip())
-        prefix = Path(temporary) / "prefix.patch"
-        remaining = Path(temporary) / "remaining.patch"
-        command = git + ["apply", "--ignore-whitespace"]
-        for index in range(len(trees) - 1, -1, -1):
-            prefix.write_bytes(subprocess.check_output(git + ["diff", "--binary", trees[0], trees[index]]))
-            remaining.write_bytes(subprocess.check_output(git + ["diff", "--binary", trees[index], trees[-1]]))
-            prefix_present = index == 0 or subprocess.run(command + ["--reverse", "--check", str(prefix)], capture_output=True).returncode == 0
-            if prefix_present:
-                if index == len(trees) - 1:
-                    break
-                if subprocess.run(command + ["--check", str(remaining)], capture_output=True).returncode == 0:
-                    run(*command, remaining)
-                    break
-        else:
-            raise RuntimeError(f"Patch series conflicts with local changes in {directory}. Use a clean worktree.")
-
-
 def prepare_sources():
     run("git", "submodule", "update", "--init", "--recursive")
-    for submodule, numbers in PATCHES.items():
-        patches = []
-        for number in numbers:
-            patch, = (ROOT / "patches").glob(f"{number}-*.patch")
-            patches.append(patch)
-        apply_patch_series(ROOT / submodule, patches)
     for name, (url, revision) in DEPS.items():
         destination = WORK / "deps" / name
         if not destination.exists():
@@ -77,11 +38,7 @@ def prepare_sources():
             raise RuntimeError(f"Unexpected {name} revision: {actual}")
         run("git", "-C", destination, "submodule", "update", "--init", "--recursive")
 
-    patch = ROOT / "patches/0021-sdl-android-usb-receiver.patch"
-    command = ["git", "-C", str(WORK / "deps/SDL"), "apply", "--ignore-whitespace"]
-    if subprocess.run(command + ["--reverse", "--check", str(patch)], capture_output=True).returncode != 0:
-        run(*command, "--check", patch)
-        run(*command, patch)
+    apply_platform_patches(ROOT, "android")
 
 
 def package(ndk, sdk, variant):

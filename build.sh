@@ -12,15 +12,9 @@
 #      git-ignored; CI fetches it from a private assets repo, locally you
 #      place it next to this script).
 #   3. Submodule init (recursive; core.longpaths isn't needed on Linux).
-#   4. Defensive submodule reset before patching (half-applied patches from a
-#      prior run would otherwise break the next apply with "patch failed: ...").
-#   5. Apply submodule patches (runtime 0001, 0007, 0012, 0013, 0014, 0015, 0017, 0018;
-#      frontend 0016, 0024, 0025, 0026, 0027, 0028; RT64 0006, 0008, 0009, 0010, 0011). Linux needs no MinGW/D3D12
-#      patches. 0007 adds the save-state thread-context
-#      registry; without it, (save-state module, when ported) fails to link with
-#      "undefined reference to ultramodern_relink_thread_contexts".
-#      --ignore-whitespace is a belt-and-suspenders guard for any CRLF drift.
-#      The PATCHES array below is the canonical order shared by the build guides.
+#   4. Validate dependency patch inputs and local changes.
+#   5. Apply patches/series.json through scripts/dependency_patches.py.
+#      Conflicting edits stop setup without resetting the working tree.
 #   6. First CMake configure — the initial one runs before N64Recomp/
 #      RSPRecomp generate sources. The CMakeLists uses if(EXISTS) on the
 #      ROM-derived files so the first configure can succeed without them.
@@ -111,66 +105,9 @@ log ""
 log "[1/5] Initialising submodules..."
 git submodule update --init --recursive
 
-# --- 5. Defensive submodule reset (mirrors CI) ------------------------------
-log "[2/5] Resetting submodules to clean state before patching..."
-git -C lib/N64ModernRuntime checkout -- .
-git -C lib/RecompFrontend checkout -- .
-git -C lib/rt64 checkout -- .
-git -C lib/rt64/src/contrib/plume checkout -- . 2>/dev/null || true
-
-# --- 6. Apply submodule patches in canonical order (runtime, frontend, RT64) ----------------
-# Keep this order aligned with the Linux CI job. Patches 0001 and 0007 both
-# update N64ModernRuntime with disjoint hunks and apply in sequence to the
-# pinned commit. Patch 0007 adds the save-state thread-context registry and
-# `ultramodern_relink_thread_contexts`; the port uses that function to repair
-# native thread references after a guest-memory snapshot is restored.
-log "[2/5] Applying local submodule patches..."
-PATCHES=(
-    "lib/N64ModernRuntime:0001-ultramodern-runtime-scheduler-audio-vi.patch"
-    "lib/N64ModernRuntime:0007-ultramodern-savestate-thread-context-relink.patch"
-    "lib/N64ModernRuntime:0012-librecomp-pi-dma-completion-osiomesg.patch"
-    "lib/N64ModernRuntime:0013-ultramodern-sp-task-synchronous-failsoft.patch"
-    "lib/N64ModernRuntime:0014-librecomp-flush-eeprom-on-exit.patch"
-    "lib/N64ModernRuntime:0015-runtime-host-config-storage.patch"
-    "lib/N64ModernRuntime:0017-runtime-game-presentation.patch"
-    "lib/N64ModernRuntime:0018-ultramodern-graphics-config-snapshot.patch"
-    "lib/RecompFrontend:0016-recompfrontend-integration.patch"
-    "lib/RecompFrontend:0024-recompfrontend-input-synchronization.patch"
-    "lib/RecompFrontend:0025-recompfrontend-controller-cleanup.patch"
-    "lib/RecompFrontend:0026-recompfrontend-mod-failure-recovery.patch"
-    "lib/RecompFrontend:0027-recompfrontend-stale-focus-recovery.patch"
-    "lib/RecompFrontend:0028-recompfrontend-navigation-target-lifetime.patch"
-    "lib/RecompFrontend:0029-recompfrontend-multiplayer-profiles.patch"
-    "lib/rt64:0006-rt64-interp-angular-velocity-matching.patch"
-    "lib/rt64:0008-rt64-skybox-stretch-parallaxless-backdrop.patch"
-    "lib/rt64:0009-rt64-widescreen-split-subviewport.patch"
-    "lib/rt64:0010-rt64-viewproj-decompose-axis-aligned-pivot.patch"
-    "lib/rt64:0011-rt64-aspect-adjust-overscan-inset-viewport.patch"
-    "lib/rt64:0023-rt64-adreno-endian-swap.patch"
-)
-for entry in "${PATCHES[@]}"; do
-    sub="${entry%%:*}"
-    patch="${entry#*:}"
-    # Patch paths MUST be absolute — `git -C "$sub"` changes CWD into the
-    # submodule, so a relative path would resolve to `$sub/patches/$patch`
-    # (not the repo root's patches/). CI's original inline step used
-    # `$(pwd)/patches/...` for the same reason. Without this, apply --check
-    # fails with "can't open patch" and the script dies with a misleading
-    # "does not apply cleanly" error.
-    patch_abs="$SCRIPT_DIR/patches/$patch"
-    # Idempotency check: distinguish three states.
-    #   (a) --check 0                                         -> not yet applied
-    #   (b) --check !=0 && --reverse --check 0               -> already applied
-    #   (c) --check !=0 && --reverse --check !=0             -> context drift
-    if git -C "$sub" apply --ignore-whitespace --check "$patch_abs" >/dev/null 2>&1; then
-        git -C "$sub" apply --ignore-whitespace "$patch_abs"
-        echo "  applied  $sub <- $patch"
-    elif git -C "$sub" apply --ignore-whitespace --reverse --check "$patch_abs" >/dev/null 2>&1; then
-        echo "  skipped  $sub <- $patch (already applied)"
-    else
-        die "patch $patch does not apply cleanly to $sub and is not already applied — likely submodule drift (upstream context changed). Re-pull the submodule or refresh the patch."
-    fi
-done
+# --- 5. Apply the shared platform patch plan, preserving local edits ---------
+log "[2/5] Applying dependency patches..."
+"$PYTHON3_EXECUTABLE" -B scripts/dependency_patches.py --platform linux
 
 # --- 7. Optional clean ------------------------------------------------------
 if [ "$CLEAN" -eq 1 ] && [ -d build ]; then
