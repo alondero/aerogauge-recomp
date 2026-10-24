@@ -140,11 +140,6 @@ int main(int argc, char** argv) {
         { std::ofstream file(path / "graphics.json"); file << initial; }
         { std::ofstream file(path / "enhancements.json"); file << R"({"easy_turbo_boost":false})"; }
         aero::config::load_and_apply_graphics();
-        // Match live_config_updates: preserve unrelated edits made while the
-        // game is running, after its existing load-time defaults are written.
-        auto hand_edit = read(path / "graphics.json");
-        hand_edit["future_option"] = "preserve me";
-        { std::ofstream file(path / "graphics.json"); file << hand_edit; }
         aero::menu::create_settings();
         require(recompui::get_game_mod_id() == (aero_japan ? "aerogauge.jp.rev_a" : "aerogauge"),
                 "initial Mods settings must use the selected ROM region");
@@ -162,6 +157,56 @@ int main(int argc, char** argv) {
         // every frame).
         flush();
         auto& graphics = recompui::config::get_graphics_config();
+        auto& rumble = recompui::config::get_config("rumble");
+        const auto env_off = [](const char* name) {
+            const char* value = std::getenv(name);
+            return value && std::string_view(value) == "0";
+        };
+        for (const auto* player : {"player1_", "player2_"}) {
+            for (const auto* field : {"strength", "collision_enabled", "collision_strength", "turbo_enabled", "turbo_strength"}) {
+                const auto key = std::string(player) + field;
+                const bool muted = env_off("AERO_RUMBLE") ||
+                    (std::string_view(field).starts_with("turbo") && env_off("AERO_RUMBLE_TURBO"));
+                require(rumble.is_config_option_disabled(rumble.get_config_schema().options_by_id.at(key)) == muted,
+                        "rumble override disabled the wrong menu controls");
+            }
+        }
+        require(aero::config::rumble_settings(0) == aero::haptics::Settings{} &&
+                aero::config::rumble_settings(1) == aero::haptics::Settings{},
+                "old enhancement files must keep existing rumble defaults for both players");
+        rumble.set_option_value("player1_strength", 0.0);
+        rumble.set_option_value("player1_collision_enabled", false);
+        rumble.set_option_value("player1_collision_strength", 25.0);
+        rumble.set_option_value("player2_strength", 50.0);
+        rumble.set_option_value("player2_turbo_enabled", false);
+        rumble.set_option_value("player2_turbo_strength", 75.0);
+        require(aero::config::rumble_settings(0).strength == 100,
+                "rumble changes escaped the SDL action queue");
+        flush();
+        const aero::haptics::Settings p1_rumble{.strength = 0, .collision_enabled = false, .collision_strength = 25};
+        const aero::haptics::Settings p2_rumble{.strength = 50, .turbo_enabled = false, .turbo_strength = 75};
+        require(aero::config::rumble_settings(0) == p1_rumble &&
+                aero::config::rumble_settings(1) == p2_rumble,
+                "queued rumble fields clobbered one another or the other player");
+        aero::config::flush_config_writes();
+        auto saved_rumble = read(path / "enhancements.json");
+        require(saved_rumble.at("rumble_player1").at("strength") == 0 &&
+                saved_rumble.at("rumble_player2").at("turbo_strength") == 75,
+                "rumble settings did not persist");
+        aero::config::load_and_apply_graphics();
+        require(aero::config::rumble_settings(0) == p1_rumble &&
+                aero::config::rumble_settings(1) == p2_rumble, "rumble reload lost player settings");
+        aero::config::set_rumble_settings(0, {.strength = 100});
+        aero::menu::refresh_settings();
+        flush();
+        require(std::get<double>(rumble.get_option_value("player1_strength")) == 100.0 &&
+                std::get<double>(rumble.get_option_value("player2_strength")) == 50.0,
+                "rumble refresh mixed player settings");
+        // Match live_config_updates: preserve unrelated edits made while the
+        // game is running, after the load/reload whole-document startup writes.
+        auto hand_edit = read(path / "graphics.json");
+        hand_edit["future_option"] = "preserve me";
+        { std::ofstream file(path / "graphics.json"); file << hand_edit; }
         require(!aero::config::force_full_lod(), "full LOD must default off");
         graphics.set_option_value("force_full_lod", true);
         flush();
@@ -417,6 +462,32 @@ int main(int argc, char** argv) {
                 "preset bypassed disabled MSAA sample count");
         graphics.revert_temp_config();
         graphics.update_enum_option_disabled("msaa_option", uint32_t(Antialiasing::MSAA2X), false);
+        // Loading partial or invalid new keys must keep per-field defaults;
+        // valid percentages clamp to the advertised range.
+        aero::config::flush_config_writes();
+        { std::ofstream file(path / "enhancements.json"); file << R"({
+            "rumble_player1":{"strength":-5,"collision_enabled":"bad","collision_strength":500},
+            "rumble_player2":{"strength":"bad","turbo_enabled":false,"turbo_strength":12.5}
+        })"; }
+        aero::config::load_and_apply_graphics();
+        require(aero::config::rumble_settings(0) == aero::haptics::Settings{.strength = 0} &&
+                aero::config::rumble_settings(1) == aero::haptics::Settings{.turbo_enabled = false},
+                "partial or invalid rumble settings did not default/clamp independently");
+        aero::config::set_rumble_settings(1, {.strength = 999, .collision_strength = -5, .turbo_strength = 999});
+        require(aero::config::rumble_settings(1) ==
+                aero::haptics::Settings{.collision_strength = 0}, "rumble setter did not clamp");
+        aero::config::set_easy_turbo_boost(true);
+        aero::config::flush_config_writes();
+        require(read(path / "enhancements.json").at("rumble_player1").at("strength") == 0 &&
+                read(path / "enhancements.json").at("rumble_player2").at("collision_strength") == 0,
+                "assist write lost rumble settings");
+        { std::ofstream file(path / "enhancements.json"); file << "{broken"; }
+        aero::config::load_and_apply_graphics();
+        require(aero::config::rumble_settings(0) == aero::haptics::Settings{} &&
+                aero::config::rumble_settings(1) == aero::haptics::Settings{},
+                "malformed file retained stale rumble settings");
+        { std::ifstream file(path / "enhancements.json"); std::string text;
+          std::getline(file, text); require(text == "{broken", "malformed enhancements file was replaced"); }
         // Drain the writer before IsolatedConfig tears the directory down.
         aero::config::flush_config_writes();
         std::cout << "Frontend settings integration passed\n";

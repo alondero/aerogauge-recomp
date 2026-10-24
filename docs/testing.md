@@ -108,7 +108,12 @@ deliver a Windows Gaming Input callback after freeing its joystick lock during
 shutdown. The tests do not validate physical driver teardown.
 multiplayer_assists uses synthetic RDRAM to check simultaneous presses,
 independent assist settings, launch controls, heat rejection, and per-player
-rumble in both regions. multiplayer_rom_input_us and multiplayer_rom_input_jp
+rumble in both regions, including zero/default/maximum strengths, multiplied
+player/event gains, simultaneous collisions and Turbo, event mutes, global
+gates, and clearing pending feedback. frontend_settings and frontend_settings_jp
+also verify queued per-player rumble edits, persistence/reload, menu refresh,
+and missing, invalid, and out-of-range configuration fields.
+multiplayer_rom_input_us and multiplayer_rom_input_jp
 run the ROM's own pad reader to verify neutral ports preserve player order.
 
 Physical acceptance: assign two gamepads, edit each profile, select 2 Players,
@@ -121,6 +126,17 @@ without a serial to check the manual Assign players fallback. Check manual
 reassignment clears the old reservation and rumble. Repeat with keyboard/gamepad
 in both player orders and shared keyboards, restart to check saved bindings
 and required fresh assignment, and check Android P1 touch with a P2 pad.
+
+For Settings > Rumble, set Player 1's overall strength to 0 while Player 2
+boosts and collides, then swap their settings. Try overall and event strengths
+at 0, 50, and 100, toggle each event independently, and collide during Turbo.
+Unplug or reassign a vibrating pad; neither the old pad nor the new assignment
+should retain old feedback. Repeat with a gamepad without a motor and with
+keyboard/touch players to confirm their input still works. Restart to verify
+saved strengths, then launch with AERO_RUMBLE=0 or AERO_RUMBLE_TURBO=0 and
+check the affected controls are disabled without replacing saved preferences.
+Physical motor strength and platform drivers require these manual checks;
+synthetic RDRAM tests only verify the requested amplitudes and feedback state.
 Virtual pads and synthetic memory do not establish physical rumble or visuals.
 
 ## CTest

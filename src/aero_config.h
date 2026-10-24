@@ -12,6 +12,7 @@
 #include <string>
 
 #include "ultramodern/config.hpp"
+#include "aero_haptics.h"
 
 namespace aero {
 namespace config {
@@ -133,6 +134,11 @@ void set_easy_turbo_boost(bool enabled);
 // P2 defaults off independently; AERO_EASY_TURBO_P2 overrides only this player.
 bool easy_turbo_boost_player2();
 void set_easy_turbo_boost_player2(bool enabled);
+
+// SDL-thread per-player feedback preferences in enhancements.json. Environment
+// rumble switches remain launch-time gates and never replace these saved values.
+haptics::Settings rumble_settings(int player);
+void set_rumble_settings(int player, haptics::Settings settings);
 
 // C-linkage bridge so the plain-C hook (src/aero_turbo_boost.c) can read the
 // toggle without dragging the C++ config machinery into its TU.

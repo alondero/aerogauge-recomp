@@ -141,6 +141,27 @@ Player 2; AI and replay callbacks are excluded. Feedback is sampled separately
 for each assigned gamepad and cleared on reassignment, disconnection, or leaving
 race gameplay. Keyboard and touch players have no gamepad rumble sink.
 
+Open Settings > Rumble to tune Player 1 and Player 2 independently. Each has
+an overall strength slider plus an enable switch and strength slider for
+collision and Turbo feedback. Percentages run from 0 to 100; all strengths
+default to 100 and both events default on, preserving the existing feedback.
+Overall strength 0 silences every motor request for that player, including
+the native motor callback. Changes apply immediately and persist in
+enhancements.json, independently of controller assignments and profiles.
+
+Event strength multiplies overall strength: 50% overall and 50% collision
+produce 25% of the original collision amplitude. Collision pulses take priority
+over simultaneous Turbo feedback. Disabling collisions or setting their
+strength to 0 allows Turbo feedback through. No event changes guest timers,
+damage, heat, or Controller Pak storage.
+
+The launch overrides remain global: AERO_RUMBLE=0 disables all feedback for
+both players; AERO_RUMBLE_TURBO=0 disables only Turbo feedback for both.
+Affected menu controls are disabled for that run; saved preferences are
+retained. Unset switches, or values other than exactly 0, allow the saved
+player settings to apply. These controls work on Windows, Linux, and Android
+when the assigned SDL gamepad supports rumble; they do not vibrate the phone.
+
 Easy Turbo + Boost Start has separate, default-off options for Player 1 and
 Player 2. Existing easy_turbo_boost settings and AERO_EASY_TURBO affect Player 1;
 easy_turbo_boost_player2 and AERO_EASY_TURBO_P2 affect Player 2. Each player has

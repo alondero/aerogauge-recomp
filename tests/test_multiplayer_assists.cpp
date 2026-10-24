@@ -1,5 +1,6 @@
 #undef NDEBUG
 #include <cassert>
+#include <algorithm>
 #include <bit>
 #include <vector>
 #include "aero_region.h"
@@ -87,12 +88,68 @@ static void check_region(int japan) {
     MEM_W(0x24, cars[0]) = std::bit_cast<int32_t>(3.0f);
     ctx.r16 = cars[0]; aero_haptics_race_tick(rdram, &ctx);
     assert(sample(0).low == 0xC000 && sample(1).low == 0x5000);
+    // Settings affect only host amplitudes, independently for both players.
+    const auto guest_before = memory;
+    const Settings half{.strength = 50};
+    const Settings off{.strength = 0};
+    assert(sample(0, half).low == 0x6000 && sample(0, half).high == 0x4800);
+    assert(sample(1, half).low == 0x2800 && sample(1, half).high == 0x3800);
+    assert(sample(0, off).low == 0 && sample(0, off).high == 0);
+    assert(sample(1).low == 0x5000);
+    assert(sample(1, off).low == 0 && sample(0).low == 0xC000);
+    // Both players can have both events at once. Collisions keep their
+    // established priority, unless muted, when Turbo remains perceptible.
+    MEM_B(0x55, cars[0]) = 8;
+    MEM_W(0x24, cars[1]) = std::bit_cast<int32_t>(3.0f);
+    ctx.r16 = cars[0]; aero_haptics_race_tick(rdram, &ctx);
+    ctx.r16 = cars[1]; aero_haptics_race_tick(rdram, &ctx);
+    const auto simultaneous = memory;
+    const Settings collision_off{.collision_enabled = false};
+    const Settings collision_zero{.collision_strength = 0};
+    const Settings turbo_off{.turbo_enabled = false};
+    const Settings turbo_zero{.turbo_strength = 0};
+    for (int player = 0; player < 2; ++player) {
+        assert(sample(player).low == 0xC000 && sample(player).high == 0x9000);
+        assert(sample(player, collision_off).low == 0x5000);
+        assert(sample(player, collision_zero).high == 0x7000);
+        assert(sample(player, turbo_off).low == 0xC000);
+        assert(sample(player, turbo_zero).high == 0x9000);
+        assert(sample(player, {.strength = 50, .collision_strength = 50}).low == 0x3000);
+        assert(sample(player, {.collision_enabled = false, .turbo_enabled = false}).low == 0);
+        assert(sample(player, {.strength = 50, .collision_enabled = false, .turbo_strength = 50}).high == 0x1C00);
+    }
+    assert(memory == simultaneous); // sampling never writes guest state
+    assert(sample(0, {.strength = 200, .collision_strength = 200}).low == 0xC000);
+    assert(sample(1, {.strength = -1}).high == 0);
+    // Restore the original P2 Turbo-only fixture.
+    std::copy(guest_before.begin(), guest_before.end(), memory.begin());
+    stop_player(1);
+    ctx.r16 = cars[1]; aero_haptics_race_tick(rdram, &ctx);
     stop_player(0);
     assert(sample(0).low == 0 && sample(1).low == 0x5000);
     MEM_W(0, phase) = 4; aero_haptics_frame(rdram, &ctx);
     assert(sample(0).low == 0 && sample(1).low == 0);
     motor(true, 1);
     assert(sample(1).low == 0xFFFF && sample(0).low == 0);
+    assert(sample(1, half).low == 0x7FFF && sample(1, off).high == 0);
+    // Disconnect/reassignment clears all three sources; a new device must
+    // not inherit either old event pulses or a latched guest motor request.
+    stop_player(1);
+    assert(sample(1).low == 0 && sample(1).high == 0);
+    assert(sample(-1).low == 0 && sample(2).high == 0);
+    configure(true, false);
+    MEM_W(0, phase) = 3;
+    MEM_W(0x24, cars[0]) = 0;
+    MEM_B(0x55, cars[0]) = 8;
+    ctx.r16 = cars[0]; aero_haptics_race_tick(rdram, &ctx);
+    assert(sample(0).low == 0); // global Turbo gate still wins
+    MEM_W(0x24, cars[0]) = std::bit_cast<int32_t>(3.0f);
+    aero_haptics_race_tick(rdram, &ctx);
+    assert(sample(0).low == 0xC000);
+    configure(false);
+    aero_haptics_race_tick(rdram, &ctx);
+    motor(true, 1);
+    assert(sample(0).low == 0 && sample(1).high == 0);
     stop();
 }
 
