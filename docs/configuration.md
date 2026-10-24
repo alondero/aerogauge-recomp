@@ -6,7 +6,7 @@ Controls page first saves its bindings. The mod manager creates `mods.json` and
 `mod_config/` when it initializes.
 
 - graphics.json stores renderer, window, and visual enhancement settings.
-- enhancements.json stores gameplay assists.
+- enhancements.json stores gameplay assists and per-player rumble preferences.
 - controls.json stores keyboard and controller bindings and per-player profile selections.
 - mods.json stores installed package enablement and order.
 - mod_config/ stores per-package settings.
@@ -99,12 +99,30 @@ For example, this branch has no supported macOS window path.
 
 ## enhancements.json
 
-The file contains separate player assist settings:
+The file contains separate player assist and rumble settings:
 
 | Key | Values | Default | Meaning |
 | --- | --- | --- | --- |
 | easy_turbo_boost | true or false | false | Enables Player 1's Boost Start and R-button Turbo assist |
 | easy_turbo_boost_player2 | true or false | false | Enables Player 2's Boost Start and R-button Turbo assist |
+| rumble_player1 | object (fields below) | All strengths 100; events enabled | Player 1's feedback preferences |
+| rumble_player2 | object (fields below) | All strengths 100; events enabled | Player 2's feedback preferences |
+
+Each rumble object contains:
+
+| Field | Values | Default | Meaning |
+| --- | --- | --- | --- |
+| strength | integer 0 to 100 | 100 | Overall percentage of existing motor amplitude; 0 mutes the player |
+| collision_enabled | true or false | true | Enables collision feedback |
+| collision_strength | integer 0 to 100 | 100 | Collision percentage, multiplied by overall strength |
+| turbo_enabled | true or false | true | Enables active Turbo feedback |
+| turbo_strength | integer 0 to 100 | 100 | Turbo percentage, multiplied by overall strength |
+
+Use Settings > Rumble to edit these live. Missing or invalid fields keep their
+defaults; integer percentages outside the range are clamped. Settings belong
+to the player slot, so changing a controller or profile keeps the preferences.
+AERO_RUMBLE=0 and AERO_RUMBLE_TURBO=0 are global launch gates that retain the
+saved values. See [Controllers](controllers.md#rumble) for event priority.
 
 The assist preserves the game's own boost timer, heat, and overheat logic. It
 only adds the input path described in the [README](../README.md).
@@ -245,8 +263,8 @@ $env:NAME before running the executable.
 | AERO_CONFIG_WRITE_DEBOUNCE_MS | Launch or test; integer milliseconds | Unset uses 250; a non-numeric value, a negative value, or an overflow falls back to 250; values above 60000 are clamped | Every queued settings write | Sets how long the background writer waits for edits to stop before rewriting graphics.json or enhancements.json; src/aero_config.cpp | AERO_CONFIG_WRITE_DEBOUNCE_MS=60000 ./build/aerogauge_modern |
 | AERO_PAK_PATH | Launch; file path | Unset uses the per-user saves path; set selects the Controller Pak image | Startup | Selects or creates the save-file parent; src/main.cpp and src/aero_pak.cpp | AERO_PAK_PATH=tmp/test.mpk ./build/aerogauge_modern |
 | AERO_CONTROLLER_PAK | Launch; 0 or another value | Enabled when unset; exactly 0 disables it | Startup | Controls virtual Controller Pak presence; src/main.cpp and src/aero_pak.cpp | AERO_CONTROLLER_PAK=0 ./build/aerogauge_modern |
-| AERO_RUMBLE | Launch; 0 or another value | Enabled when unset; exactly 0 disables rumble | Startup | Controls the normal rumble callback; src/main.cpp | AERO_RUMBLE=0 ./build/aerogauge_modern |
-| AERO_RUMBLE_TURBO | Launch; 0 or another value | Enabled when unset; exactly 0 disables Turbo rumble | Startup | Controls Turbo-specific rumble; src/main.cpp | AERO_RUMBLE_TURBO=0 ./build/aerogauge_modern |
+| AERO_RUMBLE | Launch; 0 or another value | Unset or nonzero values use player preferences; exactly 0 disables both players | Startup | Gates all motor output and disables Rumble controls without changing saved values; src/main.cpp | AERO_RUMBLE=0 ./build/aerogauge_modern |
+| AERO_RUMBLE_TURBO | Launch; 0 or another value | Unset or nonzero values use player preferences; exactly 0 disables Turbo for both players | Startup | Gates Turbo feedback and disables Turbo controls without changing saved values; src/main.cpp | AERO_RUMBLE_TURBO=0 ./build/aerogauge_modern |
 | AERO_TEXTURE_PACK | Launch or test; directory or .rtz path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Supplies RT64 texture replacements and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_PACK=assets/textures ./build/aerogauge_modern |
 | AERO_TEXTURE_DUMP | Launch or test; directory path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Gives RT64 a texture dump destination and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_DUMP=tmp/textures ./build/aerogauge_modern |
 | AERO_FOG_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each fog-policy query | Changes the 3P/4P widescreen fog branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_FOG_MATCH_1P=0 ./build/aerogauge_modern |

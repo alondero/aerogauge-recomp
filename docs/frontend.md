@@ -35,6 +35,7 @@ The shared frontend has these pages:
 | Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
 | Controls | Assign up to two players and edit each player's keyboard or controller profile for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
+| Rumble | Independent overall strength and collision/Turbo enable and strength controls for each player | Changes apply immediately; the port saves them in `enhancements.json`. Global rumble launch gates disable the affected controls without replacing saved preferences. |
 | Mods | Install and manage AeroGauge code packages and RT64 texture packs | The runtime stores package enablement and order in `mods.json`; code mods load at game start, while texture packs can be toggled and reordered during play. |
 
 F11 and Alt+Enter still switch fullscreen. The shared General page is hidden
@@ -64,6 +65,10 @@ disabled when one is present:
 
 The override wins for that run. The menu must not copy an overridden value into
 the user's JSON file.
+
+AERO_RUMBLE=0 disables the Rumble page's controls for both players;
+AERO_RUMBLE_TURBO=0 disables only their Turbo controls. Other values leave
+the saved strengths and switches active. Neither gate changes stored preferences.
 
 ## Ownership and threads
 

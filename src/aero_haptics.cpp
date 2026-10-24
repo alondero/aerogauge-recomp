@@ -5,6 +5,7 @@
 #include "aero_region.h"
 #include "aero_player.h"
 #include <array>
+#include <algorithm>
 
 #include <atomic>
 #include <bit>
@@ -49,14 +50,25 @@ void aero::haptics::motor(bool on, int player) {
     if (player >= 0 && player < 2)
         feedback[player].native_motor.store(on, std::memory_order_relaxed);
 }
-aero::haptics::Motors aero::haptics::sample(int player) {
+aero::haptics::Motors aero::haptics::sample(int player, Settings settings) {
     if (player < 0 || player >= 2) return {};
     const auto& state = feedback[player];
     if (!enabled.load(std::memory_order_relaxed)) return {};
-    if (state.native_motor.load(std::memory_order_relaxed)) return {0xFFFF, 0xFFFF};
+    const int master = std::clamp(settings.strength, 0, 100);
+    auto scaled = [master](Motors motors, int strength) -> Motors {
+        const int gain = master * std::clamp(strength, 0, 100);
+        return {uint16_t(uint32_t(motors.low) * gain / 10000),
+                uint16_t(uint32_t(motors.high) * gain / 10000)};
+    };
+    if (master == 0) return {};
+    if (state.native_motor.load(std::memory_order_relaxed)) return scaled({0xFFFF, 0xFFFF}, 100);
     const auto now = now_ms();
-    if (now < state.impact_until.load(std::memory_order_relaxed)) return {0xC000, 0x9000};
-    if (now < state.turbo_until.load(std::memory_order_relaxed)) return {0x5000, 0x7000};
+    // Preserve collision priority, but a muted collision must not mask Turbo.
+    if (settings.collision_enabled && settings.collision_strength > 0 &&
+        now < state.impact_until.load(std::memory_order_relaxed))
+        return scaled({0xC000, 0x9000}, settings.collision_strength);
+    if (settings.turbo_enabled && now < state.turbo_until.load(std::memory_order_relaxed))
+        return scaled({0x5000, 0x7000}, settings.turbo_strength);
     return {};
 }
 

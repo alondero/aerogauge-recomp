@@ -651,7 +651,7 @@ static void rumble_apply() {
             was_on[player] = false;
             continue;
         }
-        const auto motors = aero::haptics::sample(player);
+        const auto motors = aero::haptics::sample(player, aero::config::rumble_settings(player));
         const bool on = motors.low != 0 || motors.high != 0;
         if (on || was_on[player])
             SDL_GameControllerRumble(pad, motors.low, motors.high, on ? 150 : 0);

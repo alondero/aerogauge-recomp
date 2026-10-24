@@ -10,6 +10,7 @@
 #include "recompinput/input_types.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 namespace aero::menu {
@@ -107,6 +108,81 @@ void seed_debug() {
     auto& page = recompui::config::get_config("debug");
     sync(page, "developer_mode", aero::config::current_graphics().developer_mode);
     page.revert_temp_config();
+}
+
+void seed_rumble() {
+    auto& page = recompui::config::get_config("rumble");
+    for (int player = 0; player < 2; ++player) {
+        const std::string prefix = "player" + std::to_string(player + 1) + "_";
+        const auto settings = aero::config::rumble_settings(player);
+        sync(page, (prefix + "strength").c_str(), double(settings.strength));
+        sync(page, (prefix + "collision_enabled").c_str(), settings.collision_enabled);
+        sync(page, (prefix + "collision_strength").c_str(), double(settings.collision_strength));
+        sync(page, (prefix + "turbo_enabled").c_str(), settings.turbo_enabled);
+        sync(page, (prefix + "turbo_strength").c_str(), double(settings.turbo_strength));
+    }
+    page.revert_temp_config();
+}
+
+void configure_rumble() {
+    auto& page = recompui::config::create_config_tab("Rumble", "rumble", false);
+    page.external_storage = true;
+    page.set_load_callback(seed_rumble);
+    const auto disabled_by_env = [](const char* name) {
+        const char* value = std::getenv(name);
+        return value && std::strcmp(value, "0") == 0;
+    };
+    const bool muted = disabled_by_env("AERO_RUMBLE");
+    const bool turbo_muted = muted || disabled_by_env("AERO_RUMBLE_TURBO");
+    for (int player = 0; player < 2; ++player) {
+        const std::string prefix = "player" + std::to_string(player + 1) + "_";
+        const std::string label = "Player " + std::to_string(player + 1) + ": ";
+        const auto initial = aero::config::rumble_settings(player);
+        auto strength = [&](const char* id, const char* title, const char* description,
+                            int haptics::Settings::*field, bool disabled) {
+            const auto key = prefix + id;
+            page.add_number_option(key, label + title, description,
+                                   0, 100, 5, 0, false, initial.*field);
+            page.update_option_disabled(key, disabled);
+            page.add_option_change_callback(key, [player, field](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+                if (context == OptionChangeContext::Permanent)
+                    enqueue([player, field, percent = int(std::get<double>(value))] {
+                        auto settings = aero::config::rumble_settings(player);
+                        settings.*field = percent;
+                        aero::config::set_rumble_settings(player, settings);
+                    });
+            });
+        };
+        auto toggle = [&](const char* id, const char* title, const char* description,
+                          bool haptics::Settings::*field, bool disabled) {
+            const auto key = prefix + id;
+            page.add_bool_option(key, label + title, description, initial.*field);
+            page.update_option_disabled(key, disabled);
+            page.add_option_change_callback(key, [player, field](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+                if (context == OptionChangeContext::Permanent)
+                    enqueue([player, field, enabled = std::get<bool>(value)] {
+                        auto settings = aero::config::rumble_settings(player);
+                        settings.*field = enabled;
+                        aero::config::set_rumble_settings(player, settings);
+                    });
+            });
+        };
+        strength("strength", "Rumble strength (%)",
+            "Overall vibration on this player's assigned gamepad. 0 disables all rumble; 100 preserves the original intensity. AERO_RUMBLE=0 disables both players for this run.",
+            &haptics::Settings::strength, muted);
+        toggle("collision_enabled", "Collision feedback",
+            "Vibrate on collision damage. AERO_RUMBLE=0 disables feedback for this run.",
+            &haptics::Settings::collision_enabled, muted);
+        strength("collision_strength", "Collision strength (%)",
+            "Percentage of the original collision intensity, multiplied by this player's overall strength. 0 mutes collisions. Collisions take priority over Turbo when enabled.",
+            &haptics::Settings::collision_strength, muted);
+        toggle("turbo_enabled", "Turbo feedback",
+            "Vibrate while Turbo is active. AERO_RUMBLE_TURBO=0 disables Turbo feedback for both players for this run.",
+            &haptics::Settings::turbo_enabled, turbo_muted);
+        strength("turbo_strength", "Turbo strength (%)",
+            "Percentage of the original Turbo intensity, multiplied by this player's overall strength. 0 mutes Turbo. AERO_RUMBLE_TURBO=0 overrides this for the run.",
+            &haptics::Settings::turbo_strength, turbo_muted);
+    }
 }
 
 void save_graphics() {
@@ -304,6 +380,7 @@ void refresh_settings() {
     if (!graphics.is_dirty()) seed_graphics();
     if (!enhancements.is_dirty()) seed_enhancements();
     if (!recompui::config::get_config("debug").is_dirty()) seed_debug();
+    if (!recompui::config::get_config("rumble").is_dirty()) seed_rumble();
 }
 
 void create_settings() {
@@ -386,6 +463,7 @@ void create_settings() {
     graphics.update_option_description("wm_option", "Android manages the fullscreen display.");
 #endif
 
+    configure_rumble();
     auto& enhancements = settings::create_config_tab("Enhancements", "enhancements", false);
     enhancements.external_storage = true;
     enhancements.set_load_callback(seed_enhancements);
