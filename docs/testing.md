@@ -101,8 +101,14 @@ per-player persistence/reload, the recenter action, and Easy Turbo independence.
 with fake device discovery/assignment. It checks zero hardware timestamps,
 independent simultaneous turns, disabling one player, background/resume,
 reassignment, duplicate sources, stale delivery, and disconnect. It needs SDL
-and frontend headers but no SDL library or driver. These checks require no
-physical motion sensor and cannot establish driver behavior or steering feel.
+and frontend headers but no SDL library or driver. Its simulated controllers
+start with reporting disabled and emit events only after both sensors have
+been enabled. Capability discovery, successful/failed activation, reuse of
+already enabled sensors, and settings-only schema synchronization are checked
+separately. Rotation expectations use fixed physical gravity vectors matching
+SDL's Android accelerometer remap, plus neutral and left/right steering checks.
+These checks require no physical motion sensor and cannot establish driver
+behavior or steering feel.
 
 Physical gyro acceptance (record device, driver, connection mode, and outcomes):
 

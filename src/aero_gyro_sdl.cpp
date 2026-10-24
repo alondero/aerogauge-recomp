@@ -1,5 +1,6 @@
 #include "aero_gyro_sdl.h"
 #include "aero_config.h"
+#include "aero_menu.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompinput/input_state.h"
 #include "recompinput/players.h"
@@ -37,6 +38,7 @@ SDL_Sensor* device_gyro = nullptr;
 SDL_Sensor* device_accel = nullptr;
 bool sensors_initialized = false;
 void close_sensors() {
+    if (!device_gyro && !device_accel) return;
     const auto gyro_id = device_gyro ? SDL_SensorGetInstanceID(device_gyro) : -1;
     const auto accel_id = device_accel ? SDL_SensorGetInstanceID(device_accel) : -1;
     {
@@ -57,8 +59,21 @@ int sensor_index(SDL_SensorType type) {
 
 bool supports(SDL_GameController* controller) {
     return controller && SDL_GameControllerGetAttached(controller) &&
-        SDL_GameControllerIsSensorEnabled(controller, SDL_SENSOR_GYRO) &&
-        SDL_GameControllerIsSensorEnabled(controller, SDL_SENSOR_ACCEL);
+        SDL_GameControllerHasSensor(controller, SDL_SENSOR_GYRO) &&
+        SDL_GameControllerHasSensor(controller, SDL_SENSOR_ACCEL);
+}
+
+bool enable_reporting(SDL_GameController* controller) {
+    // The frontend enables sensors when opening a pad. Reuse that reporting,
+    // but do not mistake disabled reporting for absent hardware. If startup
+    // activation failed or reporting was stopped, explicitly enable it when
+    // this player opts in. Sensors are shared with the frontend, so we do not
+    // disable them when motion steering is switched off.
+    for (auto type : {SDL_SENSOR_GYRO, SDL_SENSOR_ACCEL}) {
+        if (!SDL_GameControllerIsSensorEnabled(controller, type) &&
+            SDL_GameControllerSetSensorEnabled(controller, type, SDL_TRUE) != 0) return false;
+    }
+    return true;
 }
 
 SDL_GameController* controller_for(int player) {
@@ -170,6 +185,11 @@ void update() {
         }
         player.usable = active && source != -1;
         if (!player.usable || !settings.enabled) continue;
+        if (controller && !enable_reporting(controller)) {
+            player.filter.reset();
+            player.usable = false;
+            continue;
+        }
 #if defined(__ANDROID__)
         if (source == -2 && !device_gyro) {
             device_gyro = SDL_SensorOpen(gyro_index);
@@ -189,7 +209,7 @@ void update() {
         }
         player.filter.update(sample);
     }
-    menu::refresh_motion_settings();
+    if (menu::captures_input()) menu::refresh_motion_settings();
 }
 
 float steering(int player) {

@@ -52,9 +52,9 @@ inline bool sensor_sample(const Reading& accel, const Reading& gyro, uint64_t no
 inline Sample screen_sample(Sample sample, int rotation) {
     const float x = sample.ax, y = sample.ay;
     switch (rotation) {
-    case 1: sample.ax = y; sample.ay = -x; break;
+    case 1: sample.ax = -y; sample.ay = x; break;
     case 2: sample.ax = -x; sample.ay = -y; break;
-    case 3: sample.ax = -y; sample.ay = x; break;
+    case 3: sample.ax = y; sample.ay = -x; break;
     }
     return sample;
 }

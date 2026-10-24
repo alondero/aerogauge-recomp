@@ -121,6 +121,7 @@ nlohmann::json read(const std::filesystem::path& path) {
 namespace aero::menu {
 void enqueue(std::function<void()> action) { pending.push_back(std::move(action)); }
 void apply_window_settings() { ++window_updates; }
+bool captures_input() { return false; }
 }
 
 int main(int argc, char** argv) {

@@ -73,6 +73,12 @@ when the active SDL driver exposes both sensors; support depends on the driver
 and connection mode. An ordinary XInput controller does not expose these
 sensors. Physical device combinations still require the acceptance checks below.
 
+Controller capability is detected separately from active sensor reporting.
+RecompFrontend opens controllers and enables their sensors on connection; when
+gyro steering is enabled the port also checks reporting and activates either
+sensor if needed. Activation failures leave steering neutral. Switching gyro
+steering off preserves sensor reporting shared with the frontend.
+
 1. Enable the player's Gyro steering option.
 2. Hold the device or controller raised like a steering wheel, at a comfortable
    resting angle. Keep it raised at least 30 degrees above flat.

@@ -65,15 +65,51 @@ int main() {
     first.reset();
     require(first.status() == Status::Uncalibrated, "source/orientation/lifecycle reset needs explicit calibration");
 
-    // Android's AXIS_Y / AXIS_MINUS_X remap for Surface.ROTATION_90;
-    // these fixed natural-coordinate vectors all mean the same clockwise tilt.
+    // Fixed natural-axis vectors from Android's screen rotation geometry, also
+    // used by the pinned SDL SDLSurface.onSensorChanged accelerometer path:
+    // at ROTATION_90 natural +X points up; at ROTATION_270 natural -X points up.
+    // Each row is the same clockwise screen tilt. Do not generate these inputs
+    // with screen_sample or confuse rotation-matrix axes with vector components.
     const Sample rotated[] = {
-        {1, -3, 8, 0, 0, 0, -0.2f}, {1, -8, -3, 0, 0, 0, -0.2f},
-        {1, 3, -8, 0, 0, 0, -0.2f}, {1, 8, 3, 0, 0, 0, -0.2f}};
+        {1, -3, 8, 0, 0, 0, -0.2f}, {1, 8, 3, 0, 0, 0, -0.2f},
+        {1, 3, -8, 0, 0, 0, -0.2f}, {1, -8, -3, 0, 0, 0, -0.2f}};
+    const Sample upright[] = {
+        {1, 0, 9.80665f, 0, 0, 0, 0.02f}, {1, 9.80665f, 0, 0, 0, 0, 0.02f},
+        {1, 0, -9.80665f, 0, 0, 0, 0.02f}, {1, -9.80665f, 0, 0, 0, 0, 0.02f}};
     for (int rotation = 0; rotation < 4; ++rotation) {
         const auto screen = screen_sample(rotated[rotation], rotation);
         require(near(screen.ax, -3) && near(screen.ay, 8), "Android natural axes map to screen axes at each display rotation");
         require(screen.gz == -0.2f, "screen rotation preserves the gyro roll axis");
+        auto neutral = screen_sample(upright[rotation], rotation);
+        require(near(neutral.ax, 0) && near(neutral.ay, 9.80665f), "an upright screen has positive Y gravity in every orientation");
+        Steering physical;
+        physical.calibrate();
+        for (int i = 0; i <= 60; ++i) {
+            neutral.time = 1 + i * 0.01;
+            physical.update(neutral);
+        }
+        require(physical.status() == Status::Ready && physical.steering(enabled) == 0,
+                "physical upright vectors calibrate to neutral in every orientation");
+        // Hold the fixed clockwise tilt, then its counterclockwise counterpart.
+        // The gyro is stationary in both holds; gravity must settle to the right
+        // direction without sustained disagreement with gyro integration.
+        auto tilted = screen_sample(rotated[rotation], rotation);
+        tilted.gz = 0.02f;
+        for (int i = 1; i <= 300; ++i) {
+            tilted.time = 1.6 + i * 0.01;
+            physical.update(tilted);
+        }
+        require(physical.steering(enabled) > 0.6f, "clockwise physical tilt steers right in every orientation");
+        Sample left = rotated[rotation];
+        if (rotation % 2 == 0) left.ax = -left.ax;
+        else left.ay = -left.ay;
+        left = screen_sample(left, rotation);
+        left.gz = 0.02f;
+        for (int i = 1; i <= 300; ++i) {
+            left.time = 4.6 + i * 0.01;
+            physical.update(left);
+        }
+        require(physical.steering(enabled) < -0.6f, "counterclockwise physical tilt steers left in every orientation");
     }
     Steering android;
     android.calibrate();

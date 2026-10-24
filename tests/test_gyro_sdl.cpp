@@ -12,11 +12,21 @@
 #include <string_view>
 
 namespace {
-struct Pad { int id; bool attached = true; bool sensors = true; };
+struct Pad {
+    int id;
+    bool attached = true, has_gyro = true, has_accel = true;
+    // Real SDL controllers start with reporting disabled. Capability and active
+    // reporting must be separate; failed activation must suppress sensor events.
+    bool gyro_enabled = false, accel_enabled = false;
+    SDL_SensorType failing_sensor = SDL_SENSOR_INVALID;
+    unsigned enable_requests = 0;
+};
 std::array<Pad, 2> pads{{{10}, {20}}};
 std::array<recompinput::Player, 2> slots;
-std::array<aero::gyro::Settings, 2> settings{{{true, 1, 2}, {true, 1, 2}}};
+std::array<aero::gyro::Settings, 2> settings{};
 bool legacy = true;
+bool menu_open = false;
+unsigned menu_refreshes = 0;
 Uint64 ticks = 1000;
 Pad& pad(SDL_GameController* value) { return *reinterpret_cast<Pad*>(value); }
 SDL_GameController* controller(int i) { return reinterpret_cast<SDL_GameController*>(&pads[i]); }
@@ -24,6 +34,7 @@ void require(bool value, const char* message) {
     if (!value) { std::fprintf(stderr, "FAIL: %s\n", message); std::exit(1); }
 }
 void readings(int index, float degrees, float rate = 0.02f) {
+    if (!pads[index].attached || !pads[index].gyro_enabled || !pads[index].accel_enabled) return;
     SDL_Event event{};
     event.type = SDL_CONTROLLERSENSORUPDATE;
     event.csensor.which = pads[index].id;
@@ -54,7 +65,19 @@ Uint64 SDL_GetTicks64() { return ticks; }
 int SDL_NumJoysticks() { return 2; }
 SDL_JoystickID SDL_JoystickGetDeviceInstanceID(int index) { return pads[index].id; }
 SDL_bool SDL_GameControllerGetAttached(SDL_GameController* value) { return pad(value).attached ? SDL_TRUE : SDL_FALSE; }
-SDL_bool SDL_GameControllerIsSensorEnabled(SDL_GameController* value, SDL_SensorType) { return pad(value).sensors ? SDL_TRUE : SDL_FALSE; }
+SDL_bool SDL_GameControllerHasSensor(SDL_GameController* value, SDL_SensorType type) {
+    return (type == SDL_SENSOR_GYRO ? pad(value).has_gyro : pad(value).has_accel) ? SDL_TRUE : SDL_FALSE;
+}
+SDL_bool SDL_GameControllerIsSensorEnabled(SDL_GameController* value, SDL_SensorType type) {
+    return (type == SDL_SENSOR_GYRO ? pad(value).gyro_enabled : pad(value).accel_enabled) ? SDL_TRUE : SDL_FALSE;
+}
+int SDL_GameControllerSetSensorEnabled(SDL_GameController* value, SDL_SensorType type, SDL_bool enabled) {
+    auto& device = pad(value);
+    ++device.enable_requests;
+    if (!device.attached || !SDL_GameControllerHasSensor(value, type) || device.failing_sensor == type) return -1;
+    (type == SDL_SENSOR_GYRO ? device.gyro_enabled : device.accel_enabled) = enabled == SDL_TRUE;
+    return 0;
+}
 SDL_Joystick* SDL_GameControllerGetJoystick(SDL_GameController* value) { return reinterpret_cast<SDL_Joystick*>(value); }
 SDL_JoystickID SDL_JoystickInstanceID(SDL_Joystick* value) { return reinterpret_cast<Pad*>(value)->id; }
 
@@ -72,7 +95,8 @@ namespace aero::config {
 gyro::Settings gyro_settings(int player) { return settings[player]; }
 }
 namespace aero::menu {
-void refresh_motion_settings() { }
+bool captures_input() { return menu_open; }
+void refresh_motion_settings() { ++menu_refreshes; }
 }
 
 int main() {
@@ -82,9 +106,31 @@ int main() {
     legacy = false;
     slots[0].controller = controller(0);
     slots[1].controller = controller(1);
-    readings(0, 0); readings(1, 0);
     update();
-    require(available(0) && available(1), "assigned players get independent motion sources");
+    require(available(0) && available(1), "capable controllers are discoverable before sensor reporting is enabled");
+    require(pads[0].enable_requests == 0 && pads[1].enable_requests == 0,
+            "default-off motion must not activate controller sensors");
+    settings[0].enabled = true;
+    update();
+    require(pads[0].gyro_enabled && pads[0].accel_enabled && pads[0].enable_requests == 2,
+            "enabling motion explicitly activates both SDL sensors when reporting starts disabled");
+    require(!pads[1].gyro_enabled && !pads[1].accel_enabled, "one player's activation does not enable the other controller");
+    require(!available(0) && steering(0) == 0, "activation alone does not make missing sensor data usable");
+    readings(0, 0); update();
+    require(available(0) && pads[0].enable_requests == 2, "already enabled frontend sensors are reused without repeated activation");
+    settings[1].enabled = true;
+    pads[1].failing_sensor = SDL_SENSOR_ACCEL;
+    update();
+    require(!available(1) && steering(1) == 0 && available(0), "sensor activation failure fails neutral and preserves the other player");
+    pads[1].failing_sensor = SDL_SENSOR_INVALID;
+    update();
+    readings(1, 0); update();
+    require(available(0) && available(1), "fresh independent sensor streams recover after successful activation");
+    require(menu_refreshes == 0, "closed settings must not synchronize the motion schema during gameplay");
+    menu_open = true; update();
+    require(menu_refreshes == 1, "open settings receive current motion status");
+    menu_open = false; update();
+    require(menu_refreshes == 1, "closing settings stops motion schema synchronization");
     calibrate_both();
     require(steering(0) == 0 && steering(1) == 0, "zero hardware timestamps calibrate both sources to neutral");
     require(std::string_view(description(0)).starts_with("Calibrated."), "calibration reaches Ready on real bridge");
@@ -132,6 +178,10 @@ int main() {
     event.cdevice.which = pads[0].id;
     notify_event(event); update();
     require(!available(0) && available(1), "disconnect preserves the other player's sensor");
+    pads[1].has_accel = false;
+    const auto requests = pads[1].enable_requests;
+    update();
+    require(!available(1) && pads[1].enable_requests == requests, "a controller missing either sensor is unavailable without activation attempts");
     shutdown();
     std::puts("PASS SDL gyro bridge: timestamp-less events, sources, isolation, lifecycle, stale delivery and disconnect");
 }
