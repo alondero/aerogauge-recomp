@@ -541,6 +541,18 @@ func = "func_80058114"
 before_vram = 0x80058AD8
 text = "extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_haptics_race_tick(rdram, ctx);"
 
+# Cheats run on the game thread, after collision haptics and after sorting the
+# complete standings table but before the ROM assigns unique vehicle ranks.
+[[patches.hook]]
+func = "func_80058114"
+before_vram = 0x80058ADC
+text = "extern void aero_cheat_damage(uint8_t*, recomp_context*); aero_cheat_damage(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8001CF48"
+before_vram = 0x8001D120
+text = "extern void aero_cheat_standings(uint8_t*, recomp_context*); aero_cheat_standings(rdram, ctx);"
+
 [[patches.hook]]
 func = "func_80015C8C"
 text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"

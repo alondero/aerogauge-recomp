@@ -384,6 +384,11 @@ Remove-Item Env:AERO_LIGHTING_SELFTEST
 
 ## ROM-backed checks
 
+`cheats_us` and `cheats_jp` execute extracted damage arithmetic and complete
+standings updates with production hooks. `frontend_settings` and its Japanese
+variant cover immediate toggles and session-only storage. See
+[Cheats](cheats.md#verification) for the contracts and interactive checks.
+
 The normal ROM-backed smoke command is:
 
 ~~~bash

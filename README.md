@@ -100,6 +100,10 @@ errors. Easy Turbo changes the driving controls; it is off by default.
 With Easy Turbo on, press the R button during a race to start Turbo and use the
 assisted Boost Start.
 
+The **Cheats** page offers **Infinite Damage** and **Always First Position**
+for Player 1. Changes apply immediately and reset when the application closes.
+Cheats are experimental; see [Cheats](docs/cheats.md) for behavior and limits.
+
 For two players, open **Controls > Assign players**. Press a button on each
 gamepad in player order, or assign the keyboard to one player, then confirm.
 Use each player's **Edit Profile** to configure driving and menu bindings.

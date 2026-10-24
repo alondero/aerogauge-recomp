@@ -25,7 +25,7 @@
     "N64Recomp",
     "RT64"
   ],
-  "approach": "Static recompilation of the original binary, presented by the RT64 renderer.",
+  "approach": "Static recompilation of the original binary, presented by the RT64 renderer. Includes experimental session-only Player 1 damage protection and first-position cheats for USA and Japan Rev A.",
   "maintainers": [
     {
       "name": "alondero",
