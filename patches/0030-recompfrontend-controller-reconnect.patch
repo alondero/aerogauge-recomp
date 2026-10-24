@@ -1,0 +1,224 @@
+diff --git a/recompinput/include/recompinput/controller_identity.h b/recompinput/include/recompinput/controller_identity.h
+new file mode 100644
+index 0000000..a859c24
+--- /dev/null
++++ b/recompinput/include/recompinput/controller_identity.h
+@@ -0,0 +1,53 @@
++#pragma once
++
++#include <cstdint>
++#include <string>
++#include <unordered_map>
++#include <unordered_set>
++
++namespace recompinput {
++
++// Process-local physical identities. Model/GUID, device paths, player indices,
++// and SDL instance IDs alone cannot identify a physical controller on reconnect.
++// Keep duplicate serials ambiguous for the rest of the process, even after one
++// device leaves; otherwise the remaining identical unit could steal its slot.
++class ControllerIdentityMap {
++    std::unordered_map<int32_t, std::string> connected;
++    std::unordered_set<std::string> ambiguous;
++
++public:
++    void connect(int32_t id, const std::string& model, const std::string& serial) {
++        disconnect(id);
++        if (serial.empty()) return;
++        const std::string key = std::to_string(model.size()) + ":" + model + serial;
++        for (const auto& [other_id, identity] : connected) {
++            if (identity == key) ambiguous.insert(key);
++        }
++        connected[id] = key;
++    }
++
++    void disconnect(int32_t id) { connected.erase(id); }
++
++    void retain_connected(const std::unordered_set<int32_t>& ids) {
++        for (auto it = connected.begin(); it != connected.end();) {
++            if (!ids.contains(it->first)) it = connected.erase(it);
++            else ++it;
++        }
++    }
++
++    std::string identity_for(int32_t id) const {
++        auto it = connected.find(id);
++        if (it == connected.end() || ambiguous.contains(it->second)) return {};
++        return it->second;
++    }
++
++    int32_t find(const std::string& identity) const {
++        if (identity.empty() || ambiguous.contains(identity)) return -1;
++        for (const auto& [id, candidate] : connected) {
++            if (candidate == identity) return id;
++        }
++        return -1;
++    }
++};
++
++}
+diff --git a/recompinput/include/recompinput/players.h b/recompinput/include/recompinput/players.h
+index 696f813..d959985 100644
+--- a/recompinput/include/recompinput/players.h
++++ b/recompinput/include/recompinput/players.h
+@@ -22,6 +22,10 @@ namespace recompinput {
+         // Gameplay uses the legacy combined P1 input until players are assigned.
+         bool uses_single_player_input();
+         void remove_controller(SDL_GameController* controller);
++        // SDL main thread, under the host's input/presentation lock.
++        void add_controller(SDL_GameController* controller);
++        void restore_controllers();
++        bool is_controller_disconnected(int player_index);
+         void set_single_player_mode(bool single_player);
+         void set_min_number_of_players(size_t min_players);
+         void set_max_number_of_players(size_t max_players);
+diff --git a/recompinput/src/input_state.cpp b/recompinput/src/input_state.cpp
+index 3bb1b5b..0542ea6 100644
+--- a/recompinput/src/input_state.cpp
++++ b/recompinput/src/input_state.cpp
+@@ -392,6 +392,7 @@ void recompinput::add_controller_state(SDL_JoystickID joystick_id, SDL_GameContr
+     std::lock_guard lock{ InputState.controllers_mutex };
+     ControllerState& state = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))];
+     state.controller = controller;
++    players::add_controller(controller);
+ }
+ 
+ void recompinput::remove_controller_state(SDL_JoystickID joystick_id) {
+diff --git a/recompinput/src/players.cpp b/recompinput/src/players.cpp
+index c6a989d..edd1fa8 100644
+--- a/recompinput/src/players.cpp
++++ b/recompinput/src/players.cpp
+@@ -1,5 +1,6 @@
+ #include "recompinput/recompinput.h"
+ #include "recompinput/players.h"
++#include "recompinput/controller_identity.h"
+ #include "recompinput/profiles.h"
+ #include "recompinput/input_events.h"
+ #include "ultramodern/ultramodern.hpp"
+@@ -8,6 +9,8 @@
+ 
+ namespace recompinput {
+ 
++static ControllerIdentityMap controller_identities;
++
+ void Player::button_pressed() {
+     last_button_press_timestamp = ultramodern::time_since_start();
+ }
+@@ -68,6 +71,11 @@ static struct {
+     size_t max_players = 4;
+     PlayerArray players;
+     PlayerArray temp_players;
++    struct ControllerReservation {
++        std::string identity;
++        bool disconnected = false;
++    };
++    std::array<ControllerReservation, max_num_players_supported> reservations;
+ 
+     PlayerArray& get_player_array(bool temp) {
+         return temp ? temp_players : players;
+@@ -92,17 +100,75 @@ bool players::uses_single_player_input() {
+ }
+ 
+ void players::remove_controller(SDL_GameController* controller) {
++    if (controller == nullptr) return;
++    controller_identities.disconnect(SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
++    bool changed = false;
+     // Keep the port vacant; unplugging P1 must never move P2 into its slot.
+     for (auto* array : {&PlayerState.players, &PlayerState.temp_players}) {
+-        for (auto& player : *array) {
++        for (size_t slot = 0; slot < array->size(); ++slot) {
++            auto& player = (*array)[slot];
+             if (player.controller == controller) {
+                 player.controller = nullptr;
+                 player.controller_id = -1;
++                if (array == &PlayerState.players) {
++                    PlayerState.reservations[slot].disconnected = true;
++                    changed = true;
++                }
+             }
+         }
+     }
+     // Pending assignments can be retried immediately; committed slots stay put.
+     PlayerState.temp_players.compact();
++    if (changed && recompui::controls_page != nullptr) recompui::controls_page->force_update();
++}
++
++void players::add_controller(SDL_GameController* controller) {
++    // An ADDED event can precede the old handle's deferred removal. Exclude
++    // detached handles before checking for simultaneous duplicate identities.
++    std::unordered_set<int32_t> attached;
++    for (int index = 0; index < SDL_NumJoysticks(); ++index) {
++        const auto id = SDL_JoystickGetDeviceInstanceID(index);
++        auto* pad = SDL_GameControllerFromInstanceID(id);
++        if (pad != nullptr && SDL_GameControllerGetAttached(pad)) attached.insert(id);
++    }
++    // Detached devices no longer appear in SDL enumeration. Their cached IDs
++    // must be removed before registering a returning device's serial.
++    controller_identities.retain_connected(attached);
++    const char* serial = SDL_GameControllerGetSerial(controller);
++    char model[33];
++    SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(controller)), model, sizeof(model));
++    controller_identities.connect(SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)),
++        model, serial ? serial : "");
++}
++
++void players::restore_controllers() {
++    // Manual assignment takes priority; cancellation leaves reservations intact.
++    if (PlayerState.is_assigning) return;
++    bool changed = false;
++    for (size_t slot = 0; slot < PlayerState.max_players; ++slot) {
++        auto& player = PlayerState.players[slot];
++        auto& reservation = PlayerState.reservations[slot];
++        if (!reservation.disconnected || player.controller != nullptr || player.keyboard_enabled) continue;
++        const auto id = controller_identities.find(reservation.identity);
++        if (id < 0) continue;
++        auto* controller = recompinput::get_controller_from_joystick_id(id);
++        if (controller == nullptr || !SDL_GameControllerGetAttached(controller)) continue;
++        bool already_assigned = false;
++        for (const auto& other : PlayerState.players)
++            if (other.controller == controller) already_assigned = true;
++        if (already_assigned) continue;
++        player.controller = controller;
++        player.controller_id = id;
++        reservation.disconnected = false;
++        changed = true;
++        // The slot's profile selection survives; no new assignment or compaction.
++    }
++    if (changed && recompui::controls_page != nullptr) recompui::controls_page->force_update();
++}
++
++bool players::is_controller_disconnected(int player_index) {
++    return player_index >= 0 && player_index < max_num_players_supported &&
++        PlayerState.reservations[player_index].disconnected;
+ }
+ 
+ bool players::is_single_player_mode() {
+@@ -188,9 +254,13 @@ void playerassignment::commit_player_assignment() {
+     stop_and_close_modal();
+ 
+     PlayerState.players = PlayerState.temp_players;
++    // A confirmed manual assignment supersedes every previous reservation,
++    // including vacant slots and controllers replaced by a keyboard.
++    PlayerState.reservations = {};
+     for (int i = 0; i < players::get_number_of_assigned_players(); i++) {
+         Player &player = PlayerState.players[i];
+         if (player.controller != nullptr) {
++            PlayerState.reservations[i].identity = controller_identities.identity_for(player.controller_id);
+             int profile = profiles::get_input_profile_for_player(i, InputDevice::Controller);
+             if (profile < 0) {
+                 // A slot has its own editable profile, even for identical pads
+diff --git a/recompui/src/composites/ui_player_card.cpp b/recompui/src/composites/ui_player_card.cpp
+index 1237149..347b031 100644
+--- a/recompui/src/composites/ui_player_card.cpp
++++ b/recompui/src/composites/ui_player_card.cpp
+@@ -79,6 +79,10 @@ PlayerCard::PlayerCard(
+         // Assignment owns profile creation. Rendering vacant slots must not
+         // seed keyboard defaults before we know whether the keyboard is shared.
+         bool player_is_assigned = recompinput::players::get_player_is_assigned(player_index, is_assignment_card);
++        if (!player_is_assigned && recompinput::players::is_controller_disconnected(player_index)) {
++            context.create_element<Label>(this,
++                "Controller disconnected. If it does not return, choose Assign players.", LabelStyle::Small);
++        }
+         int device_profile_index = player_is_assigned ? cur_profile : -1;
+ 
+         if (device_profile_index >= 0) {
