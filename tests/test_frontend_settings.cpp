@@ -1,4 +1,5 @@
 #include "aero_config.h"
+#include "aero_cheats.h"
 #include "aero_region.h"
 #include "aero_gyro_sdl.h"
 #include "recompui/recompui.h"
@@ -131,6 +132,9 @@ int main(int argc, char** argv) {
         const auto path = aero::config::app_config_dir();
         std::filesystem::create_directories(path);
         recomp::register_config_path(path);
+        // Session-only cheats must ignore even a stale hand-written file.
+        { std::ofstream file(path / "cheats.json");
+          file << R"({"infinite_damage":true,"always_first_position":true})"; }
         // draw_distance_scale: 0 seeds the first-open scenario: Unlimited is
         // engaged from disk, so the multiplier must arrive disabled.
         const nlohmann::json initial = {
@@ -159,6 +163,25 @@ int main(int argc, char** argv) {
         // every frame).
         flush();
         auto& graphics = recompui::config::get_graphics_config();
+        auto& cheats = recompui::config::get_config("cheats");
+        require(cheats.external_storage && !cheats.requires_confirmation,
+                "cheats must be immediate and session-only");
+        std::filesystem::remove(path / "cheats.json");
+        for (const auto& entry : aero::cheats::catalog) {
+            require(!aero::cheats::enabled(entry.cheat) &&
+                    !std::get<bool>(cheats.get_option_value(entry.id)),
+                    "cheat was restored on startup");
+            cheats.set_option_value(entry.id, true);
+            require(aero::cheats::enabled(entry.cheat), "cheat did not enable immediately");
+            require(!cheats.is_dirty(), "cheat requires Apply");
+            cheats.set_option_value(entry.id, false);
+            require(!aero::cheats::enabled(entry.cheat), "cheat did not disable immediately");
+            aero::cheats::set_enabled(entry.cheat, true);
+            aero::menu::refresh_settings();
+            require(std::get<bool>(cheats.get_option_value(entry.id)), "cheat refresh lost live flag");
+            cheats.set_option_value(entry.id, false);
+        }
+        require(!std::filesystem::exists(path / "cheats.json"), "cheats unexpectedly persisted");
         auto& rumble = recompui::config::get_config("rumble");
         const auto env_off = [](const char* name) {
             const char* value = std::getenv(name);
@@ -531,6 +554,7 @@ int main(int argc, char** argv) {
         // Drain the writer before IsolatedConfig tears the directory down.
         aero::config::flush_config_writes();
         std::cout << "Frontend settings integration passed\n";
+        require(!std::filesystem::exists(path / "cheats.json"), "later settings writes persisted cheats");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

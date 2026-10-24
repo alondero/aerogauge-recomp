@@ -234,5 +234,17 @@ text = "extern void aero_haptics_race_tick(uint8_t*, recomp_context*); aero_hapt
 
 
 [[patches.hook]]
+func = "jp_func_80058308"
+before_vram = 0x80058D30
+text = "extern void aero_cheat_damage(uint8_t*, recomp_context*); aero_cheat_damage(rdram, ctx);"
+
+
+[[patches.hook]]
+func = "jp_func_8001D720"
+before_vram = 0x8001D900
+text = "extern void aero_cheat_standings(uint8_t*, recomp_context*); aero_cheat_standings(rdram, ctx);"
+
+
+[[patches.hook]]
 func = "jp_func_800165FC"
 text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"

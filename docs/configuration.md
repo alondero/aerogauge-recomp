@@ -12,6 +12,9 @@ Controls page first saves its bindings. The mod manager creates `mods.json` and
 - mod_config/ stores per-package settings.
 - mods/ contains installed packages.
 
+The [Cheats](cheats.md) page is session-only. Both toggles start off on each
+application launch; no cheats.json is loaded or written.
+
 The files live in the application directory:
 
 | Host | Directory |

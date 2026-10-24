@@ -34,6 +34,7 @@ The shared frontend has these pages:
 | --- | --- | --- |
 | Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
+| Cheats | Player 1 Infinite Damage and Always First Position | Immediate, session-only toggles. Reset on application launch; no cheats.json. See [Cheats](cheats.md). |
 | Controls | Assign up to two players and edit each player's keyboard or controller profile for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
 | Rumble | Independent overall strength and collision/Turbo enable and strength controls for each player | Changes apply immediately; the port saves them in `enhancements.json`. Global rumble launch gates disable the affected controls without replacing saved preferences. |
 | Mods | Install and manage AeroGauge code packages and RT64 texture packs | The runtime stores package enablement and order in `mods.json`; code mods load at game start, while texture packs can be toggled and reordered during play. |
@@ -77,7 +78,8 @@ the JSON files and the live settings snapshot. aero_menu::update drains host
 actions on the SDL main thread.
 
 The frontend callbacks must not write JSON, change the SDL window, or call game
-code directly. They capture values and queue a main-thread action. The render
+code directly. Persistent settings capture values and queue a main-thread action;
+session-only cheats publish atomic flags directly, without guest memory or I/O. The render
 callback and the menu share a lock in the current integration. Running a
 blocking action while that lock is held can block rendering or deadlock.
 

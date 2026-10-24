@@ -1,5 +1,6 @@
 #include "aero_frontend_settings.h"
 #include "aero_config.h"
+#include "aero_cheats.h"
 #include "aero_menu.h"
 #include "aero_mods.h"
 #include "aero_region.h"
@@ -103,6 +104,13 @@ void seed_enhancements() {
     // The slider's schema minimum is 1, so never seed the internal 0 sentinel
     // into it; while Unlimited is engaged the slider shows the restore default.
     sync(page, "draw_distance", unlimited ? 100.0 : double(aero::config::draw_distance_scale()));
+    page.revert_temp_config();
+}
+
+void seed_cheats() {
+    auto& page = recompui::config::get_config("cheats");
+    for (const auto& entry : aero::cheats::catalog)
+        sync(page, entry.id, aero::cheats::enabled(entry.cheat));
     page.revert_temp_config();
 }
 
@@ -381,6 +389,7 @@ void refresh_settings() {
     auto& enhancements = recompui::config::get_config("enhancements");
     if (!graphics.is_dirty()) seed_graphics();
     if (!enhancements.is_dirty()) seed_enhancements();
+    if (!recompui::config::get_config("cheats").is_dirty()) seed_cheats();
     if (!recompui::config::get_config("debug").is_dirty()) seed_debug();
     if (!recompui::config::get_config("rumble").is_dirty()) seed_rumble();
     refresh_motion_settings();
@@ -545,6 +554,19 @@ void create_settings() {
             if (context == OptionChangeContext::Permanent)
                 enqueue([scale = float(std::get<double>(value))] { aero::config::set_draw_distance_scale(scale); });
         });
+
+    auto& cheats = settings::create_config_tab("Cheats", "cheats", false);
+    cheats.external_storage = true; // Session-only: never load or write cheats.json.
+    cheats.set_load_callback(seed_cheats);
+    for (const auto& entry : aero::cheats::catalog) {
+        cheats.add_bool_option(entry.id, entry.name, entry.description,
+                               aero::cheats::enabled(entry.cheat));
+        cheats.add_option_change_callback(entry.id,
+            [cheat = entry.cheat](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+                if (context == OptionChangeContext::Permanent)
+                    aero::cheats::set_enabled(cheat, std::get<bool>(value));
+            });
+    }
 
     auto& motion = settings::create_config_tab("Motion", "motion", false);
     motion.external_storage = true;

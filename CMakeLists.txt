@@ -188,6 +188,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/main.cpp
         src/aero_gyro_sdl.cpp # SDL motion sampling, per-source calibration and host steering
         src/aero_haptics.cpp   # race-event feedback and motor callback publisher
+        src/aero_cheats.cpp
+        src/aero_cheats_runtime.cpp # game-thread damage and standings hooks
         src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
         src/aero_startup.cpp   # desktop startup decision: game by default, AERO_LAUNCHER=1 for the launcher
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
@@ -515,6 +517,34 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_executable(test_turbo_boost tests/test_turbo_boost.cpp src/aero_turbo_boost.c)
     target_include_directories(test_turbo_boost PRIVATE ${N64MR}/N64Recomp/include)
     add_test(NAME turbo_boost_gate COMMAND test_turbo_boost)
+    if(TARGET RecompiledFuncs)
+        foreach(region us jp)
+            if(region STREQUAL "jp")
+                if(NOT TARGET RecompiledFuncsJP)
+                    continue()
+                endif()
+                set(CHEAT_INPUT_DIR RecompiledFuncsJP)
+                set(CHEAT_INPUT_SOURCES ${JP_FUNC_SOURCES})
+            else()
+                set(CHEAT_INPUT_DIR RecompiledFuncs)
+                set(CHEAT_INPUT_SOURCES ${FUNC_C_SOURCES})
+            endif()
+            set(CHEAT_TEST_FUNCS ${CMAKE_CURRENT_BINARY_DIR}/cheat_test_${region}.c)
+            add_custom_command(OUTPUT ${CHEAT_TEST_FUNCS}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_cheat_test.py
+                    ${CMAKE_CURRENT_SOURCE_DIR}/${CHEAT_INPUT_DIR} ${CHEAT_TEST_FUNCS} ${region}
+                DEPENDS tests/extract_cheat_test.py ${CHEAT_INPUT_SOURCES} VERBATIM)
+            add_executable(test_cheats_${region} tests/test_cheats.cpp
+                src/aero_cheats.cpp src/aero_cheats_runtime.cpp ${CHEAT_TEST_FUNCS})
+            target_include_directories(test_cheats_${region} PRIVATE src ${N64MR}/N64Recomp/include)
+            target_compile_definitions(test_cheats_${region} PRIVATE AERO_JAPAN_SUPPORT)
+            if(region STREQUAL "jp")
+                target_compile_definitions(test_cheats_${region} PRIVATE TEST_JP_ROM)
+            endif()
+            target_compile_options(test_cheats_${region} PRIVATE -fno-strict-aliasing)
+            add_test(NAME cheats_${region} COMMAND test_cheats_${region})
+        endforeach()
+    endif()
     add_executable(test_multiplayer_assists tests/test_multiplayer_assists.cpp
         src/aero_turbo_boost.c src/aero_haptics.cpp)
     target_include_directories(test_multiplayer_assists PRIVATE src ${N64MR}/N64Recomp/include)

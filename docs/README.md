@@ -25,6 +25,8 @@ Developers need clear build steps, evidence, and ownership.
   change a file by hand. The normal settings screen is the preferred path.
 - [Modding](modding.md) explains installing packages and the experimental
   code-mod and texture-pack support.
+- [Cheats](cheats.md) covers the session-only damage and standings toggles,
+  their ROM hooks, and verification limits.
 - [Controllers and accessories](controllers.md) explains input, Controller
   Pak storage, and rumble.
 
