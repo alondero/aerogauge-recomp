@@ -52,6 +52,7 @@ contexts.
 | [0027](0027-recompfrontend-stale-focus-recovery.patch) | RecompFrontend | Recover directional navigation when the focused element is no longer present in its parent's rebuilt visible navigation list. |
 | [0028](0028-recompfrontend-navigation-target-lifetime.patch) | RecompFrontend | Invalidate navigation caches on child removal, rebuild focused containers, retain focusable empty containers, and preserve the nearest-candidate search with a single-item wrap fallback. General frontend correctness fix; candidate for upstream RecompFrontend. |
 | [0029](0029-recompfrontend-multiplayer-profiles.patch) | RecompFrontend | Legacy fallback before assignment, isolated and persisted player profiles, bounded assignment, and clearing detached references. Candidate for upstream RecompFrontend. |
+| [0030](0030-recompfrontend-controller-reconnect.patch) | RecompFrontend | Process-local slot restoration using SDL serial plus model identity, duplicate-identity rejection, and disconnected-player guidance. Candidate for upstream RecompFrontend. |
 | [0023](0023-rt64-adreno-endian-swap.patch) | RT64 | Spell the 16-bit byte swap with XOR instead of OR. The Adreno system Vulkan driver returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for any compute shader containing the OR form, which previously left a null pipeline handle that crashed `vkCmdBindPipeline`. The masked fields are disjoint, so the result is identical on every driver. |
 
 Patch [0029](0029-recompfrontend-multiplayer-profiles.patch) enables the port's
@@ -64,6 +65,16 @@ are cleared without compacting slots. Compared with the pinned RecompFrontend
 b1a1477, this adds behavior missing from its existing assignment/profile APIs.
 These are reusable frontend changes; the two-player limit, responsive virtual
 ports, SDL/presentation synchronization, and assist policy stay in AeroGauge.
+
+Patch [0030](0030-recompfrontend-controller-reconnect.patch) caches physical
+identity on SDL registration and reserves committed player slots. It restores
+only a unique serial/model match, preserves selected profiles, and leaves
+missing or ambiguous identities for manual assignment. Reservations are never
+persisted. Compared with pinned RecompFrontend b1a1477, this adds reconnect
+behavior to the existing assignment API. Upstream HEAD 2ddbfc8 (checked for this
+change) still has no physical-slot restoration on controller removal or addition.
+The port runs cleanup and restoration under its existing presentation lock,
+before input sampling and rumble routing; SDL lifecycle ownership stays there.
 
 ## Application order
 
