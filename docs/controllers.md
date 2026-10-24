@@ -61,6 +61,57 @@ runtime, so a full-deflection stick arrives at the translated game as +-80.
 Any other divisor shrinks the whole analog range that the game's steering and
 its own menu thresholds are calibrated against, with no error and no log line.
 
+## Optional gyro steering
+
+Open Settings > Motion for each player's default-off Gyro steering, sensitivity,
+dead zone, and Calibrate / recenter action. Android phones and tablets need both
+a gyroscope and accelerometer exposed by SDL. Player 1 can use the device's
+motion sensors; Player 2 needs an individually assigned controller with its own
+gyro and accelerometer. On desktop, assign a sensor-capable controller in
+Controls. Examples include DualShock 4, DualSense, and Switch Pro controllers
+when the active SDL driver exposes both sensors; support depends on the driver
+and connection mode. An ordinary XInput controller does not expose these
+sensors. Physical device combinations still require the acceptance checks below.
+
+Controller capability is detected separately from active sensor reporting.
+RecompFrontend opens controllers and enables their sensors on connection; when
+gyro steering is enabled the port also checks reporting and activates either
+sensor if needed. Activation failures leave steering neutral. Switching gyro
+steering off preserves sensor reporting shared with the frontend.
+
+1. Enable the player's Gyro steering option.
+2. Hold the device or controller raised like a steering wheel, at a comfortable
+   resting angle. Keep it raised at least 30 degrees above flat.
+3. Select Calibrate / recenter and hold still for half a second. The Gyro
+   steering description reports progress and when calibration is ready.
+4. Tilt left/right like a steering wheel. Return to the calibrated resting angle
+   to steer straight. Sensitivity 1 reaches full steering at 30 degrees from
+   neutral, sensitivity 2 at 15 degrees. The default 2-degree dead zone ignores
+   small movements; sensitivity ranges from 0.25 to 4 and dead zone from 0 to 5.
+5. Repeat Calibrate / recenter whenever the resting angle needs changing.
+
+Calibration measures gyro bias and the neutral angle; gravity corrects gradual
+integration drift. Movement during calibration restarts its stationary interval.
+Calibration is session-only: recalibrate after restart, background/resume,
+display rotation, changing the sensor source, or a sensor interruption longer
+than 250 ms. Android screen rotation follows the actual display rotation,
+including landscape-native tablets. Holding the device flat prevents reliable
+gravity-based steering and calibration will wait until it is raised.
+
+Manual keyboard, gamepad, or touch horizontal steering takes priority over gyro.
+Motion only changes the horizontal stick axis; accelerator, brake, vertical
+input, drift, and Easy Turbo keep their existing controls. Opening settings
+suppresses all gameplay motion while calibration can still run. Without usable
+sensors, gyro controls are disabled and existing bindings work as before. An
+enabled option can still be switched off after its sensor disappears.
+
+Before player assignment, a single sensor-capable gamepad can supply Player 1.
+Assign players explicitly if multiple motion controllers are attached. An
+assigned sensor-capable pad takes precedence over Android device motion.
+One physical sensor source never drives both players. Sensor reads and
+calibration run on the SDL main thread under the frontend lock, before the
+existing per-player normalized input snapshot; no guest memory is written.
+
 ## Input ownership
 
 The input path is:

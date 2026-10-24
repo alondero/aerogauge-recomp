@@ -66,6 +66,13 @@ struct AeroSampledInput {
     int8_t stick_y;
 };
 
+// Motion only supplies horizontal steering when keyboard/gamepad/touch steering
+// is neutral. Buttons and the vertical axis (including Turbo/drift) are retained.
+static inline AeroSampledInput aero_merge_gyro(AeroSampledInput input, float steering) {
+    if (input.stick_x == 0) input.stick_x = aero_normalized_stick_to_n64(steering);
+    return input;
+}
+
 // Merge normalized frontend axes with the already-calibrated Android touch axes before the
 // snapshot crosses to the game thread. Touch only supplies an axis when the frontend has none.
 static inline AeroSampledInput aero_sample_input(uint16_t frontend_buttons,

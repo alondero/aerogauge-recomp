@@ -7,9 +7,9 @@ checks, the shared patch inventory and application tests, generated-file guard
 and consistency tests, Android build-script checks, and host-test registration
 checks. These checks also run for changes confined to tests or build scripts.
 
-The Linux and Windows host jobs build five existing tests without ROMs,
-submodules, SDL, or a renderer: full_track_policy, hud_shift_scale, input_cadence,
-startup_mode, and user_data_dir. Their target definitions are shared with the
+The Linux and Windows host jobs build six tests without ROMs,
+submodules, SDL, or a renderer: full_track_policy, gyro_steering, hud_shift_scale,
+input_cadence, startup_mode, and user_data_dir. Their target definitions are shared with the
 full build in cmake/HostTests.cmake. To run this tier locally:
 
 ~~~text
@@ -89,6 +89,44 @@ the missing behavior works. Record the skip reason in the issue or pull
 request that owns the change.
 
 ## Multiplayer checks
+
+`gyro_steering` is a dependency-free synthetic sensor test for neutral and gyro
+bias calibration, sensitivity, dead zone, return to center, recentering, invalid
+and repeated timestamps, long sampling gaps, invalid readings, Android rotation
+math, player isolation, and manual keyboard/gamepad/touch priority. Its sensor
+axes and units follow SDL's sensor contract. `frontend_settings` and its Japanese
+variant check unavailable-sensor controls, main-thread preference updates,
+per-player persistence/reload, the recenter action, and Easy Turbo independence.
+`gyro_sdl_bridge` sends synthetic SDL sensor events through the real host bridge
+with fake device discovery/assignment. It checks zero hardware timestamps,
+independent simultaneous turns, disabling one player, background/resume,
+reassignment, duplicate sources, stale delivery, and disconnect. It needs SDL
+and frontend headers but no SDL library or driver. Its simulated controllers
+start with reporting disabled and emit events only after both sensors have
+been enabled. Capability discovery, successful/failed activation, reuse of
+already enabled sensors, and settings-only schema synchronization are checked
+separately. Rotation expectations use fixed physical gravity vectors matching
+SDL's Android accelerometer remap, plus neutral and left/right steering checks.
+These checks require no physical motion sensor and cannot establish driver
+behavior or steering feel.
+
+Physical gyro acceptance (record device, driver, connection mode, and outcomes):
+
+- On an Android phone and a landscape-native tablet, calibrate while raised,
+  verify neutral and both steering directions, vary sensitivity/dead zone,
+  return to center, and recenter at a different resting angle.
+- Rotate between landscape orientations, background/resume, open/close the
+  Android action sheet, and interrupt sensor delivery. Steering must go neutral
+  until fresh calibration; discarded background samples must not create a turn.
+- Repeat with an assigned SDL motion gamepad. Disconnect/reconnect and reassign
+  it between players. Calibrate each source independently in split screen; tilting
+  one controller must not steer the other player. Android device motion must
+  never steer Player 2.
+- Verify keyboard, ordinary gamepad and touch overrides, settings capture, and
+  Easy Turbo with gyro enabled and disabled. Check a host without sensors keeps
+  ordinary bindings and disables motion activation.
+
+These physical checks remain required before claiming device validation.
 
 frontend_settings and frontend_settings_jp include SDL virtual gamepad checks
 for assignment order, independent bindings on identical pads, stick isolation,
@@ -204,6 +242,8 @@ The current CMake file registers these tests:
 | controller_accessories | Host | No ROM |
 | input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
 | input_cadence | Host | 250 Hz SDL-bridge deadline and stall recovery; no ROM or SDL |
+| gyro_steering | Host | Synthetic calibrated motion steering and manual input; no ROM or SDL |
+| gyro_sdl_bridge | Host | Real SDL bridge with synthetic events/devices; SDL and frontend headers, no ROM or driver |
 | eeprom_exit_flush | Runtime host | Built N64ModernRuntime |
 | rsp_task_submission | Runtime host | Patched N64ModernRuntime; no ROM or audio device |
 | racer_shadow_depth | Host | Synthetic RDRAM and runtime OSTask type; no ROM or renderer |

@@ -79,6 +79,7 @@ aero::haptics::Settings clamp_rumble(aero::haptics::Settings settings) {
     settings.turbo_strength = std::clamp(settings.turbo_strength, 0, 100);
     return settings;
 }
+std::array<aero::gyro::Settings, 2> g_gyro{};
 
 // The menu queues config operations onto the main SDL thread. This snapshot
 // avoids reading ultramodern's reference-returning getter while RT64 applies a
@@ -260,6 +261,7 @@ std::filesystem::path enhancements_json_path() {
 }
 
 ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_turbo, bool& player2) {
+    g_gyro = {};
     std::ifstream in{path};
     if (!in.good()) return ReadResult::Missing;
     try {
@@ -279,6 +281,16 @@ ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_
             from_or_default(*it, "turbo_enabled", settings.turbo_enabled);
             from_or_default(*it, "turbo_strength", settings.turbo_strength);
             settings = clamp_rumble(settings);
+        }
+        for (int player = 0; player < 2; ++player) {
+            const char* key = player == 0 ? "gyro_player1" : "gyro_player2";
+            const auto it = j.find(key);
+            if (it == j.end() || !it->is_object()) continue;
+            auto& settings = g_gyro[player];
+            from_or_default(*it, "enabled", settings.enabled);
+            from_or_default(*it, "sensitivity", settings.sensitivity);
+            from_or_default(*it, "dead_zone", settings.dead_zone);
+            settings = aero::gyro::sanitize(settings);
         }
         return ReadResult::Ok;
     } catch (const nlohmann::json::exception& e) {
@@ -558,6 +570,11 @@ nlohmann::json enhancements_json(bool easy_turbo) {
             {"collision_strength", settings.collision_strength},
             {"turbo_enabled", settings.turbo_enabled},
             {"turbo_strength", settings.turbo_strength}};
+    }
+    for (int player = 0; player < 2; ++player) {
+        const auto& settings = g_gyro[player];
+        result[player == 0 ? "gyro_player1" : "gyro_player2"] = {
+            {"enabled", settings.enabled}, {"sensitivity", settings.sensitivity}, {"dead_zone", settings.dead_zone}};
     }
     return result;
 }
@@ -891,6 +908,16 @@ bool easy_turbo_boost_player2() {
     }();
     if (env_override >= 0) return env_override != 0;
     return g_easy_turbo_boost_player2.load();
+}
+
+gyro::Settings gyro_settings(int player) {
+    return player >= 0 && player < 2 ? g_gyro[player] : gyro::Settings{};
+}
+
+void set_gyro_settings(int player, gyro::Settings settings) {
+    if (player < 0 || player >= 2) return;
+    g_gyro[player] = gyro::sanitize(settings);
+    save_enhancements(g_easy_turbo_boost.load());
 }
 
 void set_easy_turbo_boost_player2(bool enabled) {

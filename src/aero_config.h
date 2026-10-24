@@ -13,6 +13,7 @@
 
 #include "ultramodern/config.hpp"
 #include "aero_haptics.h"
+#include "aero_gyro.h"
 
 namespace aero {
 namespace config {
@@ -139,6 +140,11 @@ void set_easy_turbo_boost_player2(bool enabled);
 // rumble switches remain launch-time gates and never replace these saved values.
 haptics::Settings rumble_settings(int player);
 void set_rumble_settings(int player, haptics::Settings settings);
+
+// Per-player motion preferences in enhancements.json. SDL/main thread only,
+// serialized with the frontend lock; sensor calibration is never persisted.
+gyro::Settings gyro_settings(int player);
+void set_gyro_settings(int player, gyro::Settings settings);
 
 // C-linkage bridge so the plain-C hook (src/aero_turbo_boost.c) can read the
 // toggle without dragging the C++ config machinery into its TU.

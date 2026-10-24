@@ -186,6 +186,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     # can succeed before RSPRecomp runs.
     set(AERO_SOURCES
         src/main.cpp
+        src/aero_gyro_sdl.cpp # SDL motion sampling, per-source calibration and host steering
         src/aero_haptics.cpp   # race-event feedback and motor callback publisher
         src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
         src/aero_startup.cpp   # desktop startup decision: game by default, AERO_LAUNCHER=1 for the launcher

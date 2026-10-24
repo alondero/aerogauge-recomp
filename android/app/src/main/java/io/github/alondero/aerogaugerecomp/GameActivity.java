@@ -1,6 +1,7 @@
 package io.github.alondero.aerogaugerecomp;
 
 import android.app.AlertDialog;
+import android.hardware.display.DisplayManager;
 import android.os.Bundle;
 import android.os.Looper;
 import android.system.Os;
@@ -16,9 +17,20 @@ public final class GameActivity extends SDLActivity {
     static native boolean nativeMenuOpen();
     static native void nativeBackground(boolean background);
     static native void nativeRequestQuit();
+    static native void nativeMotionRotation(int rotation);
     private TouchControls controls;
     private boolean librariesReady;
     private boolean resumed;
+    private DisplayManager displayManager;
+    private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
+        @Override public void onDisplayAdded(int id) { }
+        @Override public void onDisplayRemoved(int id) { }
+        @Override public void onDisplayChanged(int id) { publishMotionRotation(); }
+    };
+
+    private void publishMotionRotation() {
+        if (librariesReady) nativeMotionRotation(getWindowManager().getDefaultDisplay().getRotation());
+    }
 
     @Override protected String[] getLibraries() { return new String[]{"c++_shared", "SDL2", "main"}; }
     @Override public void loadLibraries() {
@@ -42,6 +54,11 @@ public final class GameActivity extends SDLActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (!librariesReady) { finish(); return; }
+        // A 180-degree landscape flip need not change Configuration.orientation.
+        // Observe display changes as well as resume/configuration callbacks.
+        displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+        displayManager.registerDisplayListener(displayListener, new android.os.Handler(getMainLooper()));
+        publishMotionRotation();
         if (mLayout == null) return;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         controls = new TouchControls(this, getSharedPreferences("player", 0).getInt("touch", 0));
@@ -58,10 +75,17 @@ public final class GameActivity extends SDLActivity {
         super.onWindowFocusChanged(focus);
         if (focus) immersive();
     }
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        publishMotionRotation();
+    }
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        if (librariesReady) nativeBackground(false);
+        if (librariesReady) {
+            publishMotionRotation();
+            nativeBackground(false);
+        }
         immersive();
     }
     @Override protected void onPause() {
@@ -69,6 +93,10 @@ public final class GameActivity extends SDLActivity {
         if (controls != null) controls.release();
         if (librariesReady) nativeBackground(true);
         super.onPause();
+    }
+    @Override protected void onDestroy() {
+        if (displayManager != null) displayManager.unregisterDisplayListener(displayListener);
+        super.onDestroy();
     }
     @Override public void onBackPressed() { showActions(); }
     public void showActions() {
