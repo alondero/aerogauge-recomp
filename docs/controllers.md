@@ -28,8 +28,27 @@ Each player starts with its own controller profile copied from the existing
 single-player bindings. A sole keyboard on either port inherits existing keys;
 a second shared-keyboard profile starts empty. Profile mappings and selections are saved in
 controls.json when leaving the Controls page. Device assignments last for the
-current process only. Reassign after restart or reconnecting; unplugging leaves
-that slot vacant and does not give its inputs or rumble to another player.
+current process only. Reassign after restarting the application. Unplugging
+leaves that slot neutral and does not give its inputs or rumble to another player.
+
+On Windows, Linux, and Android, a returning SDL controller automatically resumes
+its assigned slot and selected profile when its driver supplies the same nonempty
+serial number and model GUID. Serial availability depends on the controller,
+connection type, and SDL driver; this is conditional support on all three hosts.
+Two identical models can restore independently when their serials differ.
+Device indices, SDL instance IDs, paths, and model GUIDs alone are never used to
+guess which physical controller returned. Changing transport (for example, USB
+to Bluetooth) may change the identity and require manual assignment.
+
+If the serial is missing or two connected devices have reported the same
+identity, use Controls > Assign players. The disconnected player's card asks
+you to do this if the controller does not return. A duplicate identity disables
+automatic restoration for that identity until the application exits, even if
+one duplicate is unplugged. Manual assignment always remains available and
+replaces the previous reservations. Restoration waits while assignment is in
+progress; cancelling assignment retains the old reservations. Keyboard,
+shared-keyboard, and Android Player 1 touch routing are unchanged. Physical
+reservations are not written to controls.json or restored across launches.
 
 The gamepad path uses SDL's standard game-controller mapping. A connected
 controller without a rumble motor can still provide input.
@@ -59,6 +78,10 @@ profile mapping. The SDL thread publishes a coherent input snapshot for each
 player; the game thread reads these through the runtime callback. The port
 serializes SDL sampling, assignment changes, and controller cleanup with the
 frontend presentation lock so a device cannot be closed during sampling.
+Controller identities are captured on SDL registration and copied at assignment;
+restoration runs after the complete event batch and detached-handle cleanup,
+before polling and publishing the next snapshot. Old rumble state is cleared
+before a returning controller becomes the slot's new rumble sink.
 A menu event is not proof that the same input reached the race.
 
 The SDL bridge limits event pumping, profile sampling, controller maintenance

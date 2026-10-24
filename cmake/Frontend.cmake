@@ -54,6 +54,9 @@ target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker
 # (Threads::Threads is resolved once in the top-level CMakeLists.txt).
 target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads)
+# SDL virtual pads have no serial field. Wrap only the serial query in this
+# test executable so reconnect checks can supply deterministic driver identities.
+target_link_options(test_frontend_settings PRIVATE "LINKER:--wrap=SDL_GameControllerGetSerial")
 add_executable(test_frontend_navigation tests/test_frontend_navigation.cpp)
 target_include_directories(test_frontend_navigation PRIVATE ${SDL2_INCLUDE_DIRS})
 target_link_libraries(test_frontend_navigation PRIVATE recompui recompinput librecomp ultramodern rt64)

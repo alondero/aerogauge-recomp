@@ -343,6 +343,7 @@ static void refresh_menu_toggle_bindings();
 static void developer_input_tick();
 static void release_removed_controllers();
 static void release_all_controller_handles();
+static void close_detached_rumble_controller();
 static void refresh_rumble_controller();
 static void rumble_apply();  // rumble-pak sink; defined in the input section below
 static int sdl_event_filter(void*, SDL_Event*);
@@ -475,6 +476,9 @@ static void update_gfx_stub(void* /*gfx_data*/) {
         aero::menu::update();
         aero::menu::run_input_update([] {
             recompinput::handle_events();
+            release_removed_controllers();
+            close_detached_rumble_controller();
+            recompinput::players::restore_controllers();
             refresh_menu_toggle_bindings();
 #if defined(__ANDROID__)
             if (g_android_back_requested.exchange(false, std::memory_order_acq_rel)) {
@@ -502,7 +506,6 @@ static void update_gfx_stub(void* /*gfx_data*/) {
             recompinput::poll_inputs();
             sample_input();
             developer_input_tick();
-            release_removed_controllers();
             refresh_rumble_controller();
             rumble_apply();
         });
@@ -806,7 +809,6 @@ static void close_detached_rumble_controller() {
 }
 
 static void refresh_rumble_controller() {
-    close_detached_rumble_controller();
     std::array<SDL_GameController*, 2> assigned{};
     if (recompinput::players::uses_single_player_input()) {
         for (int i = 0; i < SDL_NumJoysticks(); ++i) {

@@ -93,7 +93,14 @@ request that owns the change.
 frontend_settings and frontend_settings_jp include SDL virtual gamepad checks
 for assignment order, independent bindings on identical pads, stick isolation,
 saved profile selections, keyboard/gamepad and shared-keyboard assignment,
-reset behavior, and vacant disconnected slots. They construct the real Controls
+reset behavior, and vacant disconnected slots. Reconnect checks exercise new
+SDL instance IDs, reversed enumeration of identical models with distinct serials,
+missing and duplicate serials, missed removal events, unchanged held P2 input
+and selected profiles, and manual assignment cancellation and replacement.
+The test executable wraps only SDL_GameControllerGetSerial to supply deterministic
+serials for SDL virtual pads, whose API has no serial field. This tests the
+production registration and restoration code without proving any host driver's
+physical identity stability. They construct the real Controls
 player cards before assignment and verify the second shared-keyboard profile
 starts empty. On Windows, the test closes and detaches its virtual pads but
 retains SDL's global driver state until process exit: the pinned SDL 2.26.3 can
@@ -107,8 +114,13 @@ run the ROM's own pad reader to verify neutral ports preserve player order.
 Physical acceptance: assign two gamepads, edit each profile, select 2 Players,
 and race in split screen. Check each player's steering, Turbo and launch assist
 with the other assist disabled, collision rumble, pause/settings focus, and
-disconnect/reassign. Repeat with keyboard/gamepad in both player orders, restart
-to check saved bindings, and check Android Player 1 touch with a Player 2 pad.
+disconnect/reconnect P1 while P2 holds controls and produces rumble. P1 must stay
+neutral until its own pad returns; P2 must retain its port and rumble sink.
+Repeat with two identical pads, reverse reconnect order, and use a pad or driver
+without a serial to check the manual Assign players fallback. Check manual
+reassignment clears the old reservation and rumble. Repeat with keyboard/gamepad
+in both player orders and shared keyboards, restart to check saved bindings
+and required fresh assignment, and check Android P1 touch with a P2 pad.
 Virtual pads and synthetic memory do not establish physical rumble or visuals.
 
 ## CTest
