@@ -47,8 +47,15 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 # This host-only test exercises the settings adapter without a ROM or generated
 # game output.
 if(NOT ANDROID)
+add_executable(test_gyro_sdl tests/test_gyro_sdl.cpp src/aero_gyro_sdl.cpp)
+target_include_directories(test_gyro_sdl PRIVATE src ${SDL2_INCLUDE_DIRS}
+    $<TARGET_PROPERTY:recompinput,INTERFACE_INCLUDE_DIRECTORIES>)
+target_compile_definitions(test_gyro_sdl PRIVATE SDL_MAIN_HANDLED)
+target_link_libraries(test_gyro_sdl PRIVATE Threads::Threads)
+add_test(NAME gyro_sdl_bridge COMMAND test_gyro_sdl)
+
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
-    tests/test_multiplayer_input.cpp src/ui/aero_frontend_settings.cpp src/aero_config.cpp)
+    tests/test_multiplayer_input.cpp src/ui/aero_frontend_settings.cpp src/aero_config.cpp src/aero_gyro_sdl.cpp)
 target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
 target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker

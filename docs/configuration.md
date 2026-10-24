@@ -107,6 +107,8 @@ The file contains separate player assist and rumble settings:
 | easy_turbo_boost_player2 | true or false | false | Enables Player 2's Boost Start and R-button Turbo assist |
 | rumble_player1 | object (fields below) | All strengths 100; events enabled | Player 1's feedback preferences |
 | rumble_player2 | object (fields below) | All strengths 100; events enabled | Player 2's feedback preferences |
+| gyro_player1 | object | See below | Player 1's motion steering preferences |
+| gyro_player2 | object | See below | Player 2's independent motion steering preferences |
 
 Each rumble object contains:
 
@@ -126,6 +128,14 @@ saved values. See [Controllers](controllers.md#rumble) for event priority.
 
 The assist preserves the game's own boost timer, heat, and overheat logic. It
 only adds the input path described in the [README](../README.md).
+
+Each gyro object contains `enabled` (boolean, default false), `sensitivity`
+(number 0.25 to 4, default 1), and `dead_zone` (degrees 0 to 5, default 2).
+Missing or invalid keys use defaults; finite out-of-range numbers are clamped.
+Settings > Motion saves these preferences independently of Easy Turbo.
+Calibration and sensor identity are never saved. See
+[gyro steering](controllers.md#optional-gyro-steering) for calibration,
+supported sensor paths, lifecycle behavior, and manual-input priority.
 
 ## controls.json
 

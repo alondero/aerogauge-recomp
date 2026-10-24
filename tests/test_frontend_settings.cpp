@@ -1,5 +1,6 @@
 #include "aero_config.h"
 #include "aero_region.h"
+#include "aero_gyro_sdl.h"
 #include "recompui/recompui.h"
 #include "ui/aero_frontend_settings.h"
 #include "recompui/config.h"
@@ -207,6 +208,38 @@ int main(int argc, char** argv) {
         auto hand_edit = read(path / "graphics.json");
         hand_edit["future_option"] = "preserve me";
         { std::ofstream file(path / "graphics.json"); file << hand_edit; }
+        auto& motion = recompui::config::get_config("motion");
+        require(!aero::config::gyro_settings(0).enabled && !aero::config::gyro_settings(1).enabled,
+                "both players' gyro steering must default off");
+        aero::gyro::update();
+        require(!aero::gyro::available(0) && !aero::gyro::available(1), "sensorless host must report motion unavailable");
+        for (const char* id : {"p1_enabled", "p2_enabled", "p1_calibrate", "p2_calibrate"}) {
+            const auto index = motion.get_config_schema().options_by_id.at(id);
+            require(motion.is_config_option_disabled(index), "unavailable motion controls must be disabled");
+        }
+        motion.update_option_value("p1_sensitivity", 2.0);
+        motion.update_option_value("p1_dead_zone", 3.0);
+        require(aero::config::gyro_settings(0).sensitivity == 1, "motion settings escaped the main-thread queue");
+        flush();
+        require(aero::config::gyro_settings(0).sensitivity == 2 && aero::config::gyro_settings(0).dead_zone == 3,
+                "queued motion edits must merge");
+        require(aero::config::gyro_settings(1).sensitivity == 1, "motion preferences crossed player slots");
+        // Loaded preferences remain editable when a sensor goes away.
+        aero::config::set_gyro_settings(1, {true, 1.5f, 1});
+        aero::menu::refresh_motion_settings();
+        require(!motion.is_config_option_disabled(motion.get_config_schema().options_by_id.at("p2_enabled")),
+                "an unavailable enabled sensor must still be switchable off");
+        motion.update_option_value("p2_enabled", false);
+        motion.update_option_value("p1_calibrate", true);
+        flush();
+        require(!std::get<bool>(motion.get_option_value("p1_calibrate")), "calibration action must reset after selection");
+        require(aero::gyro::steering(0) == 0 && aero::gyro::steering(1) == 0, "unavailable sensors must never steer");
+        aero::config::flush_config_writes();
+        auto saved_motion = read(path / "enhancements.json");
+        require(saved_motion.at("gyro_player1").at("sensitivity") == 2 &&
+                saved_motion.at("gyro_player2").at("enabled") == false, "per-player gyro persistence failed");
+        require(!aero::config::easy_turbo_boost() && !aero::config::easy_turbo_boost_player2(),
+                "motion edits enabled Easy Turbo");
         require(!aero::config::force_full_lod(), "full LOD must default off");
         graphics.set_option_value("force_full_lod", true);
         flush();
@@ -462,6 +495,12 @@ int main(int argc, char** argv) {
                 "preset bypassed disabled MSAA sample count");
         graphics.revert_temp_config();
         graphics.update_enum_option_disabled("msaa_option", uint32_t(Antialiasing::MSAA2X), false);
+        // Startup reload rewrites graphics defaults, so run it after assertions
+        // about preserving keys hand-edited during this session.
+        aero::config::flush_config_writes();
+        aero::config::load_and_apply_graphics();
+        require(aero::config::gyro_settings(0).sensitivity == 2 && aero::config::gyro_settings(1).dead_zone == 1,
+                "motion preferences did not reload or were lost by assist edits");
         // Loading partial or invalid new keys must keep per-field defaults;
         // valid percentages clamp to the advertised range.
         aero::config::flush_config_writes();

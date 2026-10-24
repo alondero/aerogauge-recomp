@@ -25,6 +25,13 @@ The left touch stick steers and navigates game menus. A confirms/accelerates,
 B cancels/brakes, Z drifts, and Start pauses/advances. L, R and the four C
 buttons are also available. Multiple fingers can steer, accelerate and drift
 together. Connect a Bluetooth or USB gamepad to use the desktop mappings.
+Optional tilt steering is available in Settings > Motion when SDL exposes both
+device motion sensors. Enable Player 1 gyro steering, hold the device raised
+like a steering wheel, then select Calibrate / recenter and hold still for half
+a second. Recalibrate after rotating the display or background/resume. Touch
+steering still takes priority. See [gyro steering](controllers.md#optional-gyro-steering)
+for sensitivity, dead zone, controller sources, and fallback behavior.
+
 The launcher offers automatic, always-visible and hidden touch controls.
 
 **Menu** opens Resume, Graphics & enhancements, and Exit to launcher.

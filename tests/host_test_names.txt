@@ -1,4 +1,5 @@
 full_track_policy
+gyro_steering
 hud_shift_scale
 input_cadence
 startup_mode

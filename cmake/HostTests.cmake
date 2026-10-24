@@ -1,4 +1,8 @@
 # Dependency-free tests shared by the full build and AERO_HOST_TESTS_ONLY.
+add_executable(test_gyro tests/test_gyro.cpp)
+target_include_directories(test_gyro PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME gyro_steering COMMAND test_gyro)
+
 add_executable(test_hud_shift_scale tests/test_hud_shift_scale.c)
 target_include_directories(test_hud_shift_scale PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(NOT WIN32)

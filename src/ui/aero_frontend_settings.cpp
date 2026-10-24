@@ -3,6 +3,7 @@
 #include "aero_menu.h"
 #include "aero_mods.h"
 #include "aero_region.h"
+#include "aero_gyro_sdl.h"
 #include "recompui/recompui.h"
 #include "recompui/config.h"
 #include "recompinput/input_mapping.h"
@@ -21,6 +22,7 @@ using recomp::config::OptionChangeContext;
 using namespace ultramodern::renderer;
 GraphicsConfig seeded;
 std::string seeded_pack, seeded_dump;
+bool motion_created = false;
 
 // Common desktop resolutions for the windowed-mode size picker (16:9 plus
 // legacy 16:10/4:3 favourites). The resolved size stays in graphics.json
@@ -381,6 +383,26 @@ void refresh_settings() {
     if (!enhancements.is_dirty()) seed_enhancements();
     if (!recompui::config::get_config("debug").is_dirty()) seed_debug();
     if (!recompui::config::get_config("rumble").is_dirty()) seed_rumble();
+    refresh_motion_settings();
+}
+
+void refresh_motion_settings() {
+    if (!motion_created) return;
+    auto& page = recompui::config::get_config("motion");
+    for (int player = 0; player < 2; ++player) {
+        const std::string prefix = player == 0 ? "p1_" : "p2_";
+        const auto settings = aero::config::gyro_settings(player);
+        sync(page, (prefix + "enabled").c_str(), settings.enabled);
+        sync(page, (prefix + "sensitivity").c_str(), double(settings.sensitivity));
+        sync(page, (prefix + "dead_zone").c_str(), double(settings.dead_zone));
+        const bool available = gyro::available(player);
+        // An unavailable sensor must never trap the user in the enabled state.
+        page.update_option_disabled(prefix + "enabled", !available && !settings.enabled);
+        page.update_option_disabled(prefix + "calibrate", !available || !settings.enabled);
+        const char* description = gyro::description(player);
+        if (page.get_option(prefix + "enabled").description != description)
+            page.update_option_description(prefix + "enabled", description);
+    }
 }
 
 void create_settings() {
@@ -523,6 +545,45 @@ void create_settings() {
             if (context == OptionChangeContext::Permanent)
                 enqueue([scale = float(std::get<double>(value))] { aero::config::set_draw_distance_scale(scale); });
         });
+
+    auto& motion = settings::create_config_tab("Motion", "motion", false);
+    motion.external_storage = true;
+    motion.set_load_callback(refresh_motion_settings);
+    for (int player = 0; player < 2; ++player) {
+        const std::string prefix = player == 0 ? "p1_" : "p2_";
+        const std::string label = player == 0 ? "Player 1: " : "Player 2: ";
+        const auto initial = port::gyro_settings(player);
+        motion.add_bool_option(prefix + "enabled", label + "Gyro steering", gyro::description(player), initial.enabled);
+        motion.add_bool_option(prefix + "calibrate", label + "Calibrate / recenter",
+            "Select once while holding still at your resting angle. Hold raised like a steering wheel for half a second. "
+            "Repeat after restart, resume, rotation, or changing the motion source.", false);
+        motion.add_number_option(prefix + "sensitivity", label + "Sensitivity",
+            "Higher values need less tilt. 1 reaches full steering at 30 degrees; 2 at 15 degrees.",
+            0.25, 4.0, 0.25, 2, false, initial.sensitivity);
+        motion.add_number_option(prefix + "dead_zone", label + "Dead zone (degrees)",
+            "Ignores small movements around the calibrated resting angle.", 0, 5, 0.5, 1, false, initial.dead_zone);
+        for (const std::string field : {"enabled", "sensitivity", "dead_zone"}) {
+            motion.add_option_change_callback(prefix + field,
+                [player, field](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+                    if (context != OptionChangeContext::Permanent) return;
+                    enqueue([player, field, value] {
+                        auto current = port::gyro_settings(player);
+                        if (field == "enabled") current.enabled = std::get<bool>(value);
+                        if (field == "sensitivity") current.sensitivity = float(std::get<double>(value));
+                        if (field == "dead_zone") current.dead_zone = float(std::get<double>(value));
+                        port::set_gyro_settings(player, current);
+                    });
+                });
+        }
+        motion.add_option_change_callback(prefix + "calibrate",
+            [player, id = prefix + "calibrate"](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+                if (context != OptionChangeContext::Permanent || !std::get<bool>(value)) return;
+                enqueue([player] { gyro::calibrate(player); });
+                recompui::config::get_config("motion").update_option_value(id, false);
+            });
+    }
+    motion_created = true;
+    refresh_motion_settings();
 
     // Developer/debug tools get their own tab (moved out of Graphics); created
     // last so it renders as the right-most tab in the settings modal.

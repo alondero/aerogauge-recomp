@@ -2,6 +2,7 @@
 #include "aero_input.h"
 #include "aero_config.h"
 #include "aero_menu.h"
+#include "aero_gyro_sdl.h"
 #include <jni.h>
 #include <SDL_system.h>
 #include <atomic>
@@ -25,6 +26,7 @@ bool background = false;
 
 extern "C" JNIEXPORT void JNICALL
 Java_io_github_alondero_aerogaugerecomp_GameActivity_nativeBackground(JNIEnv*, jclass, jboolean value) {
+    aero::gyro::suspend(value);
     { std::lock_guard lock(lifecycle_mutex); background = value; }
     if (value) touch.store(0);
     foreground.notify_all();

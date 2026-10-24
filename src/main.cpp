@@ -53,6 +53,7 @@
 #include "aero_mods.h"
 #include "aero_menu.h"
 #include "aero_input.h"
+#include "aero_gyro_sdl.h"
 #include "aero_input_cadence.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 #include "recompinput/input_events.h"
@@ -504,6 +505,7 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 boot_summary_and_exit();
             }
             recompinput::poll_inputs();
+            aero::gyro::update();
             sample_input();
             developer_input_tick();
             refresh_rumble_controller();
@@ -574,6 +576,7 @@ static bool is_custom_keyboard_menu_toggle(const SDL_KeyboardEvent& event) {
 }
 
 static int sdl_event_filter(void*, SDL_Event* event) {
+    aero::gyro::notify_event(*event);
 #if defined(__ANDROID__)
     if (event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_TERMINATING) {
         g_android_lifecycle_event.store(event->type, std::memory_order_release);
@@ -688,7 +691,9 @@ static void sample_input() {
 #else
         const auto sampled = aero_sample_input(buttons, normalized_x, normalized_y);
 #endif
-        g_input_snapshot[player].store(aero_input_pack(sampled.buttons, sampled.stick_x, sampled.stick_y),
+        const auto merged = aero::menu::captures_input() ? sampled :
+            aero_merge_gyro(sampled, aero::gyro::steering(player));
+        g_input_snapshot[player].store(aero_input_pack(merged.buttons, merged.stick_x, merged.stick_y),
                                       std::memory_order_relaxed);
     }
 }
@@ -778,6 +783,7 @@ static void release_removed_controllers() {
 }
 
 static void release_all_controller_handles() {
+    aero::gyro::shutdown();
     std::lock_guard lock(g_removed_controller_mutex);
     for (SDL_GameController* controller : g_removed_controllers)
         close_controller_handle_locked(controller);
