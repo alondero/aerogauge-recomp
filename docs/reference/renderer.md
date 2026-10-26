@@ -212,6 +212,15 @@ edge at or above 168 pixels pins right. The centre band stays in its original
 position. The minimap has a separate 16-to-108 pixel box because its moving
 craft marker can cross the normal left threshold.
 
+The POSITION label at `(55,20)..(107,30)` extends past the general left
+threshold. A separate top-strip box pins it left with the rank and competitor
+count. All three retain their native offsets and share RT64's left origin,
+so they stay together at every effective HUD aspect, including Original and
+Clamp16x9 placement. The general left threshold stays at 100 pixels to avoid
+moving unrelated centre elements. The label box allows two pixels of rounding
+slack in each direction. The HUD classification and display-list tests cover
+the label, neighbouring centre elements, and 4:3 through 32:9 placement.
+
 The pass runs only for the race scene once the HUD has reached its stable
 layout: race phase 3 or 7, or countdown phase 2 after countdown step 2. This
 avoids moving the fade, ticker, READY banner, or other transitional rectangles.

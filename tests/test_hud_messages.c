@@ -44,7 +44,62 @@ static void check_origins(gpr start, gpr end, int message_rects) {
     assert(origin == G_EX_ORIGIN_NONE);
 }
 
+static void check_position_group(void) {
+    uint8_t* rdram = ram;
+    const gpr start = (gpr)(int32_t)0x80200000u;
+    const float aspects[] = {4.0f / 3.0f, 16.0f / 10.0f, 16.0f / 9.0f,
+                             21.0f / 9.0f, 32.0f / 9.0f};
+    // func_8001ADC4: rank at (24,16), count at (+42,+16), slash at
+    // (+30,+16), and POSITION at (+31,+4). Keep their native offsets.
+    const int layout[][3] = {{24, 16, 30}, {66, 32, 18},
+                             {54, 32, 12}, {55, 20, 52}};
+    for (unsigned a = 0; a < sizeof(aspects) / sizeof(aspects[0]); ++a) {
+        for (int mode = 0; mode < 3; ++mode) {
+            float ext = mode == 0 ? 0.0f : mode == 1 ? 1.0f :
+                aero_ws_hud_clamp_ext_percentage(aspects[a], 4.0f / 3.0f, 16.0f / 9.0f);
+            test_aspect = aero_ws_hud_effective_rect_aspect(aspects[a], 4.0f / 3.0f, ext);
+            gpr cur = start;
+            MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+            MEM_W(0, (gpr)(int32_t)AERO_SCENE_CUR) = 5;
+            MEM_W(0, (gpr)(int32_t)AERO_SCENE_PHASE) = 3;
+            aero_ws_hud_scan_begin(ram, NULL);
+            for (unsigned i = 0; i < 4; ++i) {
+                rect(&cur, layout[i][0], layout[i][1], layout[i][2]);
+            }
+            MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER) = cur;
+            aero_ws_hud_frame_end(ram, NULL);
+            gpr end = MEM_W(0, (gpr)(int32_t)AERO_HUD_CURSOR_HOLDER);
+            int wide = test_aspect > 4.0f / 3.0f;
+            assert(end == cur + (wide ? 80 : 0)); // one shared LEFT bracket
+            unsigned origin = G_EX_ORIGIN_NONE;
+            unsigned seen = 0;
+            for (gpr p = start; p < end; p += 8) {
+                uint32_t w0 = MEM_W(0, p), w1 = MEM_W(4, p);
+                if (w0 == ((RT64_EXTENDED_OPCODE << 24) | G_EX_SETRECTALIGN_V1)) {
+                    origin = w1 & 0xFFFu;
+                    assert((w1 >> 12) == origin); // both rectangle corners
+                    assert((uint32_t)MEM_W(8, p) == 0); // no pixel correction
+                    assert((uint32_t)MEM_W(12, p) == 0);
+                    p += 8;
+                } else if ((w0 >> 24) == 0xE4) {
+                    assert(seen < 4);
+                    assert(origin == (wide ? G_EX_ORIGIN_LEFT : G_EX_ORIGIN_NONE));
+                    assert(((w1 >> 12) & 0xFFFu) == (unsigned)layout[seen][0] * 4u);
+                    assert((w1 & 0xFFFu) == (unsigned)layout[seen][1] * 4u);
+                    assert(((w0 >> 12) & 0xFFFu) ==
+                           (unsigned)(layout[seen][0] + layout[seen][2]) * 4u);
+                    ++seen;
+                }
+            }
+            assert(seen == 4);
+            assert(origin == G_EX_ORIGIN_NONE);
+        }
+    }
+    test_aspect = 16.0f / 9.0f;
+}
+
 int main(void) {
+    check_position_group();
     uint8_t* rdram = ram;
     const gpr start = (gpr)(int32_t)0x80200000u;
     gpr cur = start;

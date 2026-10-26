@@ -68,6 +68,15 @@ int main(void) {
     // GLPS ladder (20..64, y194..224 -- the bottom-left band): LEFT.
     assert(aero_ws_classify_rect_qp(QP(22), QP(51), QP(197)) == AERO_WS_PIN_LEFT);
     assert(aero_ws_classify_rect_qp(QP(20), QP(64), QP(194)) == AERO_WS_PIN_LEFT);
+    // POSITION (55..107, y20) must travel with the rank and competitor count.
+    // Its right edge exceeds the general LEFT bound; widening that bound would
+    // also move unrelated centre HUD fragments.
+    assert(aero_ws_classify_rect_qp(QP(55), QP(107), QP(20)) == AERO_WS_PIN_LEFT);
+    assert(aero_ws_classify_rect_qp(QP(53), QP(109), QP(18)) == AERO_WS_PIN_LEFT);
+    assert(aero_ws_classify_rect_qp(QP(57), QP(109), QP(22)) == AERO_WS_PIN_LEFT);
+    assert(aero_ws_classify_rect_qp(QP(55), QP(107), QP(200)) == AERO_WS_PIN_NONE);
+    assert(aero_ws_classify_rect_qp(QP(55), QP(107), QP(17)) == AERO_WS_PIN_NONE);
+    assert(aero_ws_classify_rect_qp(QP(55), QP(107), QP(23)) == AERO_WS_PIN_NONE);
     // DAMAGE bar (117..229) and the 71..247 bottom panel straddle centre: never move.
     assert(aero_ws_classify_rect_qp(QP(117), QP(229), QP(216)) == AERO_WS_PIN_NONE);
     assert(aero_ws_classify_rect_qp(QP(71), QP(247), QP(207)) == AERO_WS_PIN_NONE);
