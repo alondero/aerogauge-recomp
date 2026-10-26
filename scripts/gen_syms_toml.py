@@ -557,6 +557,16 @@ text = "extern void aero_cheat_standings(uint8_t*, recomp_context*); aero_cheat_
 func = "func_80015C8C"
 text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"
 
+# Scheduler audio-backlog recovery (src/aero_audio_sched.c). func_80065240 is the
+# stock libultra __scSchedule: it reads doAudio at OSSched+0x280 (0x8006525C), takes
+# the audio list head at +0x264 (0x8006526C) and clears doAudio (0x800652A8);
+# __scAppendList func_800650D8 sets doAudio at 0x8006510C. The entry hook restarts a
+# queued audio task that the stock one-start-per-append rule would strand.
+[[patches.hook]]
+func = "func_80065240"
+before_vram = 0x80065240
+text = "extern void aero_audio_sched_schedule(uint8_t*, recomp_context*); aero_audio_sched_schedule(rdram, ctx);"
+
 """
 
 # Boot-chain starts that are NOT jal targets (verified from the entry disassembly):

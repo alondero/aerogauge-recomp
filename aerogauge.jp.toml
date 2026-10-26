@@ -248,3 +248,9 @@ text = "extern void aero_cheat_standings(uint8_t*, recomp_context*); aero_cheat_
 [[patches.hook]]
 func = "jp_func_800165FC"
 text = "extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);"
+
+
+[[patches.hook]]
+func = "jp_func_80065BE8"
+before_vram = 0x80065BE8
+text = "extern void aero_audio_sched_schedule(uint8_t*, recomp_context*); aero_audio_sched_schedule(rdram, ctx);"

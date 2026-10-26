@@ -221,6 +221,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                                # snapshot; tick hooked one instruction into func_80015C8C
         src/aero_turbo_boost.c # accelerator-only Boost Start + button-operated race Turbo;
                                # hooked after P1's configured controls are mapped
+        src/aero_audio_sched.c # scheduler audio-backlog recovery; hooked at the entry of
+                               # the ROM's stock __scSchedule via [[patches.hook]]
     )
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/aspMain.cpp)
         list(APPEND AERO_SOURCES src/aspMain.cpp)
@@ -544,6 +546,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_executable(test_turbo_boost tests/test_turbo_boost.cpp src/aero_turbo_boost.c)
     target_include_directories(test_turbo_boost PRIVATE ${N64MR}/N64Recomp/include)
     add_test(NAME turbo_boost_gate COMMAND test_turbo_boost)
+
+    # Scheduler audio-backlog recovery (src/aero_audio_sched.c) against a model
+    # of the ROM's __scAppendList/__scSchedule doAudio rules; no ROM needed.
+    add_executable(test_audio_sched tests/test_audio_sched.cpp src/aero_audio_sched.c)
+    target_include_directories(test_audio_sched PRIVATE ${N64MR}/N64Recomp/include)
+    add_test(NAME audio_sched_backlog COMMAND test_audio_sched)
     if(TARGET RecompiledFuncs)
         foreach(region us jp)
             if(region STREQUAL "jp")

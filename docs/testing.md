@@ -260,6 +260,7 @@ The current CMake file registers these tests:
 | --- | --- | --- |
 | audio_playback_buffering | Host | SDL2 test libraries; no ROM |
 | audio_gain | Host | SDL2 test libraries; no ROM. Checks the host master gain: unity, zero, intermediate rounding, saturation, an untouched guest buffer, a reused guest buffer that is not attenuated twice, concurrent gain changes, and the virtual drain while muted |
+| audio_sched_backlog | Host | N64Recomp headers; no ROM. Models the ROM scheduler's doAudio rules: a queued audio backlog persists without the recovery hook and drains on the first schedule with it; the normal state, kill switch, and invalid pointers are unchanged |
 | controller_accessories | Host | No ROM |
 | input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
 | input_cadence | Host | 250 Hz SDL-bridge deadline and stall recovery; no ROM or SDL |

@@ -104,6 +104,8 @@ HOOKS = [
     (0x80058308, 0x80058D30, 0x44802000, 'extern void aero_cheat_damage(uint8_t*, recomp_context*); aero_cheat_damage(rdram, ctx);'),
     (0x8001D720, 0x8001D900, 0x0000A025, 'extern void aero_cheat_standings(uint8_t*, recomp_context*); aero_cheat_standings(rdram, ctx);'),
     (0x800165FC, None, None, 'extern void aero_haptics_frame(uint8_t*, recomp_context*); aero_haptics_frame(rdram, ctx);'),
+    # __scSchedule: doAudio load 0x80065C04, audio head 0x80065C0C, clear 0x80065C50.
+    (0x80065BE8, 0x80065BE8, 0x27BDFFF8, 'extern void aero_audio_sched_schedule(uint8_t*, recomp_context*); aero_audio_sched_schedule(rdram, ctx);'),
 ]
 
 PATCH_BLOCKS = "\n".join(

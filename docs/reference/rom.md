@@ -129,6 +129,31 @@ ROM-derived input. Do not edit the generated C++ output to repair an audio
 problem. Check the ROM, the TOML input, and the RSPRecomp output together.
 The [audio reference](audio.md) describes the runtime path.
 
+## Audio scheduling
+
+The game uses the stock libultra scheduler and audio manager. The USA
+addresses below are disassembled from the ROM; Japan Rev A has the same
+OSSched layout.
+
+| Fact | USA | Japan Rev A |
+| --- | --- | --- |
+| OSSched object (a0 of osCreateScheduler) | 0x801A8868 | |
+| Scheduler command queue pointer | 0x801AAAF0 | |
+| `__scAppendList` (sets doAudio for an audio task) | func_800650D8 | |
+| `__scSchedule` (starts the audio head, clears doAudio) | func_80065240 | 0x80065BE8 |
+| `__scHandleRetrace` / `__scHandleRSP` | func_80064D40 / func_80064E60 | |
+| Audio thread loop (retrace and done messages, queue 0x8010A358) | func_80001A54 | |
+| Audio frame builder (osAiSetNextBuffer, osAiGetLength, task post) | func_80001CA0 | |
+| alAudioFrame (160-sample chunks) | func_80068138 | |
+
+OSSched offsets: audio list head +0x264, graphics list head +0x268, audio
+list tail +0x26C, current RSP task +0x274, current RDP task +0x278, frame
+count +0x27C, doAudio +0x280. The audio thread keeps three frame records but
+two command lists (index 0x8007F55C toggles each frame), so a posted audio
+task must start before the thread builds two more frames. The
+[audio reference](audio.md#scheduler-audio-backlog) describes the port's
+recovery when it does not.
+
 ## Scene and frame words
 
 These words are used by current hooks and probes. They are meaningful only
