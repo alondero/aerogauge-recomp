@@ -34,18 +34,23 @@ AeroGauge**. See [Android setup](docs/android.md). Desktop instructions:
 1. Download the archive for your system from
    [GitHub Releases](https://github.com/alondero/aerogauge-recomp/releases).
 2. Extract it to a folder.
-3. Put your legally dumped USA or Japanese Rev A game in that folder. Use
-   `AeroGauge (USA).z64` or `AeroGauge (Japan) (Rev A).z64` (Japanese `.n64`
-   and `.v64` dumps are also detected).
-4. On Windows, start `aerogauge_modern.exe`. On Linux, start
-   `./aerogauge_modern`. To add AeroGauge to the Linux applications menu with
+3. On Windows, start `aerogauge_modern.exe`. On Linux, start
+   `./aerogauge_modern`. On first launch, choose your legally dumped USA or
+   Japanese Rev A ROM in the file picker. Supported byte orders are `.z64`,
+   `.n64`, and `.v64`; the filename does not matter in the picker.
+4. To add AeroGauge to the Linux applications menu with
    its icon (including native Wayland taskbars), run
    `./install_linux_launcher.sh` once and start it from the menu. If you move
    the extracted folder, run the installer again to refresh the launcher.
 
 The archive contains the program and its support files. It does not contain the
-game ROM. If both ROMs are present, USA is the default; pass a ROM path as the
-program's first argument to select either version. Japanese Rev A retains its
+game ROM. A validated ROM copy is kept in the application data directory and
+reused on later launches. You can also place `AeroGauge (USA).z64` or
+`AeroGauge (Japan) (Rev A).z64` beside the program (either `.n64` or `.v64`
+also works). The program checks those names in the working directory before
+cached copies, preferring USA within each group. Pass a ROM path as the
+program's first argument to select a specific version; an invalid explicit
+path reports an error without choosing another ROM. Japanese Rev A retains its
 original title, vehicle/course/difficulty names, announcer, and game behavior.
 Each region has separate game saves. Other revisions, including the original
 Japanese release, are not supported.

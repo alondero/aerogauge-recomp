@@ -28,6 +28,29 @@ Portable mode is enabled by creating an empty file named portable.txt in the
 current working directory before launch. The file only needs to exist. Its
 contents are ignored. Run the executable from that directory.
 
+## Desktop ROM import
+
+With no ROM argument, startup checks conventional `AeroGauge (USA)` filenames
+in `.z64`, `.n64`, then `.v64` order, followed by the same extensions for
+`AeroGauge (Japan) (Rev A)` in dual-region builds. It then tries cached USA,
+then cached Japan Rev A. Only a successfully validated candidate is selected.
+The first valid local ROM takes precedence over any cached ROM.
+
+When none validates, desktop launches offer a native file picker with retry
+and cancel. An explicit first argument is authoritative: a bad argument reports
+an error without trying a different ROM or opening the picker. Headless and
+Android startup never open desktop dialogs; Android retains its launcher import.
+If the desktop picker cannot start, pass the full ROM path as the first argument
+or use one of the conventional filenames in the working directory.
+
+The runtime normalizes and hashes the complete ROM before keeping an imported
+copy in the application data directory as `aerogauge.us.z64` or
+`aerogauge.jp.rev_a.z64`. These are private game data, not distributable release
+files. Startup verifies the stored copy before game threads start. A missing,
+wrong-sized, unsupported or corrupted ROM cannot start the game. Cached imports
+can be removed while the app is closed to repeat first-run setup; ordinary
+game saves remain in the separate `saves` subfolder.
+
 ## Rendering presets
 
 Graphics offers a Low power rendering preset. It stages `res_option=Original`,

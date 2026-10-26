@@ -7,9 +7,9 @@ checks, the shared patch inventory and application tests, generated-file guard
 and consistency tests, Android build-script checks, and host-test registration
 checks. These checks also run for changes confined to tests or build scripts.
 
-The Linux and Windows host jobs build six tests without ROMs,
+The Linux and Windows host jobs build seven tests without ROMs,
 submodules, SDL, or a renderer: full_track_policy, gyro_steering, hud_shift_scale,
-input_cadence, startup_mode, and user_data_dir. Their target definitions are shared with the
+input_cadence, startup_mode, rom_startup, and user_data_dir. Their target definitions are shared with the
 full build in cmake/HostTests.cmake. To run this tier locally:
 
 ~~~text
@@ -252,6 +252,8 @@ The current CMake file registers these tests:
 | race_intro | Host | RT64 headers from the initialized submodule |
 | full_track_policy | Host | No ROM |
 | startup_mode | Host | No ROM; asserts the desktop startup default and the AERO_LAUNCHER=1 opt-in |
+| rom_startup | Host | No ROM; explicit-path precedence, local/cache ordering, noninteractive failure, picker retry and cancellation |
+| rom_picker_init_failure and rom_picker_open_failure | Host | Real startup adapter with SDL/NFD fixtures that fail picker calls; checks stderr, non-cancel failure status, and dialog/cleanup counts; dependency headers, no ROM or desktop |
 | full_track_registration and full_track_registration_jp | Host | Synthetic sparse course tables and 150-object registration in both regional address layouts; runtime headers, no ROM |
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
@@ -383,6 +385,44 @@ Remove-Item Env:AERO_LIGHTING_SELFTEST
 ~~~
 
 ## ROM-backed checks
+
+Desktop ROM startup acceptance should use an isolated portable profile and
+record the OS and picker backend. With no conventional filename or cached
+ROM, select an arbitrarily named supported ROM; reject a short file, wrong
+game/revision and corrupt dump, retry, and cancel. Repeat with `.z64`, `.n64`
+and `.v64` input, then remove the external source and relaunch using the cached
+copy. Check both regions in a dual-region build, local-ROM precedence over a
+cached other region, and USA-only rejection of Japan. An explicit invalid path
+must fail without fallback; a headless run must never show a dialog. Check a
+read-only or full import directory fails before gameplay. The dependency-free
+`rom_startup` test checks policy only, not physical dialogs or runtime hashing.
+
+Run the real startup/cache regression with a supported executable and ROM:
+
+~~~text
+python -B tests/test_rom_startup_e2e.py --exe build/aerogauge_modern.exe --usa "AeroGauge (USA).z64"
+~~~
+
+On Linux omit `.exe`. Add `--japan "AeroGauge (Japan) (Rev A).z64"` with a
+dual-region executable to check regional cache/local precedence. The script
+uses temporary portable profiles, headless execution, and dummy host audio;
+it covers all three USA byte orders, rejected sizes and hashes, cached launch
+after removing the source, explicit-path failure despite a valid cache, and
+a cache destination that cannot be written as a file. It does not validate
+the physical picker, graphics, or an Android device.
+
+For USA-only acceptance, build without Japanese generated code and pass
+`--unsupported-japan "AeroGauge (Japan) (Rev A).z64"` instead of `--japan`.
+That checks an explicit Japanese import fails without replacing the USA cache,
+and a local Japanese filename is ignored while cached USA startup still works.
+Compile the actual `src/main.cpp` in both configurations: the policy-only host
+test cannot detect an unguarded reference to a Japanese-only global.
+
+The full desktop build also provides `test_rom_picker`. Run
+`ctest --test-dir build -R "^rom_picker_.*_failure$" --output-on-failure` to
+exercise initialization and open failures through the real startup adapter.
+Both checks require the error on stderr as well as correct failure and cleanup
+behavior; native dialogs and runtime calls are fixtures in these tests.
 
 `cheats_us` and `cheats_jp` execute extracted damage arithmetic and complete
 standings updates with production hooks. `frontend_settings` and its Japanese

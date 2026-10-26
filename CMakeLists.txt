@@ -192,6 +192,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/aero_cheats_runtime.cpp # game-thread damage and standings hooks
         src/aero_pak.cpp       # persistent block device for the ROM Controller Pak filesystem
         src/aero_startup.cpp   # desktop startup decision: game by default, AERO_LAUNCHER=1 for the launcher
+        src/aero_rom_desktop.cpp # validated ROM selection before region-specific runtime setup
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/aero_scene_scissor.c # remove full-screen world overscan clipping
         src/aero_car_lod.c      # optional maximum car detail and distance visibility
@@ -236,6 +237,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         add_dependencies(aerogauge_modern aero_vulkan)
     else()
         add_executable(aerogauge_modern ${AERO_SOURCES})
+        target_link_libraries(aerogauge_modern PRIVATE nfd)
     endif()
     find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
     set(AERO_MOD_GUARDS ${CMAKE_CURRENT_BINARY_DIR}/generated/aero_mod_patch_guards.inc)

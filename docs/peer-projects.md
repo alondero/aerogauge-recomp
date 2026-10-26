@@ -42,15 +42,16 @@ based on public project documentation. It is not a record of hands-on testing.
 - The supported player targets are 64-bit Windows with Direct3D 12, 64-bit
   Linux with Vulkan, and ARM64 Android with Vulkan. macOS is not a supported
   target in this branch.
-- A matching USA ROM is required. The project cannot distribute it.
+- A matching USA or Japan Rev A ROM is required. The project cannot distribute it.
 - The shared settings screen is present on the Windows, Linux, and Android
-  build paths (with Android hiding desktop-only controls), but there is no new
-  control-binding page.
+  build paths (with Android hiding desktop-only controls), including two-player
+  assignment, editable binding profiles, per-player rumble and gyro steering.
 - The port still carries ROM-specific guest-memory hooks and a local RT64
   patch stack. These are transitional maintenance boundaries, not a private
   renderer fork or a stable code-mod interface.
-- Texture replacement and texture dumping are developer features. The port
-  does not currently define a versioned general mod format.
+- The experimental mod manager handles regional code packages and RT64 texture
+  packs. Texture dumping remains a developer feature; code packages must target
+  AeroGauge's current compatibility boundary.
 
 These differences are implementation facts, not a reason to copy another
 project's architecture. New features should meet the same clarity standard
@@ -127,3 +128,83 @@ Device acceptance should cover first import, rejected ROM recovery, multitouch
 steering plus acceleration, controller connection, background/resume, renderer
 failure recovery, save persistence, and installing an update over the existing
 app. Source review or a successful APK build does not establish those outcomes.
+
+## Desktop onboarding and feature comparison (2026-10-26)
+
+This is a source audit of public project documentation and code, not a
+playthrough, benchmark, or acceptance test of these projects. These projects
+also use different reconstruction methods. [Super Mario 64 decompilation](https://github.com/n64decomp/sm64)
+reconstructs the game's C/source and builds
+a ROM; its README requires a matching ROM to extract assets and gives source
+build steps. [Banjo: Recompiled](https://github.com/BanjoRecomp/BanjoRecomp),
+[Zelda 64: Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp),
+[Automobili Lamborghini: Recompiled](https://github.com/alondero/automobililamborghini-recomp),
+and [World Driver Championship: Recompiled](https://github.com/alondero/worlddriverchampionship-recomp)
+use N64 static recompilation to produce native applications. They still need
+the user's matching ROM, but their player workflow is a port/launcher rather
+than a source-reconstructed game build. WDC specifically states in its
+[README](https://github.com/alondero/worlddriverchampionship-recomp/blob/main/README.md)
+that its CPU code and custom BOSS graphics microcode are statically recompiled,
+then RT64 renders the low-level RDP commands.
+
+Banjo's [player README](https://github.com/BanjoRecomp/BanjoRecomp/blob/main/README.md)
+and Zelda's [launcher source](https://github.com/Zelda64Recomp/Zelda64Recomp/blob/b65c482ed672258eb684ab94a4e8c8aa662615ee/src/ui/ui_launcher.cpp)
+offer a useful desktop ROM-onboarding pattern: choose the ROM in a launcher,
+validate it, and enable Start only when a supported game is ready. Zelda's
+launcher distinguishes unreadable files, non-ROMs, wrong games, and incorrect
+versions. Their shared [N64ModernRuntime ROM handling](https://github.com/N64Recomp/N64ModernRuntime/blob/cdf5abbd5026fef5c364c676e4667c45e42b6863/librecomp/src/recomp.cpp)
+stores the validated, normalized bytes under the app configuration directory,
+checks that copy's hash on later launches, and loads it for gameplay; an
+invalid cached copy is removed. At the audit baseline, AeroGauge asked for a specifically
+named ROM before opening its app and exited when that path failed. A desktop
+picker with a validated persistent copy is therefore a distinct onboarding
+improvement. The matching ROM remains user-supplied; selection does not change
+the ROM distribution boundary.
+
+The feature examples below separate shipped behavior from possible transfer.
+Game-specific addresses, input semantics, and renderer work do not transfer
+without AeroGauge ROM evidence.
+
+The peers also mark feature maturity differently. Banjo and Zelda describe
+high-framerate presentation and broad settings as available player features;
+their documentation calls out driver or presentation limits. Lamborghini's
+auto-accelerate and car information are implemented options, but are opt-in.
+WDC documents a first playable route and says rendering glitches remain; its
+presentation-rate setting is experimental, and motion interpolation is
+explicitly future work. The source-first SM64 project is a useful reference
+for ROM identity, build inputs, and source ownership. Its native-port descendants
+are a separate comparison: [sm64ex](https://github.com/sm64pc/sm64ex/blob/nightly/README.md)
+documents remapping, texture packs, alternative renderers for older hardware,
+and optional unlimited draw distance. [sm64coopdx](https://github.com/coop-deluxe/sm64coopdx)
+continues the cooperative native-port lineage with a documented Lua mod API;
+[Render96ex](https://github.com/Render96/Render96ex) builds on sm64ex for model
+and texture enhancements. These are decompilation-based native ports, not
+N64Recomp static recomps. AeroGauge already has remapping, texture packs and
+draw-distance controls; SM64's renderer choices or model replacements are not
+drop-in RT64 upgrades. Conversely, static recompilation does not mean game behavior has
+been decompiled into readable original source. These distinctions keep the
+comparison useful without promoting a peer's roadmap claim to a shipped
+capability or treating a successful compile as gameplay acceptance.
+
+| Priority | Peer pattern and AeroGauge opportunity | Current status |
+| --- | --- | --- |
+| 1 | First-launch ROM picker, clear validation errors, and a validated cached copy, following Banjo/Zelda and the shared runtime. | [#113](https://github.com/alondero/aerogauge-recomp/issues/113) implemented in this change; platform acceptance remains separate. |
+| 2 | Coordinated shutdown should close frontend, renderer, audio, and runtime workers in an explicit order. Treat peer lifecycle patterns as prompts to review ownership, not proof of AeroGauge's behavior. | [#114](https://github.com/alondero/aerogauge-recomp/issues/114) tracked follow-up. |
+| 3 | [Banjo](https://github.com/BanjoRecomp/BanjoRecomp/blob/main/README.md) and [Zelda](https://github.com/Zelda64Recomp/Zelda64Recomp/blob/dev/README.md) expose audio controls; a player-facing master volume and mute path would make AeroGauge's sound easier to adjust. | [#115](https://github.com/alondero/aerogauge-recomp/issues/115) tracked follow-up. |
+| 4 | [Banjo](https://github.com/BanjoRecomp/BanjoRecomp/blob/main/README.md#high-framerate-support) and [Zelda](https://github.com/Zelda64Recomp/Zelda64Recomp/blob/dev/README.md#high-framerate-support) document high-frame-rate controls and driver troubleshooting. [WDC's graphics review](https://github.com/alondero/worlddriverchampionship-recomp/blob/main/docs/graphics-capabilities.md) describes its experimental presentation-rate settings and why interpolation needs a game-specific transform bridge; its README marks interpolation future work and limits validation to an early Windows/D3D12 build. Transfer the acceptance discipline: distinguish presentation rate from game timing, name backend/driver limitations, and document verified troubleshooting. | [#116](https://github.com/alondero/aerogauge-recomp/issues/116) tracked follow-up. |
+| 5 | [Lamborghini's controller guide](https://github.com/alondero/automobililamborghini-recomp/blob/1b12f3005a96c69e86dcd4b18cbd77a2002faf12/docs/controllers.md) and [assist implementation](https://github.com/alondero/automobililamborghini-recomp/blob/1b12f3005a96c69e86dcd4b18cbd77a2002faf12/src/lambo_driving_assists.cpp) show optional auto-accelerate: during active driving it supplies throttle until braking; braking pauses it, and it is gated off for menus, pause, attract, finish, and replay. This could reduce sustained-button effort in AeroGauge. | [#117](https://github.com/alondero/aerogauge-recomp/issues/117) tracked follow-up; AeroGauge's Easy Turbo + Boost Start is a different feature. |
+| 6 | [Banjo's README](https://github.com/BanjoRecomp/BanjoRecomp/blob/main/README.md#mod-support) documents installing mods by dragging files onto the window before gameplay or through its mod menu. AeroGauge's experimental manager currently installs packages through its UI; drag-and-drop could shorten the pre-game path. | [#118](https://github.com/alondero/aerogauge-recomp/issues/118) tracked follow-up. |
+
+These ranked entries are already tracked; they are not new issue proposals.
+The existing performance follow-ups (#80–86), presentation/game-rate diagnostics (#94), per-view
+HUD work (#96), Controller Pak transfer (#93), and save profiles (#99)
+remain the owners for those areas and should not be duplicated here. AeroGauge
+already has runtime EEPROM backup, so save-backup work is not a new gap. Its
+current controls, graphics settings, save locations, and mod limitations are
+documented in the [README](../README.md); this comparison identifies remaining
+workflow opportunities rather than suggesting wholesale adoption of another
+project's architecture.
+
+The cited README claims and code paths describe their own projects. They do
+not establish hands-on behavior on AeroGauge's supported platforms, nor do
+they prove that a peer's optional or experimental feature is broadly tested.

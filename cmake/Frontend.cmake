@@ -47,6 +47,17 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 # This host-only test exercises the settings adapter without a ROM or generated
 # game output.
 if(NOT ANDROID)
+add_executable(test_rom_picker tests/test_rom_picker.cpp src/aero_rom_desktop.cpp)
+target_include_directories(test_rom_picker PRIVATE src ${SDL2_INCLUDE_DIRS}
+    $<TARGET_PROPERTY:aerogauge_modern,INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:ultramodern,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:nfd,INTERFACE_INCLUDE_DIRECTORIES>)
+target_compile_definitions(test_rom_picker PRIVATE SDL_MAIN_HANDLED)
+add_test(NAME rom_picker_init_failure COMMAND test_rom_picker init)
+add_test(NAME rom_picker_open_failure COMMAND test_rom_picker open)
+set_tests_properties(rom_picker_init_failure rom_picker_open_failure PROPERTIES
+    PASS_REGULAR_EXPRESSION "\\[rom\\] Native ROM picker failed")
+
 add_executable(test_gyro_sdl tests/test_gyro_sdl.cpp src/aero_gyro_sdl.cpp)
 target_include_directories(test_gyro_sdl PRIVATE src ${SDL2_INCLUDE_DIRS}
     $<TARGET_PROPERTY:recompinput,INTERFACE_INCLUDE_DIRECTORIES>)

@@ -18,6 +18,10 @@ add_executable(test_startup_mode tests/test_startup_mode.cpp src/aero_startup.cp
 target_include_directories(test_startup_mode PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME startup_mode COMMAND test_startup_mode)
 
+add_executable(test_rom_startup tests/test_rom_startup.cpp)
+target_include_directories(test_rom_startup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME rom_startup COMMAND test_rom_startup)
+
 add_executable(test_input_cadence tests/test_input_cadence.cpp)
 target_include_directories(test_input_cadence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME input_cadence COMMAND test_input_cadence)
