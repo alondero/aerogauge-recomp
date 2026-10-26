@@ -109,6 +109,11 @@ The **Cheats** page offers **Infinite Damage** and **Always First Position**
 for Player 1. Changes apply immediately and reset when the application closes.
 Cheats are experimental; see [Cheats](docs/cheats.md) for behavior and limits.
 
+The **Audio** page controls the game's master volume and a mute switch. Both
+are saved as soon as they are changed and apply immediately. They change the
+game's output only: your system mixer volume and the game's own music and
+effects balance are untouched.
+
 For two players, open **Controls > Assign players**. Press a button on each
 gamepad in player order, or assign the keyboard to one player, then confirm.
 Use each player's **Edit Profile** to configure driving and menu bindings.
@@ -141,7 +146,8 @@ mode.
 
 `graphics.json` stores display settings, including draw distance and
 full-course geometry. `enhancements.json` stores the Easy Turbo + Boost
-Start assist setting. Game saves are in the `saves` subfolder. Back up
+Start assist setting, the per-player rumble and motion preferences, and the
+master volume and mute. Game saves are in the `saves` subfolder. Back up
 that folder before testing a new build.
 
 ## Known limitations

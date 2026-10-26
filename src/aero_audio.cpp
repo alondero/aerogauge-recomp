@@ -23,6 +23,9 @@
 //  * submit() logs the first non-silent buffer before checking for a host device.
 //    This distinguishes generated PCM from audible host playback in headless
 //    and windowed runs.
+//  * Master gain is applied to the host copy of the submitted PCM, after the
+//    byte-order correction and before the host conversion. The guest buffer is
+//    never modified, so the game can reuse it without accumulating attenuation.
 
 #include "aero_audio.h"
 
@@ -33,6 +36,7 @@
 #include <atomic>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -62,6 +66,12 @@ std::atomic<bool> g_device_opened{false};
 std::atomic<bool> g_init_logged{false};
 std::atomic<bool> g_first_hit_logged{false};
 std::atomic<bool> g_first_nonsilent_logged{false};
+
+// Host master gain. The settings layer publishes it; the audio path reads one
+// snapshot per submitted buffer. Relaxed ordering is enough: this is a single
+// independent scalar, not a synchronisation signal, and a buffer that started
+// with the old gain must keep using the old gain.
+std::atomic<float> g_master_gain{1.0f};
 
 // Tiny guard for the rare case the runtime calls set_frequency before init
 // (init_audio does this). We accept whatever was last set; if init never ran,
@@ -180,6 +190,15 @@ void submit(const int16_t* pcm, size_t sample_count) {
     if (sample_count & 1) {
         swapped[sample_count - 1] = pcm[sample_count - 1];
     }
+
+    // Host master gain. It is applied to the host copy only, after the
+    // byte-order correction and before the host conversion, so the guest's
+    // source buffer stays byte-identical and a guest buffer the game reuses
+    // is never attenuated twice. The gain is read once per buffer, so a
+    // settings change lands on the next buffer without a lock and without
+    // touching the conversion stream.
+    aero::audio::apply_master_gain(swapped.data(), sample_count,
+                                   g_master_gain.load(std::memory_order_relaxed));
 
     // Cheap passthrough: native format + native channels + native rate.
     const bool native_rate  = (uint32_t)g_obtained.freq == g_desired_rate;
@@ -419,6 +438,67 @@ void shutdown() {
     g_device_opened.store(false);
     g_playback_started = false;
     g_ai_fifo_end = {};
+}
+
+void set_master_gain(float gain) {
+    // NaN and negative values mute rather than pass an invalid gain through.
+    if (!(gain >= 0.0f)) {
+        gain = 0.0f;
+    }
+    // This port attenuates only; it never amplifies the generated source.
+    if (gain > 1.0f) {
+        gain = 1.0f;
+    }
+    const float previous = g_master_gain.exchange(gain, std::memory_order_relaxed);
+    // Log the audible state, not every step of a slider drag: a silent or a
+    // newly audible host is the event a diagnostic run needs to explain.
+    if ((previous <= 0.0f) != (gain <= 0.0f)) {
+        std::fprintf(stderr, "[probe] audio: %s (gain %.3f)\n",
+                     gain <= 0.0f ? "muted" : "unmuted", (double)gain);
+    }
+}
+
+float master_gain() {
+    return g_master_gain.load(std::memory_order_relaxed);
+}
+
+int16_t scale_sample(int16_t sample, float gain) {
+    // Unity is an exact pass-through: no rounding, so a gain of 1.0 never
+    // changes a sample by one LSB.
+    if (gain >= 1.0f) {
+        return sample;
+    }
+    // Silence is exact, including for the most negative sample.
+    if (gain <= 0.0f) {
+        return 0;
+    }
+    // Round half away from zero so the error is symmetric for positive and
+    // negative samples, then saturate to the int16 range.
+    const long scaled = std::lround(static_cast<double>(sample) *
+                                    static_cast<double>(gain));
+    if (scaled > 32767) {
+        return 32767;
+    }
+    if (scaled < -32768) {
+        return -32768;
+    }
+    return static_cast<int16_t>(scaled);
+}
+
+void apply_master_gain(int16_t* samples, size_t count, float gain) {
+    if (samples == nullptr || count == 0) {
+        return;
+    }
+    if (gain >= 1.0f) {
+        return;
+    }
+    if (gain <= 0.0f) {
+        std::memset(samples, 0, count * sizeof(int16_t));
+        return;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        samples[i] = scale_sample(samples[i], gain);
+    }
 }
 
 } // namespace aero::audio

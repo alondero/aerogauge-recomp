@@ -96,7 +96,10 @@ and repeated timestamps, long sampling gaps, invalid readings, Android rotation
 math, player isolation, and manual keyboard/gamepad/touch priority. Its sensor
 axes and units follow SDL's sensor contract. `frontend_settings` and its Japanese
 variant check unavailable-sensor controls, main-thread preference updates,
-per-player persistence/reload, the recenter action, and Easy Turbo independence.
+per-player persistence/reload, the recenter action, Easy Turbo independence,
+and the port-owned Audio page: the master volume and mute are applied
+immediately, the volume slider is disabled while muted, and both survive a
+reload through enhancements.json.
 `gyro_sdl_bridge` sends synthetic SDL sensor events through the real host bridge
 with fake device discovery/assignment. It checks zero hardware timestamps,
 independent simultaneous turns, disabling one player, background/resume,
@@ -177,6 +180,15 @@ Physical motor strength and platform drivers require these manual checks;
 synthetic RDRAM tests only verify the requested amplitudes and feedback state.
 Virtual pads and synthetic memory do not establish physical rumble or visuals.
 
+For Settings > Audio, move the master volume while music, effects and the
+announcer play, then mute and unmute. Check that the game keeps synthesising
+while muted, that the music/effects balance is unchanged, and that unmute
+restores the level that was set before. Restart to verify the saved level and
+mute state, then launch with AERO_MASTER_VOLUME=0 and check the slider is
+disabled while the game is silent. Audible output and the absence of pops or
+underruns require these manual checks; the host tests only verify the samples
+the port hands to the device.
+
 ## CTest
 
 When Japanese generated code is present, `car_lod_jp`, `scene_scissor_jp`, and
@@ -188,6 +200,14 @@ protects injected hooks while leaving ordinary functions available to mods,
 and that patch metadata remains valid after overlay registration.
 `frontend_settings_jp` runs the settings adapter with the Japanese region and
 checks that initial Mods settings use its code-package compatibility ID.
+
+`audio_gain` covers the host master gain with a stubbed device that captures
+the queued samples. It checks that unity is an exact pass-through, that zero is
+exact silence, that an intermediate gain rounds half away from zero and
+saturates a full-scale sample, that the guest's source buffer is never
+modified, that a guest buffer the game reuses is not attenuated twice, that a
+concurrent gain change never mixes two snapshots inside one buffer, and that
+the virtual AI drain keeps its backlog while muted.
 
 After building with both ROMs, run the shared-executable regression:
 
@@ -239,6 +259,7 @@ The current CMake file registers these tests:
 | CTest name | Level | Needs |
 | --- | --- | --- |
 | audio_playback_buffering | Host | SDL2 test libraries; no ROM |
+| audio_gain | Host | SDL2 test libraries; no ROM. Checks the host master gain: unity, zero, intermediate rounding, saturation, an untouched guest buffer, a reused guest buffer that is not attenuated twice, concurrent gain changes, and the virtual drain while muted |
 | controller_accessories | Host | No ROM |
 | input_stick_scaling | Host | Runtime input source from the initialized submodule; no ROM |
 | input_cadence | Host | 250 Hz SDL-bridge deadline and stall recovery; no ROM or SDL |

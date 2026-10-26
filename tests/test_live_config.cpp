@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "aero_config.h"
+#include "aero_audio.h"
 #include "json/json.hpp"
 
 namespace {
@@ -34,12 +35,22 @@ nlohmann::json read_json(const std::filesystem::path& path) {
     return result;
 }
 
+// The gain the config layer publishes to the host audio path.
+float published_gain = -1.0f;
+
 } // anonymous namespace
 
 // aero_config.cpp normally queues its graphics changes through ultramodern. This
 // focused test verifies the port-owned snapshot and persistent representation.
 namespace ultramodern::renderer {
 void set_graphics_config(const GraphicsConfig&) {}
+}
+
+// aero_config.cpp publishes the effective master gain to the host audio path.
+// The audio module itself is covered by the audio tests, so this focused test
+// only records what the port publishes.
+namespace aero::audio {
+void set_master_gain(float gain) { published_gain = gain; }
 }
 
 int main() {
@@ -56,6 +67,7 @@ int main() {
     set_environment("AERO_FULL_TRACK", nullptr);
     set_environment("AERO_FORCE_FULL_LOD", nullptr);
     set_environment("AERO_EASY_TURBO", nullptr);
+    set_environment("AERO_MASTER_VOLUME", nullptr);
     // Park the background writer for the whole test (a flush still writes
     // immediately), so "not written yet" and "written" are both deterministic
     // instead of racing the debounce window.
@@ -74,6 +86,10 @@ int main() {
            "draw distance defaults to 100x");
     expect(!aero::config::force_full_lod(), "full LOD defaults off");
     expect(!aero::config::easy_turbo_boost(), "turbo assist defaults off");
+    expect(aero::config::master_volume() == 100, "master volume defaults to 100");
+    expect(!aero::config::master_muted(), "master mute defaults off");
+    expect(aero::config::master_gain() == 1.0f, "the default master gain is unity");
+    expect(published_gain == 1.0f, "the startup load publishes the master gain");
 
     // Boolean environment overrides follow the documented 0/1 contract. In
     // particular, an empty value or words such as "false" must not enable it.
@@ -125,6 +141,8 @@ int main() {
     aero::config::set_window_size({1920, 1080});
     aero::config::set_texture_pack_path("menu-texture-pack");
     aero::config::set_texture_dump_dir("menu-texture-dump");
+    aero::config::set_master_volume(40);
+    aero::config::set_master_muted(true);
     expect(!aero::config::widescreen_fog_match(), "fog menu toggle updates live");
     expect(!aero::config::widescreen_sky_match(), "sky menu toggle updates live");
     expect(aero::config::draw_distance_scale() == 10.0f,
@@ -137,6 +155,20 @@ int main() {
     expect(aero::config::texture_pack_path() == "menu-texture-pack" &&
                aero::config::texture_dump_dir() == "menu-texture-dump",
            "texture-path menu selections update live");
+    expect(aero::config::master_volume() == 40, "the master volume selection updates live");
+    expect(aero::config::master_muted(), "the master mute toggle updates live");
+    // Muting wins over the level, and the port never amplifies the source.
+    expect(aero::config::master_gain() == 0.0f, "a muted port publishes silence");
+    expect(published_gain == 0.0f, "the mute toggle publishes silence to the audio path");
+    aero::config::set_master_muted(false);
+    expect(aero::config::master_gain() == 0.4f, "unmuting restores the saved level");
+    expect(published_gain == 0.4f, "unmuting publishes the saved level to the audio path");
+    aero::config::set_master_volume(150);
+    expect(aero::config::master_volume() == 100, "the master volume is clamped to 100");
+    aero::config::set_master_volume(-5);
+    expect(aero::config::master_volume() == 0, "the master volume is clamped to 0");
+    expect(aero::config::master_gain() == 0.0f, "a zero master volume is silence");
+    aero::config::set_master_volume(40);
 
     aero::config::update_saved_window_mode(ultramodern::renderer::WindowMode::Fullscreen);
     // Every edit above (a burst of menu/hotkey actions) is still in memory only;
@@ -164,6 +196,10 @@ int main() {
            "turbo assist is not serialized into graphics.json");
     expect(persisted_enhancements.at("easy_turbo_boost") == true,
            "turbo assist selection persists in enhancements.json");
+    expect(persisted_enhancements.at("master_volume") == 40,
+           "the master volume persists in enhancements.json");
+    expect(persisted_enhancements.at("master_muted") == false,
+           "the master mute state persists in enhancements.json");
     expect(persisted.at("window_width") == 1920 && persisted.at("window_height") == 1080,
            "window-size menu selection persists");
     expect(persisted.at("texture_dump") == "menu-texture-dump",
@@ -185,6 +221,32 @@ int main() {
            "turbo assist selection survives a reload through enhancements.json");
     expect(aero::config::window_size().width == 1920 && aero::config::window_size().height == 1080,
            "window size survives a reload through graphics.json");
+    expect(aero::config::master_volume() == 40 && !aero::config::master_muted(),
+           "the master volume and mute survive a reload through enhancements.json");
+    expect(published_gain == 0.4f, "the reload publishes the persisted master gain");
+
+    // AERO_MASTER_VOLUME overrides the saved level for one run without
+    // changing the file, the same way the other launch-time overrides work.
+    set_environment("AERO_MASTER_VOLUME", "25");
+    expect(aero::config::master_volume() == 25, "the master volume override wins");
+    expect(aero::config::master_gain() == 0.25f, "the override scales the published gain");
+    set_environment("AERO_MASTER_VOLUME", "0");
+    expect(aero::config::master_gain() == 0.0f, "a zero override is silence");
+    set_environment("AERO_MASTER_VOLUME", nullptr);
+    expect(aero::config::master_volume() == 40, "clearing the override restores the saved level");
+
+    // A muted port persists the mute state, and unmuting restores the level
+    // without losing it.
+    aero::config::set_master_muted(true);
+    aero::config::flush_config_writes();
+    expect(read_json(enhancements_path).at("master_muted") == true,
+           "the master mute state persists in enhancements.json");
+    expect(aero::config::master_gain() == 0.0f, "a muted port publishes silence");
+    aero::config::set_master_muted(false);
+    aero::config::flush_config_writes();
+    expect(read_json(enhancements_path).at("master_muted") == false,
+           "unmuting persists the cleared mute state");
+    expect(aero::config::master_gain() == 0.4f, "unmuting restores the saved level");
 
     // If graphics.json disappears while the game runs, the next write rebuilds from
     // the last complete document this module wrote plus the change that triggered it.
