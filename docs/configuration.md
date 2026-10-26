@@ -241,6 +241,7 @@ interface.
 | AERO_INPUT_PULSE | button hex:period:duty[:start vi[:count]] | Repeated button pulses for menu tests |
 | AERO_AUDIO_STATS | present | Prints audio device and queue statistics |
 | AERO_AUDIO_RMS | present | Prints a periodic RMS value for submitted PCM |
+| AERO_AUDIO_BACKLOG_DRAIN | 0 | Keeps the ROM scheduler's one-audio-start-per-append rule |
 | AERO_HARNESS_LOG | 1 | Enables low-rate thread diagnostics |
 | AERO_FRAME_LOG | file path | Logs slow graphics and VI timing events; the VI log adds .vi |
 | AERO_CRASH_SYMBOLS | file path | Adds a symbol-table search path for crash reports |
@@ -349,6 +350,7 @@ extra output unless the row says otherwise.
 | AERO_INPUT_PULSE | Headless test; button hex:period:duty[:start vi[:count]] | Unset produces no pulses | Startup, then each VI | Generates repeatable menu button edges; src/main.cpp | AERO_INPUT_PULSE=1000:150:4:300:4 ./build/aerogauge_modern |
 | AERO_AUDIO_STATS | Audio investigation; any present value | Unset means no device statistics | Audio initialization | Logs device and queue counters; src/aero_audio.cpp | AERO_AUDIO_STATS=1 ./build/aerogauge_modern |
 | AERO_AUDIO_RMS | Audio investigation; any present value | Unset means no RMS output | First submitted PCM, then audio callbacks | Logs the RMS of submitted PCM; src/aero_audio.cpp | AERO_AUDIO_RMS=1 ./build/aerogauge_modern |
+| AERO_AUDIO_BACKLOG_DRAIN | Audio investigation; use 0 | Unset or another value starts a stranded queued audio task | First scheduler pass | 0 disables the scheduler audio-backlog recovery for comparison; src/aero_audio_sched.c | AERO_AUDIO_BACKLOG_DRAIN=0 ./build/aerogauge_modern |
 | AERO_HARNESS_LOG | Timing investigation; use 1 | Unset or another value means off | First call to the shared helper | Enables low-rate thread and renderer logs; src/aero_config.cpp, src/main.cpp, and renderer files | AERO_HARNESS_LOG=1 ./build/aerogauge_modern |
 | AERO_FRAME_LOG | Timing investigation; file path | Unset means no frame log | Each request to open a frame log | Creates or truncates the named log and optional VI log; src/aero_config.cpp | AERO_FRAME_LOG=tmp/frame.log ./build/aerogauge_modern |
 | AERO_CRASH_SYMBOLS | Crash investigation; file or directory path | Unset searches the working directory and executable locations | Crash-handler startup | Adds a symbol-table search location; src/aero_crash.cpp | AERO_CRASH_SYMBOLS=aerogauge.syms.toml ./build/aerogauge_modern |

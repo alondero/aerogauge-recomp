@@ -40,6 +40,32 @@ request. Local patch 0012 preserves that message instead of posting a null
 completion value; without it, a song can remain waiting even though its ROM
 read finished.
 
+## Scheduler audio backlog
+
+Each retrace the game's audio thread posts one audio task to the stock
+libultra scheduler, and the scheduler starts it at the next retrace. The
+scheduler sets doAudio only when it appends an audio task and clears it when
+it starts one, so one append buys exactly one start. On console the scheduler
+preempts every other thread at each retrace and the queue never holds two
+audio tasks.
+
+The port runs game threads cooperatively. A boot stall can deliver several
+retraces in a burst, and the audio thread then posts two or three tasks
+before the scheduler starts one. Under the stock rule that backlog never
+drains. With three queued tasks, the audio thread rebuilds a command list
+whose task has not started (it has three frame records but two command
+lists), so the task runs another frame's commands at its own length. The
+result is stale or misplaced 32-to-160-sample chunks in the AI buffers:
+audible crackling for the rest of the session. Whether a session lands in
+that state depends on boot timing.
+
+src/aero_audio_sched.c hooks the entry of `__scSchedule`. When an audio task
+is queued and doAudio is clear, it sets doAudio, so the backlog drains on the
+next RSP completion and the task latency returns to one retrace. That state
+is unreachable on console, so console-timed sessions are unchanged.
+AERO_AUDIO_BACKLOG_DRAIN=0 keeps the ROM rule for comparison. The addresses
+are in the [ROM reference](rom.md#audio-scheduling).
+
 Normal player audio uses SDL on the supported Windows and Linux targets. An
 unavailable host device is a host setup problem; it does not prove that the
 generated audio task is wrong. Use the audio statistics and RMS probes in
@@ -85,6 +111,7 @@ Useful checks are:
 | audio_playback_buffering | Host-side queue and conversion behavior |
 | audio_intro_playback | Windows intro/attract playback with a real device |
 | audio_task_crash | The headless generated audio path does not hit the known task failure |
+| audio_sched_backlog | A queued scheduler audio backlog drains instead of persisting |
 | AERO_AUDIO_STATS=1 | Device rate, queue, and rebuffer information |
 | AERO_AUDIO_RMS=1 | Whether submitted PCM is non-zero over time |
 
