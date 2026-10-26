@@ -253,6 +253,7 @@ The current CMake file registers these tests:
 | full_track_policy | Host | No ROM |
 | startup_mode | Host | No ROM; asserts the desktop startup default and the AERO_LAUNCHER=1 opt-in |
 | rom_startup | Host | No ROM; explicit-path precedence, local/cache ordering, noninteractive failure, picker retry and cancellation |
+| rom_picker_init_failure and rom_picker_open_failure | Host | Real startup adapter with SDL/NFD fixtures that fail picker calls; checks stderr, non-cancel failure status, and dialog/cleanup counts; dependency headers, no ROM or desktop |
 | full_track_registration and full_track_registration_jp | Host | Synthetic sparse course tables and 150-object registration in both regional address layouts; runtime headers, no ROM |
 | turbo_boost_gate | Host | No ROM |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
@@ -409,6 +410,19 @@ it covers all three USA byte orders, rejected sizes and hashes, cached launch
 after removing the source, explicit-path failure despite a valid cache, and
 a cache destination that cannot be written as a file. It does not validate
 the physical picker, graphics, or an Android device.
+
+For USA-only acceptance, build without Japanese generated code and pass
+`--unsupported-japan "AeroGauge (Japan) (Rev A).z64"` instead of `--japan`.
+That checks an explicit Japanese import fails without replacing the USA cache,
+and a local Japanese filename is ignored while cached USA startup still works.
+Compile the actual `src/main.cpp` in both configurations: the policy-only host
+test cannot detect an unguarded reference to a Japanese-only global.
+
+The full desktop build also provides `test_rom_picker`. Run
+`ctest --test-dir build -R "^rom_picker_.*_failure$" --output-on-failure` to
+exercise initialization and open failures through the real startup adapter.
+Both checks require the error on stderr as well as correct failure and cleanup
+behavior; native dialogs and runtime calls are fixtures in these tests.
 
 `cheats_us` and `cheats_jp` execute extracted damage arithmetic and complete
 standings updates with production hooks. `frontend_settings` and its Japanese

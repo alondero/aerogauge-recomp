@@ -964,9 +964,9 @@ int main(int argc, char** argv) {
 #endif
     );
     if (!selected_rom.region) return selected_rom.cancelled ? 0 : 1;
-    aero_japan = *selected_rom.region == aero::rom::Region::JapanRevA;
     std::u8string game_id = game.game_id;
 #ifdef AERO_JAPAN_SUPPORT
+    aero_japan = *selected_rom.region == aero::rom::Region::JapanRevA;
     if (aero_japan) game_id = japan_game.game_id;
 #endif
     std::fprintf(stderr, "[probe] ROM validated; rom_hash matches (%s)\n",

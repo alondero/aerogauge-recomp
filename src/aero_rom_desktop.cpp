@@ -122,11 +122,11 @@ Selection select_startup_rom(const std::optional<std::filesystem::path>& explici
     (void)interactive; // Android's Java launcher owns document selection.
 #endif
     auto result = resolve(explicit_path, candidates, validate, pick);
-    if (picker_failed) return {{}, false, "Native ROM picker failed; pass a ROM path as the first argument."};
+    if (picker_failed) result = {{}, false, "Native ROM picker failed; pass a ROM path as the first argument."};
     if (!result.region && !result.cancelled) {
         std::fprintf(stderr, "[rom] %s\n", result.error.c_str());
 #if !defined(__ANDROID__)
-        if (interactive) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Unable to load AeroGauge ROM",
+        if (interactive && !picker_failed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Unable to load AeroGauge ROM",
                                                  result.error.c_str(), nullptr);
 #endif
     }

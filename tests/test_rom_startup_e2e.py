@@ -26,7 +26,7 @@ def run(exe, root, path=None, region=None):
     return log
 
 
-def check(exe, usa, japan=None):
+def check(exe, usa, japan=None, unsupported_japan=None):
     usa_data = usa.read_bytes()
     assert len(usa_data) == 8 * 1024 * 1024 and usa_data[:4] == bytes.fromhex("80371240")
     with tempfile.TemporaryDirectory(prefix="aero-rom-startup-") as directory:
@@ -85,6 +85,15 @@ def check(exe, usa, japan=None):
             local_jp = root / "AeroGauge (Japan) (Rev A).v64"
             local_jp.write_bytes(bytes(byte for word in zip(jp_data[1::2], jp_data[0::2]) for byte in word))
             run(exe, root, region="Japan Rev A")
+        if unsupported_japan:
+            run(exe, root, usa, "USA")
+            assert "This build requires" in run(exe, root, unsupported_japan)
+            assert cache.read_bytes() == usa_data
+            assert not (root / "aerogauge.jp.rev_a.z64").exists()
+            # USA-only startup ignores local Japanese filenames, preserving the
+            # supported cached USA selection rather than attempting Japan.
+            (root / "AeroGauge (Japan) (Rev A).z64").write_bytes(unsupported_japan.read_bytes())
+            run(exe, root, region="USA")
     print("PASS: real startup validation, byte orders, cache reuse, explicit precedence and cache-write failure")
 
 
@@ -92,6 +101,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exe", type=Path, required=True)
     parser.add_argument("--usa", type=Path, required=True)
-    parser.add_argument("--japan", type=Path)
+    region = parser.add_mutually_exclusive_group()
+    region.add_argument("--japan", type=Path)
+    region.add_argument("--unsupported-japan", type=Path,
+                        help="With a USA-only executable, verify Japanese imports are rejected")
     args = parser.parse_args()
-    check(args.exe.resolve(), args.usa.resolve(), args.japan.resolve() if args.japan else None)
+    check(args.exe.resolve(), args.usa.resolve(), args.japan.resolve() if args.japan else None,
+          args.unsupported_japan.resolve() if args.unsupported_japan else None)
