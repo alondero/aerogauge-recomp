@@ -69,6 +69,57 @@ int main() {
         expect(!aero_log_parse_args(2, args), "--log-level without a value is rejected");
     }
 
+    // --- the port's own argument -------------------------------------------
+    // The logger owns the switch vocabulary and reports where the port's
+    // arguments start. A logging switch, or the value of one, must never be
+    // mistaken for the ROM path.
+    {
+        char a0[] = "game";
+        char a1[] = "--log-level";
+        char a2[] = "debug";
+        char a3[] = "rom.z64";
+        char* args[] = {a0, a1, a2, a3};
+        expect(aero_log_parse_args(4, args), "space-separated log level is accepted");
+        expect(aero_log_first_free_argument() == 3,
+               "the value of --log-level is not mistaken for the port's argument");
+    }
+    {
+        char a0[] = "game";
+        char a1[] = "--log-level=debug";
+        char a2[] = "rom.z64";
+        char* args[] = {a0, a1, a2};
+        expect(aero_log_parse_args(3, args), "equals-form log level is accepted");
+        expect(aero_log_first_free_argument() == 2,
+               "the port's argument follows an equals-form switch");
+    }
+    {
+        char a0[] = "game";
+        char a1[] = "--console";
+        char a2[] = "rom.z64";
+        char* args[] = {a0, a1, a2};
+        expect(aero_log_parse_args(3, args), "console switch is accepted");
+        expect(aero_log_first_free_argument() == 2,
+               "the console switch is not the port's argument");
+    }
+    {
+        char a0[] = "game";
+        char a1[] = "--log-level";
+        char a2[] = "debug";
+        char* args[] = {a0, a1, a2};
+        expect(aero_log_parse_args(3, args), "log level without a port argument is accepted");
+        expect(aero_log_first_free_argument() == -1,
+               "no port argument is reported when the logger consumed them all");
+    }
+    {
+        char a0[] = "game";
+        char a1[] = "--unknown-option";
+        char a2[] = "rom.z64";
+        char* args[] = {a0, a1, a2};
+        expect(aero_log_parse_args(3, args), "an unknown switch is not an error");
+        expect(aero_log_first_free_argument() == 2,
+               "an unknown switch does not become the port's argument");
+    }
+
     // --- thresholds --------------------------------------------------------
     const std::filesystem::path directory =
         std::filesystem::temp_directory_path() / "aero-log-test";

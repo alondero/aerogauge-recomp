@@ -993,20 +993,14 @@ static ultramodern::input::connected_device_info_t input_device_info(int control
     return { Device::None, Pak::None };
 }
 
-// The first argument that is not a switch is the ROM path. The logging
-// switches are owned by aero_log and must never be mistaken for a path.
+// The ROM path is the first argument that belongs to the port. The logger
+// owns the switch vocabulary and reports where its own arguments end, so the
+// two parsers cannot drift apart: a logging switch this function did not know
+// about used to become a bogus ROM path.
 static const char* rom_path_argument(int argc, char** argv) {
-    for (int i = 1; i < argc; ++i) {
-        const char* arg = argv[i];
-        if (arg == nullptr || arg[0] == '\0' || arg[0] == '-') continue;
-        // --log-level takes the next argument as its value.
-        if (std::strcmp(arg, "--log-level") == 0) {
-            ++i;
-            continue;
-        }
-        return arg;
-    }
-    return nullptr;
+    const int index = aero_log_first_free_argument();
+    if (index < 1 || index >= argc) return nullptr;
+    return argv[index];
 }
 
 static int application_main(int argc, char** argv) {

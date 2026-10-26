@@ -31,6 +31,7 @@ namespace {
 std::atomic_bool g_console_requested{false};
 std::atomic_bool g_stderr_sink{false};
 bool g_initialized = false;
+int g_first_free_argument = -1;
 std::mutex g_mutex;
 std::ofstream g_file;
 std::string g_path;
@@ -139,7 +140,8 @@ void prune_old_logs(const std::filesystem::path& directory) {
             filename.stem().string().rfind("aerogauge-", 0) == 0)
             files.push_back(entry);
     }
-    // The name starts with a sortable timestamp, so the newest sorts last.
+    // The name starts with a sortable timestamp, so sorting descending puts
+    // the newest first. Keep the ten newest and drop the rest.
     std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) {
         return a.path().filename() > b.path().filename();
     });
@@ -168,6 +170,7 @@ volatile int g_aero_log_console_threshold = AERO_LEVEL_INFO;
 extern "C" bool aero_log_parse_args(int argc, char** argv) {
     g_error.clear();
     g_console_requested.store(false, std::memory_order_release);
+    g_first_free_argument = -1;
     AeroLogLevel requested = AERO_LEVEL_INFO;
     bool valid = true;
     for (int i = 1; i < argc; ++i) {
@@ -190,6 +193,10 @@ extern "C" bool aero_log_parse_args(int argc, char** argv) {
                 g_error = "--log-level requires error, warn, info, debug, or trace";
                 valid = false;
             }
+        } else if (arg[0] != '-') {
+            // Not a switch and not switch-shaped: this argument belongs to
+            // the port. The first one is the ROM path.
+            if (g_first_free_argument < 0) g_first_free_argument = i;
         }
     }
     // AERO_HARNESS_LOG predates the level system and means "show the
@@ -202,6 +209,8 @@ extern "C" bool aero_log_parse_args(int argc, char** argv) {
     write_threshold(requested);
     return valid;
 }
+
+extern "C" int aero_log_first_free_argument(void) { return g_first_free_argument; }
 
 extern "C" const char* aero_log_last_error(void) { return g_error.c_str(); }
 

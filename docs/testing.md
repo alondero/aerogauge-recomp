@@ -7,9 +7,10 @@ checks, the shared patch inventory and application tests, generated-file guard
 and consistency tests, Android build-script checks, and host-test registration
 checks. These checks also run for changes confined to tests or build scripts.
 
-The Linux and Windows host jobs build eight tests without ROMs,
+The Linux and Windows host jobs build nine tests without ROMs,
 submodules, SDL, or a renderer: full_track_policy, gyro_steering, hud_shift_scale,
-input_cadence, startup_mode, rom_startup, user_data_dir, and dev_warp_chord. Their target definitions are shared with the
+input_cadence, startup_mode, rom_startup, user_data_dir, dev_warp_chord, and
+logging_policy. Their target definitions are shared with the
 full build in cmake/HostTests.cmake. To run this tier locally:
 
 ~~~text
@@ -279,7 +280,7 @@ The current CMake file registers these tests:
 | rom_picker_init_failure and rom_picker_open_failure | Host | Real startup adapter with SDL/NFD fixtures that fail picker calls; checks stderr, non-cancel failure status, and dialog/cleanup counts; dependency headers, no ROM or desktop |
 | full_track_registration and full_track_registration_jp | Host | Synthetic sparse course tables and 150-object registration in both regional address layouts; runtime headers, no ROM |
 | turbo_boost_gate | Host | No ROM |
-| logging_policy | Host | No ROM. Checks the logging switches: an invalid `--log-level` is rejected, the console threshold follows the requested level, the session file keeps `info` and above even when the console is narrowed, and records below the file threshold never reach the file |
+| logging_policy | Host | No ROM. Checks the logging switches: an invalid `--log-level` is rejected, the console threshold follows the requested level, the session file keeps `info` and above even when the console is narrowed, and records below the file threshold never reach the file. It also checks that a logging switch and the value of a space-separated `--log-level` are never reported as the port's own argument, so neither can become the ROM path |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | frontend_navigation_wrap | Host | Real RecompFrontend/RmlUi directional events and nested single-item wrapping; no ROM or graphics device |
 | frontend_navigation_candidates | Host | Real RecompFrontend/RmlUi wrapping with multiple candidates including the current focus; no ROM or graphics device |

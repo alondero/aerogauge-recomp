@@ -18,6 +18,8 @@
 #include <cmath>
 #include <memory>
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 
 #include "ultramodern/renderer_context.hpp"
@@ -1494,11 +1496,21 @@ public:
                 uint32_t seg[16] = {0};
                 dlinspect::GeomSet gs;
                 dlinspect::geom_walk(g_aero_rdram, (uint32_t)(int32_t)t->t.data_ptr, seg, gs, 0);
-                AERO_LOG_DEBUG("geomset", "f=%d tris=%u vtx=%u culls=%u ndl=%d\n",
-                             count, gs.tris, gs.vtx, gs.culls, gs.ndl);
-                for (int i = 0; i < gs.ndl; ++i) AERO_LOG_DEBUG("geomset", "%06X,\n", gs.dls[i]);
-                AERO_LOG_DEBUG("geomset", " pgs=\n");
-                for (int i = 0; i < gs.npg; ++i) AERO_LOG_DEBUG("geomset", "%03X,\n", gs.pages[i]);
+                // Build the whole census into one buffer: a record per list
+                // item would put a timestamp on every entry and scatter the
+                // line that the trace is meant to show.
+                std::ostringstream line;
+                line << "f=" << count << " tris=" << gs.tris << " vtx=" << gs.vtx
+                     << " culls=" << gs.culls << " ndl=" << gs.ndl << " dls=";
+                for (int i = 0; i < gs.ndl; ++i)
+                    line << std::hex << std::setw(6) << std::setfill('0') << gs.dls[i]
+                         << ",";
+                line << " pgs=";
+                for (int i = 0; i < gs.npg; ++i)
+                    line << std::hex << std::setw(3) << std::setfill('0') << gs.pages[i]
+                         << ",";
+                line << "\n";
+                AERO_LOG_DEBUG("geomset", "%s", line.str().c_str());
             }
         }
         // Menu-DL trace (AERO_MENU_DL_TRACE=1): per-frame command census keyed

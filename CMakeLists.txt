@@ -592,12 +592,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_turbo_boost PRIVATE ${N64MR}/N64Recomp/include)
     add_test(NAME turbo_boost_gate COMMAND test_turbo_boost)
 
-    # Logging policy: argument parsing, the console/session-file thresholds,
-    # and what reaches the session file. No ROM needed.
-    add_executable(test_aero_log tests/test_aero_log.cpp)
-    target_link_libraries(test_aero_log PRIVATE aero_log)
-    add_test(NAME logging_policy COMMAND test_aero_log)
-
     # Scheduler audio-backlog recovery (src/aero_audio_sched.c) against a model
     # of the ROM's __scAppendList/__scSchedule doAudio rules; no ROM needed.
     add_executable(test_audio_sched tests/test_audio_sched.cpp src/aero_audio_sched.c)

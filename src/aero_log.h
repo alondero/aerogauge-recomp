@@ -14,12 +14,18 @@
 // The threshold is read on hot paths, so the read must not be a data race.
 // GCC and Clang provide the __atomic builtins; MSVC does not, so its
 // interlocked operations stand in. The Windows host-test job builds this file
-// with MSVC, so both paths have to compile. MSVC's underscore-prefixed
-// intrinsic forms are the ones available without pulling in windows.h.
+// with MSVC, so both paths have to compile.
+//
+// The load is the hot path: it runs on every diagnostic check, including the
+// disabled ones. A locked CAS would serialise the bus on each of those, so
+// MSVC uses a plain volatile read instead: the threshold is an aligned
+// 32-bit int, and a 32-bit aligned load is atomic on x86 and x64. The stores
+// happen only at startup, so they keep the interlocked form. The GCC and
+// Clang path keeps the real atomic because those are the toolchains the
+// ThreadSanitizer runs use.
 #if defined(_MSC_VER)
     #include <intrin.h>
-    #define AERO_LOG_LOAD(ptr) \
-        ((int)_InterlockedCompareExchange((volatile long*)(ptr), 0, 0))
+    #define AERO_LOG_LOAD(ptr) (*(ptr))
     #define AERO_LOG_STORE(ptr, value) \
         _InterlockedExchange((volatile long*)(ptr), (long)(value))
 #else
@@ -52,6 +58,16 @@ extern volatile int g_aero_log_console_threshold;
 // malformed; aero_log_last_error() then describes the problem.
 bool aero_log_parse_args(int argc, char** argv);
 const char* aero_log_last_error(void);
+
+// Index of the first command-line argument that belongs to the port rather
+// than to the logger: not a logging switch, not a switch value, and not
+// switch-shaped. Returns -1 when the logger consumed every argument.
+//
+// The logger owns the switch vocabulary, so the port asks it where its own
+// arguments start instead of parsing argv a second time. Two parsers over one
+// argv drift apart, and a logging switch that one of them does not know
+// about becomes a bogus ROM path.
+int aero_log_first_free_argument(void);
 
 // Opens the session log file and decides whether a console sink exists.
 // Safe to call more than once; the second call is a no-op.

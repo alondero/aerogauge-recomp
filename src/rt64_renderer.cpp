@@ -20,8 +20,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 #include "hle/rt64_application.h"
@@ -406,10 +408,18 @@ public:
                         p = end;
                     }
                     s_skip_init = true;
-                    AERO_LOG_DEBUG("dl-skip", "%d DL(s) marked for skip:\n", s_skip_n);
-                    for (int i = 0; i < s_skip_n; ++i)
-                        AERO_LOG_DEBUG("dl-skip", "0x%08X%s\n", s_skip[i],
-                                       i + 1 == s_skip_n ? "" : ",");
+                    // Build the address list into one buffer: a record per
+                    // entry would put a timestamp on every address and
+                    // scatter the line the skip trace is meant to show.
+                    std::ostringstream line;
+                    line << s_skip_n << " DL(s) marked for skip: ";
+                    for (int i = 0; i < s_skip_n; ++i) {
+                        line << "0x" << std::hex << std::setw(8) << std::setfill('0')
+                             << s_skip[i];
+                        if (i + 1 != s_skip_n) line << ",";
+                    }
+                    line << "\n";
+                    AERO_LOG_DEBUG("dl-skip", "%s", line.str().c_str());
                 }
                 uint8_t* rdram = app->core.RDRAM;
                 uint32_t phys = (uint32_t)task->t.data_ptr & 0x3FFFFFFu;
