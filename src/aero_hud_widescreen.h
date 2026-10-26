@@ -123,6 +123,16 @@ static inline int aero_ws_classify_rect_qp(int ulx_qp, int lrx_qp, int uly_qp) {
     if (lrx_qp <= AERO_WS_LEFT_MAX_QP) {
         return AERO_WS_PIN_LEFT;
     }
+    // POSITION belongs to the rank/count group. In the 1P layout,
+    // func_8001ADC4 draws it at (rank.x + 31, rank.y + 4): 55..107, y20.
+    // Its right edge misses the general LEFT bound, leaving it centred while
+    // the rank and /count travel left. Match only this label's top-strip box
+    // (2 px rounding slack), so every part uses RT64's same LEFT origin at
+    // any effective HUD aspect. Do not widen the global LEFT bound.
+    if (ulx_qp >= 53 * 4 && lrx_qp <= 109 * 4 &&
+        uly_qp >= 18 * 4 && uly_qp <= 22 * 4) {
+        return AERO_WS_PIN_LEFT;
+    }
     if (ulx_qp >= AERO_WS_MAP_MIN_ULX_QP && lrx_qp <= AERO_WS_MAP_MAX_LRX_QP &&
         uly_qp >= AERO_WS_MAP_MIN_ULY_QP && uly_qp <= AERO_WS_MAP_MAX_ULY_QP) {
         return AERO_WS_PIN_LEFT;
