@@ -1,0 +1,397 @@
+diff --git a/ultramodern/CMakeLists.txt b/ultramodern/CMakeLists.txt
+index 5593172..4584ae2 100644
+--- a/ultramodern/CMakeLists.txt
++++ b/ultramodern/CMakeLists.txt
+@@ -16,6 +16,7 @@ add_library(ultramodern STATIC
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer_context.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/rsp.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/scheduling.cpp"
++    "${CMAKE_CURRENT_SOURCE_DIR}/src/shutdown.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/task_win32.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/threadqueue.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/threads.cpp"
+diff --git a/ultramodern/include/ultramodern/shutdown.hpp b/ultramodern/include/ultramodern/shutdown.hpp
+new file mode 100644
+index 0000000..d39b06a
+--- /dev/null
++++ b/ultramodern/include/ultramodern/shutdown.hpp
+@@ -0,0 +1,68 @@
++#ifndef __ultramodern_SHUTDOWN_HPP__
++#define __ultramodern_SHUTDOWN_HPP__
++
++#include <chrono>
++
++// Coordinated shutdown contract for the guest (game) threads.
++//
++// The port owns the process; the runtime owns the guest threads. Shutdown is a
++// handshake between the two, and it runs in four phases:
++//
++//   1. request()      Stop new work. The shutdown flag is published and every
++//                     registered guest thread is released so it can observe the
++//                     flag and unwind out of its translated entry point.
++//   2. (guest)        Outstanding guest work is cancelled. A guest thread that
++//                     is already running keeps running translated code until
++//                     its next blocking point, where it observes the flag and
++//                     unwinds.
++//   3. join_threads() Wait for the guest threads to finish unwinding.
++//   4. (owner)        The owner may now release RDRAM and the device resources.
++//
++// Ordering rule: the owner must not release RDRAM, the renderer, or the audio
++// device until join_threads() reports zero remaining threads. A guest thread
++// that is still running may still be executing translated code, and translated
++// code reads and writes RDRAM.
++//
++// The contract is deliberately independent of the port: the runtime never
++// decides how long a shutdown may take. The owner passes a deadline to
++// join_threads() and decides what to do when it expires.
++namespace ultramodern::shutdown {
++
++// Releases a guest thread that is blocked so that it can observe the shutdown
++// flag. The callback must not block: it runs on the thread that calls
++// request().
++using WakeCallback = void (*)(void* token);
++
++// Registers a guest thread with the shutdown coordinator.
++//
++// A thread must be registered before it can block and unregistered once it has
++// finished touching guest memory. Registering a thread after request() has
++// been called releases it immediately: a shutdown admits no new guest work.
++void register_thread(void* token, WakeCallback wake);
++
++// Unregisters a guest thread. The token must be the one passed to
++// register_thread().
++void unregister_thread(void* token);
++
++// Phase 1. Idempotent and safe to call from any thread.
++void request();
++
++// True once request() has been called.
++bool requested();
++
++// Number of registered guest threads that have not been unregistered yet.
++int pending_threads();
++
++// Phase 3. Waits up to `timeout` for every registered guest thread to
++// unregister itself.
++//
++// Returns the number of threads that were still pending when the wait ended.
++// Zero means every guest thread finished and the owner may release RDRAM and
++// the device resources. A non-zero result means guest threads are still
++// running, so the owner must not release those resources and must use a
++// bounded exit instead.
++int join_threads(std::chrono::milliseconds timeout);
++
++}
++
++#endif
+diff --git a/ultramodern/src/mesgqueue.cpp b/ultramodern/src/mesgqueue.cpp
+index 002afc8..3a6e6b2 100644
+--- a/ultramodern/src/mesgqueue.cpp
++++ b/ultramodern/src/mesgqueue.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "ultramodern/ultra64.h"
+ #include "ultramodern/ultramodern.hpp"
++#include "ultramodern/shutdown.hpp"
+ 
+ // ---- Thread trace diagnostic (default-OFF): record per-thread message
+ // activity and blocked queue addresses. The VI callback prints a compact
+@@ -109,9 +110,21 @@ void ultramodern::deliver_external_and_yield(RDRAM_ARG1) {
+     ultramodern::check_running_queue(PASS_RDRAM1);
+ }
+ 
++// A guest thread that parks on the external message queue (pause_self,
++// yield_self) has to be able to observe a shutdown request, so the wait is
++// bounded. The bound only decides how long a parked thread takes to notice the
++// request; this function still returns only when a message actually arrives,
++// so the scheduler's behaviour is unchanged.
++static constexpr std::chrono::milliseconds kExternalWaitPoll{5};
++
+ void ultramodern::wait_for_external_message(RDRAM_ARG1) {
+     QueuedMessage to_send;
+-    external_messages.wait_dequeue(to_send);
++    while (!external_messages.wait_dequeue_timed(to_send, kExternalWaitPoll)) {
++        // Timed out: the only reason to stop waiting is a shutdown request.
++        if (ultramodern::shutdown::requested()) {
++            throw ultramodern::thread_terminated{};
++        }
++    }
+     if (!do_send(PASS_RDRAM to_send.mq, to_send.mesg, to_send.jam, false) && to_send.requeue_if_blocked) {
+         external_messages.enqueue(to_send);
+     }
+@@ -124,6 +137,9 @@ void ultramodern::wait_for_external_message_timed(RDRAM_ARG u32 millis) {
+             external_messages.enqueue(to_send);
+         }
+     }
++    else if (ultramodern::shutdown::requested()) {
++        throw ultramodern::thread_terminated{};
++    }
+ }
+ 
+ extern "C" void osCreateMesgQueue(RDRAM_ARG PTR(OSMesgQueue) mq_, PTR(OSMesg) msg, s32 count) {
+diff --git a/ultramodern/src/shutdown.cpp b/ultramodern/src/shutdown.cpp
+new file mode 100644
+index 0000000..4756e47
+--- /dev/null
++++ b/ultramodern/src/shutdown.cpp
+@@ -0,0 +1,92 @@
++#include "ultramodern/shutdown.hpp"
++
++#include <atomic>
++#include <condition_variable>
++#include <mutex>
++#include <unordered_map>
++
++// The coordinator is deliberately free of runtime internals: it owns the
++// shutdown flag, the registry of live guest threads, and the join. The runtime
++// supplies a wake callback per thread, because only the runtime knows how a
++// guest thread is parked (scheduler semaphore, external message queue, ...).
++namespace {
++
++std::atomic<bool> g_requested{false};
++
++std::mutex g_mutex;
++std::condition_variable g_changed;
++// Guest thread token -> the callback that releases it.
++std::unordered_map<void*, ultramodern::shutdown::WakeCallback> g_wakes;
++// Number of registered guest threads that have not unregistered yet.
++int g_pending = 0;
++
++}
++
++void ultramodern::shutdown::register_thread(void* token, WakeCallback wake) {
++    bool release_now = false;
++    {
++        std::lock_guard<std::mutex> lock(g_mutex);
++        auto it = g_wakes.find(token);
++        if (it != g_wakes.end()) {
++            // Already registered: the thread is counted once and has already
++            // been released if a shutdown was requested.
++            return;
++        }
++        g_wakes.emplace(token, wake);
++        g_pending++;
++        // A thread that is created after the shutdown request must not start
++        // new guest work: release it right away so it observes the flag.
++        release_now = g_requested.load(std::memory_order_acquire);
++    }
++    if (release_now && wake != nullptr) {
++        wake(token);
++    }
++}
++
++void ultramodern::shutdown::unregister_thread(void* token) {
++    {
++        std::lock_guard<std::mutex> lock(g_mutex);
++        auto it = g_wakes.find(token);
++        if (it == g_wakes.end()) {
++            // Unknown token: the thread was never registered (or is already
++            // gone). The pending count must not change.
++            return;
++        }
++        g_wakes.erase(it);
++        g_pending--;
++    }
++    g_changed.notify_all();
++}
++
++void ultramodern::shutdown::request() {
++    // Publish the flag before releasing anybody: a released thread must never
++    // observe the flag late.
++    if (g_requested.exchange(true, std::memory_order_acq_rel)) {
++        return;
++    }
++
++    // The wake callbacks run under the coordinator's lock. A context stays
++    // alive for as long as it is registered, and unregistering needs the same
++    // lock, so a callback can never run against a freed thread context.
++    std::lock_guard<std::mutex> lock(g_mutex);
++    for (const auto& entry : g_wakes) {
++        if (entry.second != nullptr) {
++            entry.second(entry.first);
++        }
++    }
++}
++
++bool ultramodern::shutdown::requested() {
++    return g_requested.load(std::memory_order_acquire);
++}
++
++int ultramodern::shutdown::pending_threads() {
++    std::lock_guard<std::mutex> lock(g_mutex);
++    return g_pending;
++}
++
++int ultramodern::shutdown::join_threads(std::chrono::milliseconds timeout) {
++    std::unique_lock<std::mutex> lock(g_mutex);
++    g_changed.wait_for(lock, timeout, [] { return g_pending == 0; });
++    return g_pending;
++}
+diff --git a/ultramodern/src/threadqueue.cpp b/ultramodern/src/threadqueue.cpp
+index f9c0fa1..5655248 100644
+--- a/ultramodern/src/threadqueue.cpp
++++ b/ultramodern/src/threadqueue.cpp
+@@ -43,14 +43,19 @@ PTR(OSThread) ultramodern::thread_queue_pop(RDRAM_ARG PTR(PTR(OSThread)) queue_)
+ bool ultramodern::thread_queue_remove(RDRAM_ARG PTR(PTR(OSThread)) queue_, PTR(OSThread) t_) {
+     debug_printf("[Thread Queue] Removing thread %d from queue 0x%08X\n", TO_PTR(OSThread, t_)->id, (uintptr_t)queue_);
+ 
+-    PTR(PTR(OSThread)) cur = queue_;
+-    while (cur != NULLPTR) {
+-        PTR(OSThread)* cur_ptr = queue_to_ptr(PASS_RDRAM queue_);
+-        if (*cur_ptr == t_) {
+-            *cur_ptr = TO_PTR(OSThread, *cur_ptr)->next;
++    // Walk the list from the queue head. The thread can be anywhere in it, not
++    // just at the head: the upstream helper always compared the head, so it
++    // failed to remove a thread that was not first in the queue. A guest
++    // thread that unwinds has to be able to leave the queue it is blocked on,
++    // and the blocked threads are ordered by priority, not by arrival.
++    PTR(PTR(OSThread))* cur = queue_to_ptr(PASS_RDRAM queue_);
++    while (*cur != NULLPTR) {
++        if (*cur == t_) {
++            *cur = TO_PTR(OSThread, *cur)->next;
++            TO_PTR(OSThread, t_)->queue = NULLPTR;
+             return true;
+         }
+-        cur = TO_PTR(OSThread, *cur_ptr)->next;
++        cur = &TO_PTR(OSThread, *cur)->next;
+     }
+ 
+     return false;
+diff --git a/ultramodern/src/threads.cpp b/ultramodern/src/threads.cpp
+index 7d611c0..691c69e 100644
+--- a/ultramodern/src/threads.cpp
++++ b/ultramodern/src/threads.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "ultramodern/ultra64.h"
+ #include "ultramodern/ultramodern.hpp"
++#include "ultramodern/shutdown.hpp"
+ #include "blockingconcurrentqueue.h"
+ 
+ #include "ultramodern/threads.hpp"
+@@ -184,8 +185,29 @@ void ultramodern::set_native_thread_name(const std::string& name) {
+ void ultramodern::set_native_thread_priority(ThreadPriority pri) {}
+ #endif
+ 
++// Releases a guest thread that is parked in the scheduler so that it can
++// observe the shutdown flag. The guest threads that park in the runtime's
++// external message queue (pause_self) are released by the bounded wait in
++// ultramodern::wait_for_external_message instead.
++//
++// The callback runs on the thread that requests the shutdown and must not
++// block: it only signals a semaphore.
++static void wake_game_thread(void* token) {
++    UltraThreadContext* thread_context = static_cast<UltraThreadContext*>(token);
++    thread_context->running.signal();
++}
++
+ void wait_for_resumed(RDRAM_ARG UltraThreadContext* thread_context) {
++    // A shutdown request releases every guest thread so it can unwind. The
++    // flag has to be checked on both sides of the wait: it may be raised
++    // before this thread parks, or while it is parked.
++    if (ultramodern::shutdown::requested()) {
++        throw ultramodern::thread_terminated{};
++    }
+     thread_context->running.wait();
++    if (ultramodern::shutdown::requested()) {
++        throw ultramodern::thread_terminated{};
++    }
+     // If this thread's context was replaced by another thread or deleted, destroy it again from its own context.
+     // This will trigger thread cleanup instead.
+     if (TO_PTR(OSThread, ultramodern::this_thread())->context != thread_context) {
+@@ -195,17 +217,48 @@ void wait_for_resumed(RDRAM_ARG UltraThreadContext* thread_context) {
+ 
+ void resume_thread(OSThread* t) {
+     debug_printf("[Thread] Resuming execution of thread %d\n", t->id);
++    if (t->context == nullptr) {
++        // The thread has finished or was destroyed, so it has no context left
++        // to signal. Signalling the released context would be a use-after-free.
++        return;
++    }
+     t->context->running.signal();
+ }
+ 
+ void run_next_thread(RDRAM_ARG1) {
+     if (ultramodern::thread_queue_empty(PASS_RDRAM ultramodern::running_queue)) {
++        // During a coordinated shutdown the last guest thread can find an
++        // empty queue. Throwing here would escape the thread function and
++        // terminate the process; the shutdown path unwinds the thread instead.
++        if (ultramodern::shutdown::requested()) {
++            return;
++        }
+         throw std::runtime_error("No threads left to run!\n");
+     }
+ 
+-    OSThread* to_run = TO_PTR(OSThread, ultramodern::thread_queue_pop(PASS_RDRAM ultramodern::running_queue));
+-    debug_printf("[Scheduling] Resuming execution of thread %d\n", to_run->id);
+-    to_run->context->running.signal();
++    // A shutdown request stops new guest work: do not hand the CPU to another
++    // guest thread once the shutdown has been requested.
++    if (ultramodern::shutdown::requested()) {
++        return;
++    }
++
++    while (!ultramodern::thread_queue_empty(PASS_RDRAM ultramodern::running_queue)) {
++        OSThread* to_run = TO_PTR(OSThread, ultramodern::thread_queue_pop(PASS_RDRAM ultramodern::running_queue));
++        if (to_run->context == nullptr) {
++            // The thread has finished or was destroyed. Drop it instead of
++            // signalling a context that has already been released.
++            continue;
++        }
++        debug_printf("[Scheduling] Resuming execution of thread %d\n", to_run->id);
++        to_run->context->running.signal();
++        return;
++    }
++
++    // Every queued thread had already finished or been destroyed.
++    if (ultramodern::shutdown::requested()) {
++        return;
++    }
++    throw std::runtime_error("No threads left to run!\n");
+ }
+ 
+ void ultramodern::run_next_thread_and_wait(RDRAM_ARG1) {
+@@ -260,6 +313,13 @@ static void _thread_func(RDRAM_ARG PTR(OSThread) self_, PTR(thread_func_t) entry
+         debug_printf("[Thread] Thread destroyed before being started: %d\n", self->id);
+     }
+ 
++    // The thread has finished or is unwinding. It must not stay registered in
++    // a guest queue: the queues live in guest memory, and a later send would
++    // resume a thread whose context has already been released.
++    if (self->queue != NULLPTR) {
++        ultramodern::thread_queue_remove(PASS_RDRAM self->queue, self_);
++    }
++
+     // Check if the thread hasn't been destroyed or replaced. If so, then the thread terminated or destroyed itself,
+     // so mark this thread as destroyed and run the next queued thread.
+     if (self->context == thread_context) {
+@@ -270,6 +330,11 @@ static void _thread_func(RDRAM_ARG PTR(OSThread) self_, PTR(thread_func_t) entry
+ 
+     // Dispose of this thread now that it's completed or terminated.
+     ultramodern::cleanup_thread(thread_context);
++
++    // The thread no longer touches guest memory, so the shutdown coordinator
++    // can now report it as stopped. This has to be the last thing the thread
++    // does: the owner waits for this before it releases RDRAM.
++    ultramodern::shutdown::unregister_thread(thread_context);
+ }
+ 
+ extern "C" void osStartThread(RDRAM_ARG PTR(OSThread) t_) {
+@@ -305,7 +370,16 @@ extern "C" void osCreateThread(RDRAM_ARG PTR(OSThread) t_, OSId id, PTR(thread_f
+     UltraThreadContext* context = new UltraThreadContext{};
+     t->context = context;
+     register_thread_context(t_, context);   // save-state: track native context by guest address
+-    context->host_thread = std::thread{_thread_func, PASS_RDRAM t_, entrypoint, arg, t->context};
++    // Register the guest thread with the shutdown coordinator before it starts,
++    // so a shutdown request can never miss a thread that is already parked.
++    ultramodern::shutdown::register_thread(context, &wake_game_thread);
++    try {
++        context->host_thread = std::thread{_thread_func, PASS_RDRAM t_, entrypoint, arg, t->context};
++    } catch (...) {
++        ultramodern::shutdown::unregister_thread(context);
++        delete context;
++        throw;
++    }
+ 
+     // Wait until the thread is initialized to indicate that it's ready to be started.
+     context->initialized.wait();

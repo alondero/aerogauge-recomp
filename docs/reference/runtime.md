@@ -71,10 +71,69 @@ a model for a new runtime API. Patch 0018 makes the graphics-config accessor
 return a snapshot copy instead of an unlocked reference, so the graphics
 thread, the VI callback, and the game thread can each read the live
 configuration while the settings menu replaces it. That is a repair of a
-runtime synchronization defect, not an API shape to copy elsewhere. The exact
-application order is part of [BUILDING](../../BUILDING.md).
+runtime synchronization defect, not an API shape to copy elsewhere. Patch
+0031 adds the coordinated game-thread shutdown contract described under
+[Failure and shutdown](#failure-and-shutdown); the contract belongs to the
+runtime because the runtime owns the game threads, while the deadline, the
+store flushes, and the fallback stay in the port. The exact application order
+is part of [BUILDING](../../BUILDING.md).
 
 ## Failure and shutdown
+
+### The coordinated game-thread shutdown contract
+
+Local patch [0031](../../patches/0031-ultramodern-coordinated-game-thread-shutdown.patch)
+adds `ultramodern/shutdown.hpp` to the runtime. It is the runtime's half of the
+shutdown handshake: the runtime owns the game threads, so the runtime owns the
+part that only the runtime can decide.
+
+| Call | Owner | Meaning |
+| --- | --- | --- |
+| `shutdown::register_thread(token, wake)` | runtime | A guest thread exists and can be parked. Registration happens before the thread can block, so a shutdown request cannot miss it. |
+| `shutdown::request()` | port | Stop new guest work. Publishes the flag and releases every registered guest thread. Idempotent. |
+| `shutdown::requested()` | runtime | The flag is published. Guest code checks it at its blocking points. |
+| `shutdown::pending_threads()` | port | How many registered guest threads have not finished unwinding yet. |
+| `shutdown::join_threads(timeout)` | port | Wait up to `timeout` for every guest thread to unwind. Returns the number still running; zero means RDRAM and the device resources can be released. |
+
+How a guest thread stops:
+
+- A guest thread parked in the scheduler (`osRecvMesg`, `osSendMesg`,
+  `osStopThread`) waits on its own semaphore. The shutdown request signals that
+  semaphore, the thread wakes, observes the flag, and unwinds.
+- A guest thread parked in the runtime's external message queue (`pause_self`,
+  `yield_self`) waits with a bounded timeout. It observes the flag within that
+  bound and unwinds.
+- A guest thread that is running translated code keeps running until its next
+  blocking point. This is why the join has to happen before RDRAM is released:
+  translated code reads and writes RDRAM.
+- The unwind uses the runtime's existing `thread_terminated` exception, the same
+  mechanism `osDestroyThread` uses. No new unwinding primitive is introduced.
+
+A guest thread that unwinds must also leave the guest queue it was blocked on.
+The message queues live in guest memory, so a stale entry would make a later
+send resume a thread whose context has already been released. The runtime
+therefore removes the thread from its queue when it finishes, and it never
+signals a thread whose context is gone. The queue removal needs a correct list
+walk, so the patch also corrects `thread_queue_remove`: upstream, it only ever
+compared the head of the queue, so it failed to remove a thread that was not
+first in the queue. The blocked threads are ordered by priority, not by
+arrival, so the head-only behaviour was not enough.
+
+Two properties are load-bearing and are pinned by the
+[shutdown_contract](../../tests/test_shutdown_contract.cpp) host test:
+
+- `request()` releases every registered guest thread exactly once. A second
+  release would leave a stray scheduler signal behind, and a guest thread that
+  consumed it could resume without being scheduled.
+- A guest thread that is registered after the request is released at once. A
+  shutdown admits no new guest work.
+
+The runtime never decides how long a shutdown may take. The port owns the
+deadline and the fallback: a join that did not finish means the guest threads
+are still running, so the port must not release RDRAM, the renderer, or the
+audio device, and must use the bounded exit instead.
+
+### The bounded exit
 
 The runtime can stop a bounded headless run after a VI limit. The port flushes
 EEPROM before its current process-exit path. This avoids leaving generated

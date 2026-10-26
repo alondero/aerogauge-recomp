@@ -53,6 +53,7 @@ contexts.
 | [0028](0028-recompfrontend-navigation-target-lifetime.patch) | RecompFrontend | Invalidate navigation caches on child removal, rebuild focused containers, retain focusable empty containers, and preserve the nearest-candidate search with a single-item wrap fallback. General frontend correctness fix; candidate for upstream RecompFrontend. |
 | [0029](0029-recompfrontend-multiplayer-profiles.patch) | RecompFrontend | Legacy fallback before assignment, isolated and persisted player profiles, bounded assignment, and clearing detached references. Candidate for upstream RecompFrontend. |
 | [0030](0030-recompfrontend-controller-reconnect.patch) | RecompFrontend | Process-local slot restoration using SDL serial plus model identity, duplicate-identity rejection, and disconnected-player guidance. Candidate for upstream RecompFrontend. |
+| [0031](0031-ultramodern-coordinated-game-thread-shutdown.patch) | N64ModernRuntime | Stop/request/join contract for the guest threads so the owner can release RDRAM and the device resources in a defined order. The runtime owns the contract; the port owns the deadline and the fallback. |
 | [0023](0023-rt64-adreno-endian-swap.patch) | RT64 | Spell the 16-bit byte swap with XOR instead of OR. The Adreno system Vulkan driver returns `VK_ERROR_UNKNOWN` from `vkCreateComputePipelines` for any compute shader containing the OR form, which previously left a null pipeline handle that crashed `vkCmdBindPipeline`. The masked fields are disjoint, so the result is identical on every driver. |
 
 Patch [0029](0029-recompfrontend-multiplayer-profiles.patch) enables the port's
@@ -75,6 +76,30 @@ behavior to the existing assignment API. Upstream HEAD 2ddbfc8 (checked for this
 change) still has no physical-slot restoration on controller removal or addition.
 The port runs cleanup and restoration under its existing presentation lock,
 before input sampling and rumble routing; SDL lifecycle ownership stays there.
+
+Patch [0031](0031-ultramodern-coordinated-game-thread-shutdown.patch) adds the
+coordinated shutdown contract to the runtime. The runtime owns the guest
+threads, so it owns the part that only the runtime can decide: a guest thread
+that is parked in the scheduler or in the external message queue has to be
+released, and a guest thread that is running translated code has to reach a
+point where it can unwind. `ultramodern::shutdown` publishes that contract:
+`request()` stops new guest work and releases every registered guest thread,
+`join_threads()` reports how many guest threads are still running, and the
+owner decides what a non-zero result means. The port owns the deadline, the
+store flushes, and the fallback; the runtime never decides how long a shutdown
+may take. The guest threads are released by the same mechanism the runtime
+already uses to destroy a thread (`thread_terminated`), so no new unwinding
+primitive is introduced.
+
+The same patch corrects two upstream defects that the shutdown exposes. A guest
+thread that unwinds has to leave the guest message queue it was blocked on;
+`thread_queue_remove` only ever compared the head of the queue, so it failed
+to remove a thread that was not first in the queue, and the blocked threads are
+ordered by priority rather than by arrival. The runtime also never signalled a
+thread whose context had already been released, which turned a stale queue
+entry into a use-after-free. Both are general runtime defects rather than
+shutdown-specific behaviour, so they are candidates for the dependency's
+upstream project.
 
 ## Application order
 

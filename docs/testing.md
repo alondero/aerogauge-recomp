@@ -267,6 +267,7 @@ The current CMake file registers these tests:
 | gyro_sdl_bridge | Host | Real SDL bridge with synthetic events/devices; SDL and frontend headers, no ROM or driver |
 | eeprom_exit_flush | Runtime host | Built N64ModernRuntime |
 | rsp_task_submission | Runtime host | Patched N64ModernRuntime; no ROM or audio device |
+| shutdown_contract | Runtime host | Patched N64ModernRuntime; no ROM, renderer, or SDL |
 | racer_shadow_depth | Host | Synthetic RDRAM and runtime OSTask type; no ROM or renderer |
 | hud_shift_scale | Host | No ROM |
 | hud_messages | Host | RT64 headers from the initialized submodule |
@@ -296,11 +297,13 @@ The current CMake file registers these tests:
 | turbo_boost_e2e | End to end | Windows, ROM, executable, and gdb.exe |
 | audio_task_crash | End to end | Windows, ROM, executable; headless audio path |
 | play_logging_quiet | End to end | Windows, ROM, executable, and a working RT64 graphics device |
+| coordinated_shutdown | End to end | Windows, ROM, and executable; headless path |
 
 The ROM-backed tests are only added when RecompiledFuncs exists at configure
 time. Re-run CMake after generating the functions if they are missing from
-CTest. The Windows tests are only added on Windows. play_logging_quiet is
-also only added when the ROM exists during configuration.
+CTest. The Windows tests are only added on Windows. play_logging_quiet and
+coordinated_shutdown are also only added when the ROM exists during
+configuration.
 
 `frontend_navigation_wrap` sends real RmlUi directional events through nested
 single-item groups and checks that wrapping retains the current focus.
@@ -330,6 +333,15 @@ shadow setup match, fail-closed behavior, task-relative bounds, repeated
 course/shadow passes in one root list, and preservation of a HUD pass that
 reuses the shadow render mode.
 
+`shutdown_contract` links the dependency's real shutdown coordinator and
+checks the coordinated game-thread shutdown contract: `request()` publishes the
+flag and releases every registered guest thread exactly once, a second request
+is idempotent, a guest thread registered after the request is released at once,
+`join_threads()` reports the guest threads that are still running, and
+unregistering an unknown token does not corrupt the count. It needs no ROM, no
+renderer, and no SDL. The contract itself is described in
+[docs/reference/runtime.md](reference/runtime.md#failure-and-shutdown).
+
 The CTest wrappers use these skip behaviors:
 
 - audio_intro_playback, haptics_race_e2e, and turbo_boost_e2e use return code
@@ -338,6 +350,8 @@ The CTest wrappers use these skip behaviors:
   executable is absent. Treat that notice as a skipped test in reports.
 - play_logging_quiet has no automatic no-GPU skip. It needs both its RT64 leg
   and its headless leg to reach their expected log markers.
+- coordinated_shutdown has no automatic skip either: it needs the ROM and the
+  executable, but no graphics device, because it runs on the headless path.
 - vi_special_features has no automatic no-GPU skip. It runs 1800 VIs with
   isolated portable storage and checks the live VI control word during startup
   and a race. Run it directly with
@@ -456,6 +470,25 @@ The normal ROM-backed smoke command is:
 AERO_HEADLESS=1 AERO_MODERN_MAX_VIS=120 ./build/aerogauge_modern
 ~~~
 
+That command uses the bounded exit: it stops the harness after a VI budget and
+ends the process without unwinding the guest threads. To exercise the
+coordinated shutdown instead, request the quit and give the guest threads time
+to stop:
+
+~~~bash
+AERO_HEADLESS=1 AERO_MODERN_MAX_VIS=100000 AERO_QUIT_AFTER_MS=4000 ./build/aerogauge_modern
+~~~
+
+The expected evidence is `[shutdown] guest threads joined` followed by the boot
+summary, with a zero exit status and no crash report. A `NATIVE CRASH` banner
+is a failure: the coordinated shutdown must not leave a guest thread registered
+in a guest message queue, because a later send would resume a thread whose
+context has already been released. The same command in a windowed run
+exercises the RT64 renderer, the SDL window, and the audio device on the way
+out. The same run with a deliberately short `AERO_SHUTDOWN_JOIN_MS` must fall
+back to the bounded exit instead of releasing RDRAM under a live guest thread;
+the log then reports the guest threads that did not stop.
+
 Useful longer checks are already wrapped by CTest or the scripts in tests:
 
 - test_audio_task_crash.ps1 runs a headless race with generated aspMain audio
@@ -470,6 +503,8 @@ Useful longer checks are already wrapped by CTest or the scripts in tests:
 - test_audio_intro.ps1 runs the intro and attract sequence with a real audio
   device.
 - test_play_logging_quiet.ps1 runs both RT64 and headless renderer legs.
+- test_coordinated_shutdown.ps1 requests the coordinated quit in a real run and
+  checks that every guest thread was joined and that no crash was reported.
 
 The save-state scripts are not CTest tests. Run them on Windows from the
 repository root:

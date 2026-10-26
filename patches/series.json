@@ -7,6 +7,7 @@
   {"repository": "lib/N64ModernRuntime", "patch": "0015-runtime-host-config-storage.patch", "platforms": ["windows", "linux", "android"]},
   {"repository": "lib/N64ModernRuntime", "patch": "0017-runtime-game-presentation.patch", "platforms": ["windows", "linux", "android"]},
   {"repository": "lib/N64ModernRuntime", "patch": "0018-ultramodern-graphics-config-snapshot.patch", "platforms": ["windows", "linux", "android"]},
+  {"repository": "lib/N64ModernRuntime", "patch": "0031-ultramodern-coordinated-game-thread-shutdown.patch", "platforms": ["windows", "linux", "android"]},
   {"repository": "lib/RecompFrontend", "patch": "0016-recompfrontend-integration.patch", "platforms": ["windows", "linux", "android"]},
   {"repository": "lib/RecompFrontend", "patch": "0022-recompfrontend-android.patch", "platforms": ["android"]},
   {"repository": "lib/RecompFrontend", "patch": "0024-recompfrontend-input-synchronization.patch", "platforms": ["windows", "linux", "android"]},
