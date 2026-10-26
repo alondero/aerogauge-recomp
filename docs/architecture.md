@@ -241,14 +241,41 @@ windowed load during live rendering as unsafe until the open issue is fixed.
 
 ## Failure and shutdown model
 
-The headless smoke path may end the process with _Exit after flushing EEPROM and
-any queued settings write. The settings flush is explicit because _Exit skips
-static destruction, which would otherwise discard a change still inside the
-config write worker's debounce window. Avoiding the unwind also keeps runtime
-memory alive while generated game threads still exist. It is suitable for a
-bounded test, not proof that normal game-thread shutdown is solved. The window
-close path uses the same current process-exit model. A future graceful-shutdown
-change needs an explicit runtime decision and thread join test.
+The port owns the process; the runtime owns the game threads. Shutdown is a
+handshake between the two, and it runs in four phases:
+
+1. Stop new work. The runtime publishes a shutdown flag and releases every
+   guest thread, so no new guest work starts and the parked guest threads wake
+   up. A guest thread that is already running keeps running translated code
+   until its next blocking point, where it observes the flag and unwinds.
+2. Complete or cancel the outstanding tasks. The guest threads unwind out of
+   their translated entry points; the audio path stops accepting new
+   submissions; the save service keeps running so an in-flight EEPROM write
+   still completes.
+3. Flush the ordinary stores, then join the owners. The EEPROM image and the
+   settings file are written out while RDRAM is still valid. The guest threads
+   are joined before RDRAM is released: a guest thread that is still running may
+   still be executing translated code, and translated code reads and writes
+   RDRAM. The runtime's own teardown then joins the graphics, VI, task, and
+   saving threads, ends the renderer, and frees RDRAM.
+4. Destroy the renderer, window, and device resources. The renderer context
+   belongs to the runtime's graphics thread and is released by the runtime
+   teardown. The SDL window and the audio device belong to the port and are
+   released by the port once the runtime teardown has returned.
+
+The runtime never decides how long a shutdown may take. The port owns the
+deadline, and a join that does not finish in time means the guest threads are
+still running, so RDRAM and the device resources must not be released. That
+case falls back to the bounded exit below.
+
+The bounded exit is still the exit for the headless VI cap, for the stall
+watchdog, and for a coordinated join that ran out of time. It ends the process
+with _Exit after flushing EEPROM and any queued settings write. The settings
+flush is explicit because _Exit skips static destruction, which would
+otherwise discard a change still inside the config write worker's debounce
+window. Avoiding the unwind also keeps runtime memory alive while generated
+game threads still exist, so it is suitable for a bounded test, not proof that
+normal game-thread shutdown is solved.
 
 The crash handler is the deliberate exception: it ends the process from a signal
 or exception context where taking the settings lock is not safe, so a crash

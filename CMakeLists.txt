@@ -372,6 +372,16 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     add_test(NAME rsp_task_submission COMMAND test_rsp_submission)
     set_tests_properties(rsp_task_submission PROPERTIES TIMEOUT 10)
 
+    # Use the dependency's real shutdown coordinator, so the coordinated
+    # game-thread shutdown contract is checked against the code the port
+    # actually calls (issue #114).
+    add_executable(test_shutdown_contract tests/test_shutdown_contract.cpp
+        ${N64MR}/ultramodern/src/shutdown.cpp)
+    target_include_directories(test_shutdown_contract PRIVATE
+        ${N64MR}/ultramodern/include)
+    add_test(NAME shutdown_contract COMMAND test_shutdown_contract)
+    set_tests_properties(shutdown_contract PROPERTIES TIMEOUT 30)
+
     # Pure host test for the guarded RT64 task-display-list shadow patch.
     add_executable(test_shadow_depth tests/test_shadow_depth.cpp src/aero_shadow_depth.cpp)
     target_include_directories(test_shadow_depth PRIVATE
@@ -644,6 +654,18 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                          -Exe $<TARGET_FILE:aerogauge_modern>
                          -RepoRoot "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(play_logging_quiet PROPERTIES TIMEOUT 180)
+
+        # E2E regression: the coordinated game-thread shutdown must join every
+        # guest thread and must not crash. A guest thread that unwinds has to
+        # leave the guest message queue it was blocked on, otherwise a later
+        # send resumes a thread whose context was already released.
+        # See tests/test_coordinated_shutdown.ps1.
+        add_test(NAME coordinated_shutdown
+                 COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                         -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_coordinated_shutdown.ps1"
+                         -Exe $<TARGET_FILE:aerogauge_modern>
+                         -RepoRoot "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(coordinated_shutdown PROPERTIES TIMEOUT 180)
     endif()
 
     endif() # Host regression executables are not APK payload.

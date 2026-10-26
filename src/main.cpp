@@ -39,6 +39,7 @@
 #include "ultramodern/error_handling.hpp"
 #include "ultramodern/renderer_context.hpp"
 #include "ultramodern/input.hpp"
+#include "ultramodern/shutdown.hpp"
 
 #include <limits>
 
@@ -173,24 +174,106 @@ static void thread_create_cb(uint8_t*, recomp_context*) {
 }
 
 // Print the one-line boot summary used by the boot smoke check,
-// then terminate the process immediately. We _Exit instead of returning through
-// recomp::start()'s teardown on purpose: that teardown joins the helper threads and munmaps
-// RDRAM, but it does NOT terminate the 7 game osCreateThread threads -- once the main game
-// thread actually runs its per-frame dispatch loop, those threads are live in native
-// osRecvMesg and race the munmap into a SIGSEGV. This is a headless boot/probe harness that is
-// quitting anyway, so skip the unwind and let process exit tear the game threads down.
-// Graceful game-thread shutdown remains an RT64-integration task.
+// then terminate the process immediately.
+//
+// This is the BOUNDED EXIT: the fallback for every quit path that cannot wait
+// for a clean join (the stall watchdog) and for a coordinated shutdown whose
+// guest-thread join did not finish in time. It skips recomp::start()'s
+// teardown on purpose: that teardown joins the helper threads and munmaps
+// RDRAM, but it does NOT terminate the game osCreateThread threads -- once the
+// main game thread actually runs its per-frame dispatch loop, those threads
+// are live in native osRecvMesg and race the munmap into a SIGSEGV. A bounded
+// exit lets process exit tear the game threads down instead.
+//
+// The player-facing quit path (closing the window) uses the coordinated
+// shutdown below, which stops the game threads first and therefore lets the
+// runtime teardown run. See docs/architecture.md ("Failure and shutdown
+// model") and docs/reference/runtime.md for the contract.
 extern "C" void aero_flush_eeprom(); // runtime patch 0014
+
+// The one-line boot summary used by the boot smoke check.
+static void print_boot_summary() {
+    std::fprintf(stderr, "[probe] boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
+                 g_threads.load(), g_vis.load(), (int)g_first_vi.load(), g_max_state.load(),
+                 g_swaps.load());
+    std::fflush(nullptr);
+}
+
 [[noreturn]] static void boot_summary_and_exit() {
     aero_flush_eeprom();
     // Settings changes are persisted by a debounced worker; _Exit below skips
     // static destruction, so the pending write has to be drained explicitly.
     aero::config::flush_config_writes();
-    std::fprintf(stderr, "[probe] boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
-                 g_threads.load(), g_vis.load(), (int)g_first_vi.load(), g_max_state.load(),
-                 g_swaps.load());
-    std::fflush(nullptr);
+    print_boot_summary();
     std::_Exit(g_first_vi.load() ? 0 : 2);
+}
+
+// A quit has been requested and the main thread has to run the coordinated
+// shutdown. The flag is set from the thread that noticed the quit (the SDL
+// event pump, the harness timer) and consumed by the main thread inside
+// recomp::start()'s loop, because the coordinated shutdown must run there:
+// the runtime teardown that follows it owns the renderer and RDRAM.
+static std::atomic<bool> g_quit_requested{false};
+
+static void request_quit() {
+    g_quit_requested.store(true, std::memory_order_release);
+}
+
+// --- coordinated shutdown ---------------------------------------------------------
+//
+// The port owns the process and the runtime owns the guest threads, so quitting
+// is a handshake with four phases:
+//
+//   1. Stop new work. ultramodern::shutdown::request() publishes the shutdown
+//      flag and releases every guest thread, so no new guest work starts and
+//      the parked guest threads wake up.
+//   2. Flush the ordinary stores. The EEPROM image (runtime patch 0014) and
+//      the settings file (the port's debounced writer) are the two stores that
+//      outlive the process.
+//   3. Join the owners. The guest threads are joined before RDRAM is
+//      released: a guest thread that is still running may still be executing
+//      translated code, and translated code reads and writes RDRAM.
+//   4. Release the resources. ultramodern::quit() lets recomp::start()'s
+//      teardown join the graphics/VI/task/saving threads, end the renderer and
+//      free RDRAM. The port then closes its own audio device and window.
+//
+// The deadline belongs to the port: the runtime never decides how long a
+// shutdown may take. If the join does not finish in time the port falls back
+// to the bounded exit above, because releasing RDRAM under a live guest
+// thread is the exact failure this path exists to prevent.
+static std::chrono::milliseconds guest_join_timeout() {
+    if (const char* e = std::getenv("AERO_SHUTDOWN_JOIN_MS")) {
+        const long value = std::strtol(e, nullptr, 10);
+        if (value > 0) return std::chrono::milliseconds{value};
+    }
+    return std::chrono::seconds{5};
+}
+
+// Phase 1-3 of the coordinated shutdown. Runs on the main thread, inside
+// recomp::start()'s loop, so the runtime teardown can follow it.
+static void coordinated_shutdown() {
+    // Phase 1: stop new work and release the parked guest threads.
+    ultramodern::shutdown::request();
+
+    // Phase 2: flush the ordinary stores while RDRAM is still valid.
+    aero_flush_eeprom();
+    aero::config::flush_config_writes();
+
+    // Phase 3: join the guest threads. Until every one of them has unwound,
+    // guest code may still be reading and writing RDRAM.
+    const int remaining = ultramodern::shutdown::join_threads(guest_join_timeout());
+    if (remaining != 0) {
+        std::fprintf(stderr,
+                     "[shutdown] %d guest thread(s) did not stop within the deadline; "
+                     "using the bounded exit\n", remaining);
+        std::fflush(nullptr);
+        boot_summary_and_exit();
+    }
+    std::fprintf(stderr, "[shutdown] guest threads joined\n");
+
+    // Phase 4 (first half): hand the process back to recomp::start(), whose
+    // teardown joins the remaining runtime threads and releases RDRAM.
+    ultramodern::quit();
 }
 
 
@@ -350,6 +433,11 @@ static void refresh_rumble_controller();
 static void rumble_apply();  // rumble-pak sink; defined in the input section below
 static int sdl_event_filter(void*, SDL_Event*);
 
+// The SDL window the port created for the renderer. RT64 drives the swapchain
+// from the unwrapped HWND, so the port keeps ownership of the window and
+// destroys it in the coordinated shutdown, after the renderer is gone.
+static SDL_Window* g_port_window = nullptr;
+
 static void set_application_icon(SDL_Window* window) {
 #if !defined(__ANDROID__)
     char* base_path = SDL_GetBasePath();
@@ -432,6 +520,10 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         }
         set_application_icon(window);
         aero::menu::attach(window);
+        // The port owns the SDL window: RT64 drives the swapchain from the
+        // unwrapped HWND, and the coordinated shutdown destroys the window
+        // after the renderer has been shut down.
+        g_port_window = window;
 #if defined(__ANDROID__)
         resolve_startup_mode(aero::startup::Mode::AutoStart);
         return ultramodern::renderer::WindowHandle{window};
@@ -469,6 +561,13 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
 }
 
 static void update_gfx_stub(void* /*gfx_data*/) {
+    // The coordinated quit is handled here, on the main thread, in every mode:
+    // the runtime teardown that follows it has to run on this thread, and the
+    // headless mode has no other place to run it.
+    if (g_quit_requested.exchange(false, std::memory_order_acq_rel)) {
+        coordinated_shutdown();
+        return;
+    }
     // Pump SDL events and sample frontend input on the main thread. The
     // frontend consumes the queue so binding scans and UI navigation see the
     // same events as gameplay.
@@ -503,7 +602,9 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 std::fprintf(stderr, "[probe] window closed; quitting\n");
                 release_all_controller_handles();
                 aero::menu::update();
-                boot_summary_and_exit();
+                // The coordinated shutdown runs on the next update_gfx call, on
+                // the main thread, so the runtime teardown can follow it.
+                request_quit();
             }
             recompinput::poll_inputs();
             aero::gyro::update();
@@ -1104,9 +1205,34 @@ int main(int argc, char** argv) {
     aero::audio::get_callbacks(&cfg.audio_callbacks);
     std::fprintf(stderr, "[probe] audio: callbacks wired (queue_samples/get_frames_remaining/set_frequency)\n");
 
+    // Harness knob: request the coordinated quit after a delay. It exercises
+    // the same path as closing the window, so the coordinated shutdown can be
+    // validated without a window interaction (the windowed path needs a real
+    // session). AERO_QUIT_AFTER_MS=2000 quits two seconds into the run.
+    if (const char* e = std::getenv("AERO_QUIT_AFTER_MS")) {
+        const long value = std::strtol(e, nullptr, 10);
+        if (value > 0) {
+            std::thread([value]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds{value});
+                std::fprintf(stderr, "[probe] AERO_QUIT_AFTER_MS=%ld; requesting the coordinated quit\n",
+                             value);
+                request_quit();
+            }).detach();
+        }
+    }
+
     std::fprintf(stderr, "[probe] calling recomp::start\n");
     recomp::start(cfg);
-    // Reached only via the watchdog quit path (a boot stall before the VI cap): the VI-cap
-    // path exits from vi_cb via boot_summary_and_exit() and never returns here.
-    boot_summary_and_exit();
+
+    // The coordinated shutdown returns here: recomp::start()'s teardown has
+    // joined the runtime's worker threads, ended the renderer and freed RDRAM.
+    // The port still owns the audio device and the SDL window, so it releases
+    // them now that nothing can use them any more.
+    aero::audio::shutdown();
+    if (g_port_window != nullptr) {
+        SDL_DestroyWindow(g_port_window);
+        g_port_window = nullptr;
+    }
+    print_boot_summary();
+    return g_first_vi.load() ? 0 : 2;
 }

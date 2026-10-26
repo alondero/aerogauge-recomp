@@ -234,6 +234,8 @@ interface.
 | AERO_STATE_LOAD_SCENE | scene number | Scene for the automatic load; default 3 |
 | AERO_STATE_LOAD_DELAY | VI ticks | Extra wait after the load scene becomes eligible |
 | AERO_MODERN_MAX_VIS | positive integer | Exit after this many VI ticks |
+| AERO_QUIT_AFTER_MS | positive milliseconds | Requests the coordinated quit this long after startup |
+| AERO_SHUTDOWN_JOIN_MS | positive milliseconds | Deadline for the coordinated guest-thread join; default 5000 |
 | AERO_MODERN_INPUT | button hex[:stick x[:stick y]] | Held N64 input for a headless run |
 | AERO_MODERN_INPUT_AFTER | vi:button hex:stick x:stick y | Replaces the held test input at a VI |
 | AERO_INPUT_PULSE | button hex:period:duty[:start vi[:count]] | Repeated button pulses for menu tests |
@@ -340,6 +342,8 @@ extra output unless the row says otherwise.
 | AERO_STATE_LOAD_SCENE | Headless test; integer | Unset uses scene 3 | First save-state tick | Selects the scene at which AERO_STATE_LOAD may run; src/aero_savestate.c | AERO_STATE_LOAD_SCENE=3 ./build/aerogauge_modern |
 | AERO_STATE_LOAD_DELAY | Headless test; integer VI ticks | Unset uses 0 | First save-state tick | Delays the automatic load after its scene gate; src/aero_savestate.c | AERO_STATE_LOAD_DELAY=30 ./build/aerogauge_modern |
 | AERO_MODERN_MAX_VIS | Headless test; positive integer | Unset uses 120 in headless mode and no cap in RT64 mode | Startup | Stops the boot harness after a VI budget; src/main.cpp | AERO_MODERN_MAX_VIS=120 ./build/aerogauge_modern |
+| AERO_QUIT_AFTER_MS | Headless test or windowed check; positive milliseconds | Unset means no scheduled quit | Startup | Requests the coordinated quit, which stops the guest threads, flushes the stores, and returns through the runtime teardown; src/main.cpp | AERO_QUIT_AFTER_MS=4000 ./build/aerogauge_modern |
+| AERO_SHUTDOWN_JOIN_MS | Headless test or windowed check; positive milliseconds | Unset uses 5000 | Coordinated shutdown | Deadline for the guest-thread join; a join that runs out of time falls back to the bounded exit; src/main.cpp | AERO_SHUTDOWN_JOIN_MS=2000 ./build/aerogauge_modern |
 | AERO_MODERN_INPUT | Headless test; button hex[:stick x[:stick y]] | Unset adds no held input | Startup | ORs a held N64 input into every game read; src/main.cpp | AERO_MODERN_INPUT=1000 ./build/aerogauge_modern |
 | AERO_MODERN_INPUT_AFTER | Headless test; startvi:button hex:stick x:stick y | Unset makes no replacement | Startup, then selected VI | Replaces the held test input atomically at one VI; src/main.cpp | AERO_MODERN_INPUT_AFTER=300:0:53:0 ./build/aerogauge_modern |
 | AERO_INPUT_PULSE | Headless test; button hex:period:duty[:start vi[:count]] | Unset produces no pulses | Startup, then each VI | Generates repeatable menu button edges; src/main.cpp | AERO_INPUT_PULSE=1000:150:4:300:4 ./build/aerogauge_modern |

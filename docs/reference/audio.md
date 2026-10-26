@@ -123,5 +123,24 @@ watch to confirm the game event reaches the port callback.
 - Save files are host data. They are not guest RDRAM and are not part of a
   save-state snapshot.
 
+## Shutdown ordering
+
+The audio device is released by the port, after the runtime teardown has
+returned. The order matters because the guest threads are what submit PCM:
+
+1. The shutdown request stops new guest work. The guest threads unwind, so no
+   further PCM is submitted.
+2. The EEPROM and settings stores are flushed.
+3. The guest threads are joined. Until they have all unwound, a submission can
+   still arrive from a guest thread that is still executing translated code.
+4. The runtime teardown joins the graphics, VI, task, and saving threads and
+   ends the renderer.
+5. The port closes the audio device and destroys the SDL window.
+
+`aero::audio::shutdown()` frees the conversion stream and closes the SDL
+device. A submission that arrives after it is dropped by the device check in
+`submit()`, so the device is safe to close; the ordering above exists so that
+no PCM is lost on the way out, not to defend against a late submission.
+
 When a failure crosses these boundaries, capture evidence at the boundary
 before changing the next layer.
