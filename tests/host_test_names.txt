@@ -3,4 +3,5 @@ gyro_steering
 hud_shift_scale
 input_cadence
 startup_mode
+rom_startup
 user_data_dir

@@ -56,6 +56,7 @@
 #include "aero_gyro_sdl.h"
 #include "aero_input_cadence.h"
 #include "aero_crash.h"   // native crash reporting and symbol lookup
+#include "aero_rom_desktop.h"
 #include "recompinput/input_events.h"
 #include "recompinput/input_binding.h"
 #include "recompinput/input_state.h"
@@ -886,21 +887,6 @@ int main(int argc, char** argv) {
     if (std::getenv("AERO_LIGHTING_SELFTEST")) {
         return headless::run_lighting_selftest();
     }
-    const char* rom_path = (argc > 1) ? argv[1] : "AeroGauge (USA).z64";
-#ifdef AERO_JAPAN_SUPPORT
-    if (argc <= 1 && !std::filesystem::exists(rom_path)) {
-        for (const char* candidate : {"AeroGauge (Japan) (Rev A).z64",
-                                      "AeroGauge (Japan) (Rev A).n64",
-                                      "AeroGauge (Japan) (Rev A).v64"}) {
-            if (std::filesystem::exists(candidate)) {
-                rom_path = candidate;
-                break;
-            }
-        }
-    }
-#endif
-    std::fprintf(stderr, "[probe] ROM: %s\n", rom_path);
-
     // Overlay registration follows ROM selection below.
 
     // Smoke-test the handler: AERO_CRASH_TEST=<reason> schedules a 2 s
@@ -962,21 +948,27 @@ int main(int argc, char** argv) {
     recomp::register_game(japan_game);
 #endif
 
-    std::u8string game_id = u8"aerogauge.us";
-    recomp::RomValidationError verr = recomp::select_rom(rom_path, game_id);
+    const auto selected_rom = aero::rom::select_startup_rom(
+        argc > 1 ? std::optional<std::filesystem::path>(
+                       std::filesystem::path(reinterpret_cast<const char8_t*>(argv[1]))) : std::nullopt,
+        game,
 #ifdef AERO_JAPAN_SUPPORT
-    if (verr == recomp::RomValidationError::IncorrectVersion) {
-        verr = recomp::select_rom(rom_path, japan_game.game_id);
-        if (verr == recomp::RomValidationError::Good) {
-            aero_japan = 1;
-            game_id = japan_game.game_id;
-        }
-    }
+        &japan_game,
+#else
+        nullptr,
 #endif
-    if (verr != recomp::RomValidationError::Good) {
-        std::fprintf(stderr, "[probe] select_rom FAILED (RomValidationError=%d)\n", (int)verr);
-        return 1;
-    }
+#if defined(__ANDROID__)
+        false
+#else
+        aero_rt64::enabled()
+#endif
+    );
+    if (!selected_rom.region) return selected_rom.cancelled ? 0 : 1;
+    aero_japan = *selected_rom.region == aero::rom::Region::JapanRevA;
+    std::u8string game_id = game.game_id;
+#ifdef AERO_JAPAN_SUPPORT
+    if (aero_japan) game_id = japan_game.game_id;
+#endif
     std::fprintf(stderr, "[probe] ROM validated; rom_hash matches (%s)\n",
                  AERO_BRANCH("USA", "Japan Rev A"));
 #ifdef AERO_JAPAN_SUPPORT
