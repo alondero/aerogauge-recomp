@@ -279,6 +279,7 @@ The current CMake file registers these tests:
 | rom_picker_init_failure and rom_picker_open_failure | Host | Real startup adapter with SDL/NFD fixtures that fail picker calls; checks stderr, non-cancel failure status, and dialog/cleanup counts; dependency headers, no ROM or desktop |
 | full_track_registration and full_track_registration_jp | Host | Synthetic sparse course tables and 150-object registration in both regional address layouts; runtime headers, no ROM |
 | turbo_boost_gate | Host | No ROM |
+| logging_policy | Host | No ROM. Checks the logging switches: an invalid `--log-level` is rejected, the console threshold follows the requested level, the session file keeps `info` and above even when the console is narrowed, and records below the file threshold never reach the file |
 | frontend_settings | Host | RecompFrontend and SDL2 test libraries; no ROM |
 | frontend_navigation_wrap | Host | Real RecompFrontend/RmlUi directional events and nested single-item wrapping; no ROM or graphics device |
 | frontend_navigation_candidates | Host | Real RecompFrontend/RmlUi wrapping with multiple candidates including the current focus; no ROM or graphics device |

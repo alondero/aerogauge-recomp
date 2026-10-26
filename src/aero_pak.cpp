@@ -9,6 +9,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include "aero_log.h"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -101,7 +102,7 @@ bool publish(const Image& next) {
         if (!transient || attempt + 1 == MaxAttempts) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(1u << (attempt + 1)));
     }
-    std::fprintf(stderr, "[pak] Save failed; previous Controller Pak image retained.\n");
+    AERO_LOG_ERROR("pak", "Save failed; previous Controller Pak image retained.\n");
     return false;
 }
 }
@@ -114,7 +115,7 @@ void aero::pak::configure(const std::filesystem::path& path, bool enabled) {
     std::error_code error;
     const bool exists = std::filesystem::exists(path, error);
     if (error) {
-        std::fprintf(stderr, "[pak] Cannot inspect Controller Pak image.\n");
+        AERO_LOG_WARN("pak", "Cannot inspect Controller Pak image.\n");
         return;
     }
     if (!exists) {
@@ -124,7 +125,7 @@ void aero::pak::configure(const std::filesystem::path& path, bool enabled) {
     }
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream || stream.tellg() != static_cast<std::streamoff>(image.size())) {
-        std::fprintf(stderr, "[pak] Cannot load Controller Pak: expected a readable 32 KiB MPK; file left untouched.\n");
+        AERO_LOG_WARN("pak", "Cannot load Controller Pak: expected a readable 32 KiB MPK; file left untouched.\n");
         return;
     }
     stream.seekg(0);

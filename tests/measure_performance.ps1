@@ -27,7 +27,9 @@ function Receive-AvailableLines($process, $state) {
         $line = $state.NextLine.GetAwaiter().GetResult()
         if ($null -eq $line) { $state.NextLine = $null; break }
         $state.Log.AppendLine($line) | Out-Null
-        if ($line.StartsWith('[state]')) {
+        # Logged records carry a "[timestamp] [level] [tag] " prefix, so the
+        # tag is matched anywhere in the line rather than only at its start.
+        if ($line -match '\[state\]') {
             $state.InRace = $line -match 'scene=5 req=5 phase=3 race_mode=4'
         }
         $state.NextLine = $process.StandardError.ReadLineAsync()

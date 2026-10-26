@@ -38,6 +38,15 @@ endif()
 add_compile_options(${AERO_FP_COMPILE_OPTIONS})
 
 option(AERO_HOST_TESTS_ONLY "Build dependency-free host tests without ROMs or submodules" OFF)
+
+# The logging policy lives in its own static library. The port's source files
+# call into it, and the host tests compile some of those files directly, so
+# both need the implementation. It is defined before the host-test-only early
+# return so both build modes see the same target.
+add_library(aero_log STATIC src/aero_log.cpp)
+target_include_directories(aero_log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(aero_log PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 if(AERO_HOST_TESTS_ONLY)
     enable_testing()
     include(cmake/HostTests.cmake)
@@ -99,6 +108,23 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 # RT64 generates shader headers in its binary directory.
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
+if(WIN32)
+    # The shipped Windows application is a GUI-subsystem executable that owns
+    # its own WinMain (src/main.cpp). SDL2main supplies a conflicting entry
+    # point and renames main() to SDL_main(), so it must come off the link
+    # line. RT64's bundled CMake adds SDL2main to its own link list; remove
+    # only that transitive entry-point library while keeping SDL2 itself for
+    # the renderer and input backends.
+    if(TARGET rt64)
+        get_target_property(RT64_LINK_LIBRARIES rt64 LINK_LIBRARIES)
+        list(REMOVE_ITEM RT64_LINK_LIBRARIES SDL2main)
+        set_target_properties(rt64 PROPERTIES LINK_LIBRARIES "${RT64_LINK_LIBRARIES}")
+        get_target_property(RT64_INTERFACE_LINK_LIBRARIES rt64 INTERFACE_LINK_LIBRARIES)
+        list(REMOVE_ITEM RT64_INTERFACE_LINK_LIBRARIES SDL2main)
+        set_target_properties(rt64 PROPERTIES
+            INTERFACE_LINK_LIBRARIES "${RT64_INTERFACE_LINK_LIBRARIES}")
+    endif()
+endif()
 if(WIN32)
     # GUID definitions for GCC's __uuidof emulation (see the DirectX-Headers
     # block above). Scoped per-target: a global link_libraries() leaks into
@@ -234,12 +260,26 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     if(ANDROID)
         add_library(aerogauge_modern SHARED ${AERO_SOURCES} src/android/aero_android.cpp)
         set_target_properties(aerogauge_modern PROPERTIES OUTPUT_NAME main)
-        target_link_libraries(aerogauge_modern PRIVATE SDL2::SDL2 SDL2main android log)
+        target_link_libraries(aerogauge_modern PRIVATE SDL2::SDL2 SDL2main android log aero_log)
         target_compile_definitions(aerogauge_modern PRIVATE PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
         add_dependencies(aerogauge_modern aero_vulkan)
     else()
-        add_executable(aerogauge_modern ${AERO_SOURCES})
+        # The shipped Windows application is a GUI-subsystem executable: an
+        # Explorer launch must not open a console window. Its WinMain wrapper
+        # still accepts normal command-line arguments, and --console is what
+        # allocates a console when the user asks for one.
+        if(WIN32)
+            add_executable(aerogauge_modern WIN32 ${AERO_SOURCES})
+        else()
+            add_executable(aerogauge_modern ${AERO_SOURCES})
+        endif()
         target_link_libraries(aerogauge_modern PRIVATE nfd)
+    endif()
+    if(WIN32)
+        # We own WinMain for the GUI-subsystem executable, so SDL must not
+        # rename main() to SDL_main(). src/main.cpp calls SDL_SetMainReady()
+        # before the first SDL call instead.
+        target_compile_definitions(aerogauge_modern PRIVATE SDL_MAIN_HANDLED)
     endif()
     find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
     set(AERO_MOD_GUARDS ${CMAKE_CURRENT_BINARY_DIR}/generated/aero_mod_patch_guards.inc)
@@ -299,7 +339,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_audio_playback PRIVATE
         ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
         ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(test_audio_playback PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(test_audio_playback PRIVATE ${SDL2_LIBRARIES} aero_log)
     if(WIN32)
         add_custom_command(TARGET test_audio_playback POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -314,7 +354,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_audio_gain PRIVATE
         ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
         ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(test_audio_gain PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(test_audio_gain PRIVATE ${SDL2_LIBRARIES} aero_log)
     if(WIN32)
         add_custom_command(TARGET test_audio_gain POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -333,6 +373,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     endif()
     add_executable(test_accessories tests/test_accessories.cpp src/aero_pak.cpp src/aero_haptics.cpp)
     target_include_directories(test_accessories PRIVATE src ${N64MR}/N64Recomp/include)
+    target_link_libraries(test_accessories PRIVATE aero_log)
     add_test(NAME controller_accessories COMMAND test_accessories)
     if(WIN32)
         add_test(NAME haptics_race_e2e
@@ -490,6 +531,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             DEPENDS tests/extract_pfs_test.py ${FUNC_C_SOURCES})
         add_executable(test_pfs_rom tests/test_pfs_rom.cpp src/aero_pak.cpp ${PFS_TEST_FUNCS})
         target_include_directories(test_pfs_rom PRIVATE src ${N64MR}/N64Recomp/include)
+        target_link_libraries(test_pfs_rom PRIVATE aero_log)
         target_compile_options(test_pfs_rom PRIVATE -fno-strict-aliasing)
         add_test(NAME controller_pak_rom_filesystem COMMAND test_pfs_rom
                  "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (USA).z64")
@@ -503,6 +545,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
             add_executable(test_pfs_rom_jp tests/test_pfs_rom.cpp src/aero_pak.cpp ${JP_PFS_TEST_FUNCS})
             target_compile_definitions(test_pfs_rom_jp PRIVATE AERO_JAPAN_SUPPORT)
             target_include_directories(test_pfs_rom_jp PRIVATE src ${N64MR}/N64Recomp/include)
+            target_link_libraries(test_pfs_rom_jp PRIVATE aero_log)
             target_compile_options(test_pfs_rom_jp PRIVATE -fno-strict-aliasing)
             add_test(NAME controller_pak_rom_filesystem_jp COMMAND test_pfs_rom_jp
                      "${CMAKE_CURRENT_SOURCE_DIR}/AeroGauge (Japan) (Rev A).z64")
@@ -513,6 +556,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_hud_messages PRIVATE
         ${N64MR}/N64Recomp/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    target_link_libraries(test_hud_messages PRIVATE aero_log)
     add_test(NAME hud_messages COMMAND test_hud_messages)
     add_executable(test_race_intro tests/test_race_intro.c)
     target_include_directories(test_race_intro PRIVATE
@@ -538,6 +582,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/ultramodern/include ${N64MR}/thirdparty)
     target_compile_definitions(test_full_track_registration PRIVATE AERO_JAPAN_SUPPORT)
     target_compile_options(test_full_track_registration PRIVATE -fno-strict-aliasing)
+    target_link_libraries(test_full_track_registration PRIVATE aero_log)
     add_test(NAME full_track_registration COMMAND test_full_track_registration)
     add_test(NAME full_track_registration_jp COMMAND test_full_track_registration jp)
 
@@ -547,10 +592,17 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
     target_include_directories(test_turbo_boost PRIVATE ${N64MR}/N64Recomp/include)
     add_test(NAME turbo_boost_gate COMMAND test_turbo_boost)
 
+    # Logging policy: argument parsing, the console/session-file thresholds,
+    # and what reaches the session file. No ROM needed.
+    add_executable(test_aero_log tests/test_aero_log.cpp)
+    target_link_libraries(test_aero_log PRIVATE aero_log)
+    add_test(NAME logging_policy COMMAND test_aero_log)
+
     # Scheduler audio-backlog recovery (src/aero_audio_sched.c) against a model
     # of the ROM's __scAppendList/__scSchedule doAudio rules; no ROM needed.
     add_executable(test_audio_sched tests/test_audio_sched.cpp src/aero_audio_sched.c)
     target_include_directories(test_audio_sched PRIVATE ${N64MR}/N64Recomp/include)
+    target_link_libraries(test_audio_sched PRIVATE aero_log)
     add_test(NAME audio_sched_backlog COMMAND test_audio_sched)
     if(TARGET RecompiledFuncs)
         foreach(region us jp)
@@ -606,7 +658,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${N64MR}/thirdparty
     )
     # aero_config starts a std::thread for the debounced persistence worker.
-    target_link_libraries(test_live_config PRIVATE Threads::Threads)
+    target_link_libraries(test_live_config PRIVATE Threads::Threads aero_log)
     add_test(NAME live_config_updates COMMAND test_live_config)
 
     # Host stick mapping (src/aero_input.h) round-tripped through the runtime's own
@@ -700,7 +752,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${RT64_DIR}/src/contrib/nativefiledialog-extended/src/include
         ${SDL2_INCLUDE_DIRS}
     )
-    target_link_libraries(aerogauge_modern PRIVATE rt64 ${SDL2_LIBRARIES})
+    # We own WinMain for the GUI-subsystem executable; SDL2main supplies its
+    # own entry point and would conflict with it. Every other target in this
+    # file still links SDL2main and keeps SDL's main() handling.
+    set(AERO_SDL_LIBRARIES ${SDL2_LIBRARIES})
+    if(WIN32)
+        list(REMOVE_ITEM AERO_SDL_LIBRARIES SDL2main)
+    endif()
+    target_link_libraries(aerogauge_modern PRIVATE rt64 ${AERO_SDL_LIBRARIES} aero_log)
 
     if(WIN32)
         # Per-Monitor V2 DPI awareness: embed src/app.manifest so the process

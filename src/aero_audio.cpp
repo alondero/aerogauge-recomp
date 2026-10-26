@@ -43,6 +43,7 @@
 #include <cstring>
 #include <mutex>
 #include <vector>
+#include "aero_log.h"
 
 namespace {
 
@@ -95,7 +96,7 @@ bool drop_oversize(size_t sample_count) {
     static std::atomic<bool> s_oversize_logged{false};
     bool exp = false;
     if (s_oversize_logged.compare_exchange_strong(exp, true)) {
-        std::fprintf(stderr, "[probe] audio: dropped oversize submit (%zu samples > AI max)\n",
+        AERO_LOG_WARN("probe", "audio: dropped oversize submit (%zu samples > AI max)\n",
                      sample_count);
     }
     return true;
@@ -104,8 +105,7 @@ bool drop_oversize(size_t sample_count) {
 void log_opened_once() {
     bool expected = false;
     if (g_init_logged.compare_exchange_strong(expected, true)) {
-        std::fprintf(stderr,
-                     "[probe] audio: opened SDL2 device freq=%u fmt=%d ch=%u samples=%u\n",
+        AERO_LOG_INFO("probe", "audio: opened SDL2 device freq=%u fmt=%d ch=%u samples=%u\n",
                      (unsigned)g_obtained.freq, (int)g_obtained.format,
                      (unsigned)g_obtained.channels, (unsigned)g_obtained.samples);
     }
@@ -127,11 +127,11 @@ void queue_output_locked(const void* data, uint32_t bytes) {
         g_playback_started = false;
         ++g_playback_rebuffers;
         if (g_playback_stats) {
-            std::fprintf(stderr, "[probe] audio: playback starved; rebuffers=%u\n", g_playback_rebuffers);
+            AERO_LOG_WARN("probe", "audio: playback starved; rebuffers=%u\n", g_playback_rebuffers);
         }
     }
     if (SDL_QueueAudio(g_dev, data, bytes) != 0) {
-        std::fprintf(stderr, "[probe] audio: SDL_QueueAudio failed: %s\n", SDL_GetError());
+        AERO_LOG_WARN("probe", "audio: SDL_QueueAudio failed: %s\n", SDL_GetError());
         return;
     }
     const uint32_t frames = playback_buffer_frames();
@@ -141,7 +141,7 @@ void queue_output_locked(const void* data, uint32_t bytes) {
         SDL_PauseAudioDevice(g_dev, 0);
         g_playback_started = true;
         if (g_playback_stats) {
-            std::fprintf(stderr, "[probe] audio: playback started; rebuffers=%u\n", g_playback_rebuffers);
+            AERO_LOG_INFO("probe", "audio: playback started; rebuffers=%u\n", g_playback_rebuffers);
         }
     }
 }
@@ -159,8 +159,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
             if (pcm[i] != 0) {
                 bool exp2 = false;
                 if (g_first_nonsilent_logged.compare_exchange_strong(exp2, true)) {
-                    std::fprintf(stderr,
-                                 "[probe] audio: first NON-SILENT buffer (sample[%zu]=%d of %zu)\n",
+                    AERO_LOG_INFO("probe", "audio: first NON-SILENT buffer (sample[%zu]=%d of %zu)\n",
                                  i, (int)pcm[i], sample_count);
                 }
                 break;
@@ -218,7 +217,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
                                           g_obtained.freq);
             g_stream_src_rate = g_desired_rate;
             if (g_stream == nullptr) {
-                std::fprintf(stderr, "[probe] audio: SDL_NewAudioStream failed: %s\n",
+                AERO_LOG_ERROR("probe", "audio: SDL_NewAudioStream failed: %s\n",
                              SDL_GetError());
             }
         }
@@ -228,7 +227,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
             return;
         }
         if (SDL_AudioStreamPut(g_stream, swapped.data(), (int)byte_count) != 0) {
-            std::fprintf(stderr, "[probe] audio: SDL_AudioStreamPut failed: %s\n", SDL_GetError());
+            AERO_LOG_WARN("probe", "audio: SDL_AudioStreamPut failed: %s\n", SDL_GetError());
             return;
         }
         const int avail = SDL_AudioStreamAvailable(g_stream);
@@ -245,8 +244,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
     bool expected = false;
     if (g_first_hit_logged.compare_exchange_strong(expected, true)) {
         const uint32_t frames = (uint32_t)(sample_count / 2);
-        std::fprintf(stderr,
-                     "[probe] audio: first osAiSetNextBuffer routed (%u samples, %u frames)\n",
+        AERO_LOG_INFO("probe", "audio: first osAiSetNextBuffer routed (%u samples, %u frames)\n",
                      (unsigned)sample_count, (unsigned)frames);
     }
 }
@@ -281,7 +279,7 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
         }
         if (n >= 44100) {  // ~1 s of 22050 Hz stereo
             double rms = n ? __builtin_sqrt((double)acc / (double)n) : 0.0;
-            std::fprintf(stderr, "[rms] t=%llus rms=%.0f\n", (unsigned long long)block, rms);
+            AERO_LOG_DEBUG("rms", "t=%llus rms=%.0f\n", (unsigned long long)block, rms);
             block++;
             acc = 0;
             n = 0;
@@ -347,7 +345,7 @@ size_t get_frames_remaining() {
 void set_frequency(uint32_t freq) {
     std::lock_guard<std::mutex> lock(g_state_mtx);
     if (freq != g_desired_rate) {
-        std::fprintf(stderr, "[probe] audio: set_frequency %u -> %u\n", g_desired_rate, freq);
+        AERO_LOG_DEBUG("probe", "audio: set_frequency %u -> %u\n", g_desired_rate, freq);
     }
     g_desired_rate = freq;
     // We do not reopen the device on every set_frequency. SDL honours the
@@ -378,7 +376,7 @@ void init(uint32_t desired_sample_rate) {
     {
         const char* headless = std::getenv("AERO_HEADLESS");
         if (headless && headless[0] && headless[0] != '0') {
-            std::fprintf(stderr, "[probe] audio: headless -- no SDL device (ideal-drain sink)\n");
+            AERO_LOG_INFO("probe", "audio: headless -- no SDL device (ideal-drain sink)\n");
             return;
         }
     }
@@ -390,7 +388,7 @@ void init(uint32_t desired_sample_rate) {
 #endif
 
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-        std::fprintf(stderr, "[probe] audio: SDL_InitSubSystem(SDL_INIT_AUDIO) failed: %s\n",
+        AERO_LOG_ERROR("probe", "audio: SDL_InitSubSystem(SDL_INIT_AUDIO) failed: %s\n",
                      SDL_GetError());
         return;
     }
@@ -407,7 +405,7 @@ void init(uint32_t desired_sample_rate) {
                                 &want, &g_obtained,
                                 SDL_AUDIO_ALLOW_ANY_CHANGE);
     if (g_dev == 0) {
-        std::fprintf(stderr, "[probe] audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
+        AERO_LOG_ERROR("probe", "audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
         return;
     }
     // SDL opens paused. queue_output_locked starts it once PCM is buffered.
@@ -453,7 +451,7 @@ void set_master_gain(float gain) {
     // Log the audible state, not every step of a slider drag: a silent or a
     // newly audible host is the event a diagnostic run needs to explain.
     if ((previous <= 0.0f) != (gain <= 0.0f)) {
-        std::fprintf(stderr, "[probe] audio: %s (gain %.3f)\n",
+        AERO_LOG_INFO("probe", "audio: %s (gain %.3f)\n",
                      gain <= 0.0f ? "muted" : "unmuted", (double)gain);
     }
 }

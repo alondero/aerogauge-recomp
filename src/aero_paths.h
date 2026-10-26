@@ -41,6 +41,19 @@ inline std::filesystem::path app_data_dir() {
     return std::filesystem::current_path();
 }
 
+// Per-session log files. The Windows build ships as a GUI-subsystem
+// executable, so a launch from Explorer has no console to write to: the log
+// file is where diagnostics survive for a player reporting a bug.
+inline std::filesystem::path log_dir() {
+    return app_data_dir() / "logs";
+}
+
+// Native crash reports. Written on the crash path, so the directory is
+// created only when a report is actually produced.
+inline std::filesystem::path crash_dir() {
+    return app_data_dir() / "crashes";
+}
+
 // Values to copy onto RT64::ApplicationConfiguration. detect_data_path must
 // stay false so RT64 does not rebuild a path from app_id.
 struct RendererStorage {

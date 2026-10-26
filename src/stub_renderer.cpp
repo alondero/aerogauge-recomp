@@ -24,6 +24,7 @@
 
 #include "aero_rt64.h" // RT64 is the normal presenter; AERO_HEADLESS keeps swrender
 #include "aero_config.h" // shared harness-log gate
+#include "aero_log.h"
 
 // Set by create_render_context so the VI callback can inspect the guest image.
 // This pointer is valid only while the renderer context exists.
@@ -254,13 +255,13 @@ static const char* opname(uint8_t op) {
 static void dump_raw(const uint8_t* rdram, uint32_t dl_addr, uint32_t byte_len, int max_cmds) {
     uint32_t off;
     uint32_t noseg[16] = {0};
-    if (!resolve(dl_addr, noseg, &off)) { std::fprintf(stderr, "[dl-inspect]   (unresolvable)\n"); return; }
+    if (!resolve(dl_addr, noseg, &off)) { AERO_LOG_DEBUG("dl-inspect", "(unresolvable)\n"); return; }
     uint32_t end = off + byte_len;
     int n = 0;
     for (uint32_t o = off; o + 8 <= end && o + 8 <= 0x00800000 && n < max_cmds; o += 8, ++n) {
         uint32_t w0 = *(const uint32_t*)(rdram + o);
         uint32_t w1 = *(const uint32_t*)(rdram + o + 4);
-        std::fprintf(stderr, "[dl-inspect]   %3d  %08X %08X  %s\n", n, w0, w1, opname((w0 >> 24) & 0xFF));
+        AERO_LOG_DEBUG("dl-inspect", "%3d  %08X %08X  %s\n", n, w0, w1, opname((w0 >> 24) & 0xFF));
     }
 }
 
@@ -268,12 +269,11 @@ static void dump_summary(const uint8_t* rdram, const OSTask* t) {
     uint32_t seg[16] = {0};
     Stats st;
     uint32_t dl_addr = (uint32_t)(int32_t)t->t.data_ptr;
-    std::fprintf(stderr, "[dl-inspect] --- raw first commands (bounded by data_size) ---\n");
+    AERO_LOG_DEBUG("dl-inspect", "--- raw first commands (bounded by data_size) ---\n");
     dump_raw(rdram, dl_addr, (uint32_t)t->t.data_size, 64);
-    std::fprintf(stderr, "[dl-inspect] --- unbounded walk aggregate (may overrun if no in-buffer ENDDL) ---\n");
+    AERO_LOG_DEBUG("dl-inspect", "--- unbounded walk aggregate (may overrun if no in-buffer ENDDL) ---\n");
     walk(rdram, dl_addr, seg, st, 0);
-    std::fprintf(stderr,
-        "[dl-inspect] state-gated one-shot DL @ 0x%08X (size=%u)\n"
+    AERO_LOG_DEBUG("dl-inspect", "state-gated one-shot DL @ 0x%08X (size=%u)\n"
         "  cmds=%u  vtx_loads=%u vtx_total=%u  tris=%u\n"
         "  mtx=%u popmtx=%u moveword=%u movemem=%u texture=%u geommode=%u\n"
         "  settimg=%u settile=%u loadblock=%u loadtile=%u settilesize=%u  texrect=%u fillrect=%u\n"
@@ -283,10 +283,10 @@ static void dump_summary(const uint8_t* rdram, const OSTask* t) {
         st.mtx, st.popmtx, st.moveword, st.movemem, st.texture, st.geommode,
         st.settimg, st.settile, st.loadblock, st.loadtile, st.settilesize, st.texrect, st.fillrect,
         st.dl_calls, st.enddl, st.unknown, st.max_depth, st.first_timg);
-    std::fprintf(stderr, "[dl-inspect] texture working-set: %d distinct (first %d shown)\n",
+    AERO_LOG_DEBUG("dl-inspect", "texture working-set: %d distinct (first %d shown)\n",
                  st.tex_count, st.tex_count);
     for (int i = 0; i < st.tex_count; ++i)
-        std::fprintf(stderr, "[dl-inspect]   tex[%2d] addr=0x%08X  fmt=%s siz=%s\n",
+        AERO_LOG_DEBUG("dl-inspect", "tex[%2d] addr=0x%08X  fmt=%s siz=%s\n",
                      i, st.tex_addr[i], fmt_name(st.tex_fmt[i]), siz_name(st.tex_siz[i]));
 }
 
@@ -336,8 +336,7 @@ static void sprite_scan(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[
                     n1w0 = *(const uint32_t*)(rdram + off + 16);
                     n1w1 = *(const uint32_t*)(rdram + off + 20);
                 }
-                std::fprintf(stderr,
-                    "[menudl]   #%u @off=0x%06X  base=%08X %08X  next=%08X %08X | %08X %08X\n",
+                AERO_LOG_DEBUG("menudl", "#%u @off=0x%06X  base=%08X %08X  next=%08X %08X | %08X %08X\n",
                     sc.count, off, w0, w1, n0w0, n0w1, n1w0, n1w1);
                 uint32_t soff;
                 if (resolve(w1, seg, &soff) && soff + 24 <= 0x00800000) {
@@ -350,8 +349,7 @@ static void sprite_scan(const uint8_t* rdram, uint32_t start_addr, uint32_t seg[
                     auto rd16x = [&](int o) { int a = o ^ 2; return (int16_t)((s[a + 1] << 8) | s[a]); };
                     auto rd8x  = [&](int o) { return s[o ^ 3]; };
                     (void)rd16;
-                    std::fprintf(stderr,
-                        "[menudl]     uSprite@%08X img=%08X tlut=%08X stride=%d w=%d h=%d "
+                    AERO_LOG_DEBUG("menudl", "uSprite@%08X img=%08X tlut=%08X stride=%d w=%d h=%d "
                         "fmt=%u siz=%u offS=%d offT=%d\n",
                         w1, rd32(0), rd32(4), rd16x(8), rd16x(10), rd16x(12),
                         rd8x(14), rd8x(15), rd16x(16), rd16x(18));
@@ -1128,8 +1126,7 @@ static void walk(RState& s, uint32_t start_addr, int depth) {
                         static int s_proj_probe_left = 24;
                         if (s_proj_probe && s_proj_probe_left > 0) {
                             --s_proj_probe_left;
-                            std::fprintf(stderr,
-                                "[projprobe] G_MTX proj load=%d push=%d addr=0x%08X\n"
+                            AERO_LOG_DEBUG("projprobe", "G_MTX proj load=%d push=%d addr=0x%08X\n"
                                 "  [%9.4f %9.4f %9.4f %9.4f]\n  [%9.4f %9.4f %9.4f %9.4f]\n"
                                 "  [%9.4f %9.4f %9.4f %9.4f]\n  [%9.4f %9.4f %9.4f %9.4f]\n",
                                 (int)load, (int)push, maddr,
@@ -1426,7 +1423,7 @@ public:
             // fog policy belongs in its own ROM-derived hook.
         }
         if (count == 1) {
-            std::fprintf(stderr, "[gfx] first OSTask submitted to renderer (send_dl); task type=%u\n",
+            AERO_LOG_INFO("gfx", "first OSTask submitted to renderer (send_dl); task type=%u\n",
                          t ? (unsigned)t->t.type : 0u);
         }
         // Renderer-seam DL introspection (AERO_DL_INSPECT=1). One-shot at a target state
@@ -1442,7 +1439,7 @@ public:
                 // A state-based capture therefore stays inactive.
                 int state = aero_state_unmapped();
                 if (state >= target) {
-                    std::fprintf(stderr, "[dl-inspect] state=%d (>= target %d), send_dl #%d\n",
+                    AERO_LOG_DEBUG("dl-inspect", "state=%d (>= target %d), send_dl #%d\n",
                                  state, target, count);
                     dlinspect::dump_summary(g_aero_rdram, t);
                     s_done = true;
@@ -1480,7 +1477,7 @@ public:
                         std::fwrite(g_aero_rdram, 1, 0x800000, rf);
                         std::fclose(rf);
                     }
-                    std::fprintf(stderr, "[racedl] dumped DL @0x%08X + RDRAM to %s.{txt,bin}\n",
+                    AERO_LOG_DEBUG("racedl", "dumped DL @0x%08X + RDRAM to %s.{txt,bin}\n",
                                  dl_addr, s_race_dump);
                     s_done = true;
                 }
@@ -1497,12 +1494,11 @@ public:
                 uint32_t seg[16] = {0};
                 dlinspect::GeomSet gs;
                 dlinspect::geom_walk(g_aero_rdram, (uint32_t)(int32_t)t->t.data_ptr, seg, gs, 0);
-                std::fprintf(stderr, "[geomset] f=%d tris=%u vtx=%u culls=%u ndl=%d dls=",
+                AERO_LOG_DEBUG("geomset", "f=%d tris=%u vtx=%u culls=%u ndl=%d\n",
                              count, gs.tris, gs.vtx, gs.culls, gs.ndl);
-                for (int i = 0; i < gs.ndl; ++i) std::fprintf(stderr, "%06X,", gs.dls[i]);
-                std::fprintf(stderr, " pgs=");
-                for (int i = 0; i < gs.npg; ++i) std::fprintf(stderr, "%03X,", gs.pages[i]);
-                std::fputc('\n', stderr);
+                for (int i = 0; i < gs.ndl; ++i) AERO_LOG_DEBUG("geomset", "%06X,\n", gs.dls[i]);
+                AERO_LOG_DEBUG("geomset", " pgs=\n");
+                for (int i = 0; i < gs.npg; ++i) AERO_LOG_DEBUG("geomset", "%03X,\n", gs.pages[i]);
             }
         }
         // Menu-DL trace (AERO_MENU_DL_TRACE=1): per-frame command census keyed
@@ -1519,7 +1515,7 @@ public:
             static uint32_t s_cmds = 0;
             if (scr != s_scr || sc.count != s_count || sc.cmds != s_cmds) {
                 s_cmds = sc.cmds;
-                std::fprintf(stderr, "[menudl] send_dl #%d screen=%d sprite2d_count=%u cmds=%u texrects=%u (was scr=%d n=%u)\n",
+                AERO_LOG_DEBUG("menudl", "send_dl #%d screen=%d sprite2d_count=%u cmds=%u texrects=%u (was scr=%d n=%u)\n",
                              count, scr, sc.count, sc.cmds, sc.texrects, s_scr, s_count);
                 if (sc.count > 0) {   // re-walk verbosely to dump the sequences
                     uint32_t seg2[16] = {0};
@@ -1543,13 +1539,13 @@ public:
                     uint32_t seg3[16] = {0};
                     dlinspect::dump_walk(g_aero_rdram, dl_addr, seg3, f, 0);
                     std::fclose(f);
-                    std::fprintf(stderr, "[menudl] dumped DL @0x%08X to %s\n", dl_addr, path);
+                    AERO_LOG_DEBUG("menudl", "dumped DL @0x%08X to %s\n", dl_addr, path);
                     char rpath[128];
                     std::snprintf(rpath, sizeof(rpath), "rdram_screen%d.bin", scr);
                     if (std::FILE* rf = std::fopen(rpath, "wb")) {
                         std::fwrite(g_aero_rdram, 1, 0x800000, rf);
                         std::fclose(rf);
-                        std::fprintf(stderr, "[menudl] dumped RDRAM to %s\n", rpath);
+                        AERO_LOG_DEBUG("menudl", "dumped RDRAM to %s\n", rpath);
                     }
                     s_dumped = true;
                 }
@@ -1587,8 +1583,7 @@ public:
                     bool ok = swrender::write_bmp(path, m_fb);
                     // The state trigger is intentionally unmapped for this ROM, so a capture
                     // records the trigger and frame count but not an inferred attract index.
-                    std::fprintf(stderr,
-                        "[dl-render] captured state=%d frame (send_dl #%d) -> %s (%s)\n"
+                    AERO_LOG_DEBUG("dl-render", "captured state=%d frame (send_dl #%d) -> %s (%s)\n"
                         "[dl-render]   verts_loaded=%u tris_in=%u drawn=%u clipped=%u pixels=%u tex_pixels=%u  viewport=%s\n"
                         "[dl-render]   fog: pixels=%u mul=%d off=%d color=(%u,%u,%u)\n",
                         state, count, path, ok ? "written" : "WRITE FAILED",
@@ -1603,7 +1598,7 @@ public:
         // It is disabled by default because synchronous console output can
         // disturb timing. Enable AERO_HARNESS_LOG=1 only for a diagnostic run.
         if (aero::config::harness_log() && count % 30 == 0) {
-            std::fprintf(stderr, "[gfx] send_dl count=%d (pipeline sustained)\n", count);
+            AERO_LOG_DEBUG("gfx", "send_dl count=%d (pipeline sustained)\n", count);
         }
     }
     void update_screen() override {}
@@ -1628,10 +1623,10 @@ create_render_context(uint8_t* rdram, ultramodern::renderer::WindowHandle window
     if (aero_rt64::enabled()) {
         auto rt64_ctx = aero_rt64::create_render_context(rdram, window_handle, developer_mode);
         if (rt64_ctx) {
-            std::fprintf(stderr, "[rt64] RT64 renderer ACTIVE (default presenter)\n");
+            AERO_LOG_INFO("rt64", "RT64 renderer ACTIVE (default presenter)\n");
             return rt64_ctx;
         }
-        std::fprintf(stderr, "[rt64] RT64 setup failed -- falling back to headless swrender\n");
+        AERO_LOG_ERROR("rt64", "RT64 setup failed -- falling back to headless swrender\n");
     }
     (void)window_handle;
     (void)developer_mode;

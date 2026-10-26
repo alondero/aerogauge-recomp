@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "json/json.hpp"
+#include "aero_log.h"
 
 namespace {
 
@@ -111,7 +112,7 @@ aero::config::WindowSize clamp_window_size(aero::config::WindowSize size) {
     // Match the load-time bound: below the N64 framebuffer is useless, above 8K
     // is a typo that can make SDL window creation fail.
     if (size.width < 320 || size.width > 7680 || size.height < 240 || size.height > 4320) {
-        std::fprintf(stderr, "[config] window %dx%d out of range -- using %dx%d\n",
+        AERO_LOG_WARN("config", "window %dx%d out of range -- using %dx%d\n",
                      size.width, size.height, kDefaultWindowWidth, kDefaultWindowHeight);
         return {kDefaultWindowWidth, kDefaultWindowHeight};
     }
@@ -131,13 +132,13 @@ void from_or_default(const nlohmann::json& j, const char* key, T& out) {
     try {
         T parsed = it->get<T>();
         if (nlohmann::json(parsed) != *it) {
-            std::fprintf(stderr, "[config] %s: invalid value %s -- keeping default\n",
+            AERO_LOG_WARN("config", "%s: invalid value %s -- keeping default\n",
                          key, it->dump().c_str());
             return;
         }
         out = parsed;
     } catch (const nlohmann::json::exception&) {
-        std::fprintf(stderr, "[config] %s: wrong type -- keeping default\n", key);
+        AERO_LOG_WARN("config", "%s: wrong type -- keeping default\n", key);
     }
 }
 
@@ -251,7 +252,7 @@ ReadResult read_graphics_file(const std::filesystem::path& path,
         from_json(j, cfg);
         return ReadResult::Ok;
     } catch (const nlohmann::json::exception& e) {
-        std::fprintf(stderr, "[config] %s unparseable (%s); using defaults IN MEMORY"
+        AERO_LOG_WARN("config", "%s unparseable (%s); using defaults IN MEMORY"
                      " -- file left untouched, fix or delete it\n",
                      path.string().c_str(), e.what());
         return ReadResult::Unparseable;
@@ -315,7 +316,7 @@ ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_
         g_master_muted.store(muted);
         return ReadResult::Ok;
     } catch (const nlohmann::json::exception& e) {
-        std::fprintf(stderr, "[config] %s unparseable (%s); using defaults IN MEMORY\n",
+        AERO_LOG_WARN("config", "%s unparseable (%s); using defaults IN MEMORY\n",
                      path.string().c_str(), e.what());
         return ReadResult::Unparseable;
     }
@@ -330,13 +331,13 @@ bool write_graphics_json(const std::filesystem::path& path, const nlohmann::json
     std::filesystem::create_directories(path.parent_path(), ec);
     std::ofstream out{path};
     if (!out.good()) {
-        std::fprintf(stderr, "[config] cannot write %s\n", path.string().c_str());
+        AERO_LOG_ERROR("config", "cannot write %s\n", path.string().c_str());
         return false;
     }
     out << payload;
     out.flush();
     if (!out.good()) {
-        std::fprintf(stderr, "[config] write to %s FAILED (disk full / permissions?)"
+        AERO_LOG_ERROR("config", "write to %s FAILED (disk full / permissions?)"
                      " -- settings may not persist\n", path.string().c_str());
         return false;
     }
@@ -435,12 +436,12 @@ nlohmann::json merge_graphics_updates(const nlohmann::json& updates,
         try {
             in >> current;
         } catch (const nlohmann::json::exception& e) {
-            std::fprintf(stderr, "[config] %s unparseable (%s); leaving it untouched\n",
+            AERO_LOG_WARN("config", "%s unparseable (%s); leaving it untouched\n",
                          path.string().c_str(), e.what());
             return nlohmann::json();
         }
         if (!current.is_object()) {
-            std::fprintf(stderr, "[config] %s is not a JSON object; leaving it untouched\n",
+            AERO_LOG_WARN("config", "%s is not a JSON object; leaving it untouched\n",
                          path.string().c_str());
             return nlohmann::json();
         }
@@ -491,7 +492,7 @@ void recover_worker(std::unique_lock<std::mutex>& lock, PersistenceState& state,
     state.writing = false;
     state.deadline = std::max(state.deadline,
                               std::chrono::steady_clock::now() + kWriteRetryDelay);
-    std::fprintf(stderr, "[config] background settings write failed (%s)"
+    AERO_LOG_ERROR("config", "background settings write failed (%s)"
                  " -- will retry; settings may not be current on disk\n", what);
     state.cv.notify_all();
 }
@@ -550,7 +551,7 @@ void start_worker(PersistenceState& state) {
         std::thread(persistence_worker).detach();
         state.worker_started = true;
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "[config] cannot start the settings writer (%s);"
+        AERO_LOG_ERROR("config", "cannot start the settings writer (%s);"
                      " settings changes will not persist\n", e.what());
     }
 }
@@ -684,7 +685,7 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     if (r != ReadResult::Unparseable) {
         write_graphics_document(cfg);
     }
-    std::fprintf(stderr, "[config] graphics config: %s\n", path.string().c_str());
+    AERO_LOG_INFO("config", "graphics config: %s\n", path.string().c_str());
 
     bool easy_turbo = false, player2_turbo = false;
     g_rumble = {};
@@ -696,7 +697,7 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     // Publish the persisted master volume to the host audio path before the
     // game starts, so the first submitted buffer already uses the saved gain.
     aero::audio::set_master_gain(master_gain());
-    std::fprintf(stderr, "[config] enhancements config: %s\n", enhancements_path.string().c_str());
+    AERO_LOG_INFO("config", "enhancements config: %s\n", enhancements_path.string().c_str());
     return cfg;
 }
 
@@ -783,7 +784,7 @@ void flush_config_writes() {
         try {
             writes = write_batch(updates, enhancements, base, written_base);
         } catch (const std::exception& e) {
-            std::fprintf(stderr, "[config] inline settings write failed (%s)\n", e.what());
+            AERO_LOG_ERROR("config", "inline settings write failed (%s)\n", e.what());
         }
         if (!written_base.is_null()) state.base_document = std::move(written_base);
         state.completed_writes += writes;
