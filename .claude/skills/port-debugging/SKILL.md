@@ -12,7 +12,7 @@ description: Live-debug the native port (build/aerogauge_modern) — gdb recipes
 - **Windowed 60s race**: `AERO_WARP=1 AERO_MODERN_MAX_VIS=3600` (warp straight
   into a race, self-exit after 3600 VIs). Launch via `Start-Process` for a real
   console. Warp: `AERO_WARP=track[:craft]` (1-based), `AERO_WARP_AT=vi:track[:craft]`,
-  or F1–F6 live.
+  or Ctrl+Shift+1–6 live.
 - **Menu navigation without a human** — input pulses `AERO_INPUT_PULSE=start:period:count:gap`:
   `8000:150:4:300` (A taps) walks title→GP→machine→track→RACE (HUD by VI ~5000);
   `1000:150:4:300` (START) parks on MACHINE SELECT.

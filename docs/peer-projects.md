@@ -208,3 +208,37 @@ project's architecture.
 The cited README claims and code paths describe their own projects. They do
 not establish hands-on behavior on AeroGauge's supported platforms, nor do
 they prove that a peer's optional or experimental feature is broadly tested.
+
+## Developer hotkeys: a chord before a bare key (2026-10-26)
+
+This is a source review of a public pull-request diff, not a playthrough of the
+peer build.
+
+[Lamborghini's PR #207](https://github.com/alondero/automobililamborghini-recomp/pull/207)
+("move dev-warp hotkeys off F1 to Ctrl+Shift+1..6"), merged as
+[f24bce5](https://github.com/alondero/automobililamborghini-recomp/commit/f24bce54bc4b20f4546dd394dba4dae9ac66d04f),
+moves that port's developer race warp from `F1`-`F6` to a `Ctrl+Shift+1..6`
+chord. The peer reports two reasons: `F1` was bound twice, once to its
+settings overlay and once to the warp, and the overlay closed before the
+keyboard was sampled, so the press that closed the menu also warped to
+circuit 1; and `F1`-`F6` overlapped RT64's developer overlay. The lesson that
+transfers is narrow and concrete: on a release build, a developer shortcut
+that can launch a race should not be one unmodified key away.
+
+AeroGauge adopted the same chord and went one step further on the part the
+peer left open. The peer could not test its chord logic in CI, because the
+logic sat inline in SDL code; here the rules live in
+`src/aero_devkeys.h` and are pinned by the `dev_warp_chord` host test, so
+"both modifiers are required", "one press selects one track", and "a release
+re-arms the chord" are checked without a ROM, SDL, or a window.
+
+Two peer details did not transfer. The peer hand-edited a shared comment in
+its checked-in TOML because its generator had drifted from the file; the
+AeroGauge generated TOMLs never name the warp hotkey, so no generated file
+changed. The peer left its `F7`/`F8` save-state keys as bare function keys,
+and so does AeroGauge: they do not collide with the menu or the RT64 overlay,
+and `tests/test_savestate_hotkey.ps1` drives the real SDL `F7` path.
+
+One caveat applies to both ports. A desktop environment can bind
+`Ctrl+Shift+<digit>` globally, in which case the keystroke never reaches the
+game, so `AERO_WARP` remains the reliable warp path on such a system.

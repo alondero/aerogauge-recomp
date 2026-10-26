@@ -29,3 +29,9 @@ add_test(NAME input_cadence COMMAND test_input_cadence)
 add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
 target_include_directories(test_user_data_dir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME user_data_dir COMMAND test_user_data_dir)
+
+# The developer warp chord: both modifiers are required, one press selects one
+# track, and releasing the chord re-arms it. No SDL or ROM needed.
+add_executable(test_dev_warp_chord tests/test_dev_warp_chord.cpp)
+target_include_directories(test_dev_warp_chord PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME dev_warp_chord COMMAND test_dev_warp_chord)

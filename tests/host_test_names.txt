@@ -5,3 +5,4 @@ input_cadence
 startup_mode
 rom_startup
 user_data_dir
+dev_warp_chord
