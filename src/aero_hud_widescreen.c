@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "aero_log.h"
 
 #define SCREEN_WIDTH_QP (320 * 4) /* gEXSetRectAlign offsets are quarter-pixels */
 
@@ -388,13 +389,12 @@ static void aero_ws_trace(uint8_t* rdram, gpr start, gpr end) {
             if (ulx < minulx) minulx = ulx;
             if (lrx > maxlrx) maxlrx = lrx;
             if (s_on >= 2 && (frame % 25) == 0) {
-                fprintf(stderr, "[wsrect] frame=%u (%d,%d)-(%d,%d) cls=%d\n",
+                AERO_LOG_DEBUG("wsrect", "frame=%u (%d,%d)-(%d,%d) cls=%d\n",
                         frame, ulx / 4, uly / 4, lrx / 4, lry / 4, cls);
             }
         }
     }
-    fprintf(stderr,
-            "[wstrace] frame=%u phase=%u cdown=%u wipe=%d/%d gate=%d rects=%d L=%d R=%d ulx_min=%d lrx_max=%d\n",
+    AERO_LOG_DEBUG("wstrace", "frame=%u phase=%u cdown=%u wipe=%d/%d gate=%d rects=%d L=%d R=%d ulx_min=%d lrx_max=%d\n",
             frame, phase, cdown, (int)w244, (int)w245,
             aero_ws_hud_gate(scene, phase, cdown), rects, left, right,
             minulx == 4096 ? -1 : minulx / 4, maxlrx < 0 ? -1 : maxlrx / 4);

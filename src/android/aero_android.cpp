@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <unistd.h>
+#include "aero_log.h"
 
 extern "C" void aero_flush_eeprom();
 namespace {
@@ -55,7 +56,7 @@ namespace aero::android {
         std::fputs(message, file);
         std::fclose(file);
     }
-    std::fprintf(stderr, "[android] %s\n", message);
+    AERO_LOG_INFO("android", "%s\n", message);
     std::_Exit(1); // Confined to the game process; the launcher displays the error.
 }
 

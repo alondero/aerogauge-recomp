@@ -47,6 +47,10 @@
 #include <SDL.h>          // window, input, and audio host API
 #if defined(_WIN32)
 #include <SDL_syswm.h>    // native Windows: unwrap the HWND for ultramodern/RT64-D3D12
+// Included after SDL.h on purpose: SDL and the Windows headers both define
+// macros that clash when Windows.h comes first.
+#include <shellapi.h>    // CommandLineToArgvW: the GUI-subsystem argv source
+#include <windows.h>
 #endif
 #include "aero_rt64.h"
 #include "aero_audio.h"
@@ -58,6 +62,7 @@
 #include "aero_input_cadence.h"
 #include "aero_devkeys.h"   // developer warp chord: Ctrl+Shift+1..6
 #include "aero_crash.h"   // native crash reporting and symbol lookup
+#include "aero_log.h"     // levelled logging and the Windows console policy
 #include "aero_rom_desktop.h"
 #include "recompinput/input_events.h"
 #include "recompinput/input_binding.h"
@@ -80,7 +85,6 @@ void recomp_entrypoint_jp(uint8_t*, recomp_context*);
 }
 void register_overlays_jp();
 #endif
-
 // Developer warp: the SDL/main thread publishes a Ctrl+Shift+1..6 chord or AERO_WARP_AT;
 // the game thread consumes it in aero_warp_tick.
 extern "C" void aero_warp_request(int track0, int craft);
@@ -166,12 +170,12 @@ static uint8_t* g_aero_rdram = nullptr;
 
 static void on_init_cb(uint8_t* rdram, recomp_context*) {
     g_aero_rdram = rdram;
-    std::fprintf(stderr, "[probe] init complete; entering recomp_entrypoint @ 0x80000400\n");
+    AERO_LOG_INFO("probe", "init complete; entering recomp_entrypoint @ 0x80000400\n");
 }
 
 static void thread_create_cb(uint8_t*, recomp_context*) {
     int n = ++g_threads;
-    if (n <= 12) std::fprintf(stderr, "[probe] game thread #%d started (osCreateThread)\n", n);
+    if (n <= 12) AERO_LOG_INFO("probe", "game thread #%d started (osCreateThread)\n", n);
 }
 
 // Print the one-line boot summary used by the boot smoke check,
@@ -194,7 +198,7 @@ extern "C" void aero_flush_eeprom(); // runtime patch 0014
 
 // The one-line boot summary used by the boot smoke check.
 static void print_boot_summary() {
-    std::fprintf(stderr, "[probe] boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
+    AERO_LOG_INFO("probe", "boot summary; threads=%d vis=%d first_vi=%d max_state=%d swaps=%d\n",
                  g_threads.load(), g_vis.load(), (int)g_first_vi.load(), g_max_state.load(),
                  g_swaps.load());
     std::fflush(nullptr);
@@ -206,6 +210,9 @@ static void print_boot_summary() {
     // static destruction, so the pending write has to be drained explicitly.
     aero::config::flush_config_writes();
     print_boot_summary();
+    // Same reason: the session log is a buffered stream, and _Exit skips the
+    // flush that would otherwise land the boot summary in the log file.
+    aero_log_flush();
     std::_Exit(g_first_vi.load() ? 0 : 2);
 }
 
@@ -264,13 +271,12 @@ static void coordinated_shutdown() {
     // guest code may still be reading and writing RDRAM.
     const int remaining = ultramodern::shutdown::join_threads(guest_join_timeout());
     if (remaining != 0) {
-        std::fprintf(stderr,
-                     "[shutdown] %d guest thread(s) did not stop within the deadline; "
+        AERO_LOG_WARN("shutdown", "%d guest thread(s) did not stop within the deadline; "
                      "using the bounded exit\n", remaining);
         std::fflush(nullptr);
         boot_summary_and_exit();
     }
-    std::fprintf(stderr, "[shutdown] guest threads joined\n");
+    AERO_LOG_INFO("shutdown", "guest threads joined\n");
 
     // Phase 4 (first half): hand the process back to recomp::start(), whose
     // teardown joins the remaining runtime threads and releases RDRAM.
@@ -301,7 +307,7 @@ static void state_probe() {
     uint32_t phase = w32(AERO_ADDR(0x8013FF88, 0x8013D008)), mode = b8(AERO_ADDR(0x8013FF90, 0x8013D010));
     static uint32_t last[4] = { ~0u, ~0u, ~0u, ~0u };
     if (scene != last[0] || req != last[1] || phase != last[2] || mode != last[3]) {
-        std::fprintf(stderr, "[state] vi=%d  scene=%u req=%u phase=%u race_mode=%u\n",
+        AERO_LOG_INFO("state", "vi=%d  scene=%u req=%u phase=%u race_mode=%u\n",
                      g_vis.load(), scene, req, phase, mode);
         last[0] = scene; last[1] = req; last[2] = phase; last[3] = mode;
     }
@@ -334,7 +340,7 @@ static void pace_probe(int vi_n) {
         // here stalls pacing itself (same hitch class as the gfx-thread heartbeat, see
         // rt64_renderer.cpp). The first-8-swaps boot lines are one-time and stay.
         if (s <= 8 || (aero::config::harness_log() && (s % 256) == 0))
-            std::fprintf(stderr, "[probe] fb swap #%d -> VI_ORIGIN=0x%08x (vi=%d)\n",
+            AERO_LOG_DEBUG("probe", "fb swap #%d -> VI_ORIGIN=0x%08x (vi=%d)\n",
                          s, origin, vi_n);
     }
 }
@@ -352,7 +358,7 @@ static void warp_at_probe(int vi_n) {
         at = 0;
         if (const char* e = std::getenv("AERO_WARP_AT")) {
             if (std::sscanf(e, "%d:%d:%d", &at, &track, &craft) < 2 || track < 1 || track > 6) {
-                std::fprintf(stderr, "[warp] AERO_WARP_AT=%s invalid: vi:track[:craft]\n", e);
+                AERO_LOG_WARN("warp", "AERO_WARP_AT=%s invalid: vi:track[:craft]\n", e);
                 at = 0;
             }
         }
@@ -394,9 +400,9 @@ static void vi_cb() {
     warp_at_probe(n);
     pace_probe(n);
     if ((n % 50) == 0) lambo_thread_trace_dump(n); // Diagnostic snapshot of thread message activity.
-    if (!g_first_vi.exchange(true)) std::fprintf(stderr, "[probe] FIRST VI retrace\n");
+    if (!g_first_vi.exchange(true)) AERO_LOG_INFO("probe", "FIRST VI retrace\n");
     if (n == kQuitAfterVis) {
-        std::fprintf(stderr, "[probe] reached %d VIs; quitting\n", n);
+        AERO_LOG_INFO("probe", "reached %d VIs; quitting\n", n);
         boot_summary_and_exit();
     }
 }
@@ -409,13 +415,13 @@ static RspUcodeFunc* get_rsp_microcode_stub(const OSTask* task) {
     if (task->t.type == 2) return aspMain; // M_AUDTASK: RSPRecomp-generated synthesis
     static std::atomic<bool> logged{false};
     if (!logged.exchange(true))
-        std::fprintf(stderr, "[probe] get_rsp_microcode: unhandled task type %u -> nullptr\n",
+        AERO_LOG_WARN("probe", "get_rsp_microcode: unhandled task type %u -> nullptr\n",
                      (unsigned)task->t.type);
     return nullptr;
 }
 
 static void message_box_stub(const char* msg) {
-    std::fprintf(stderr, "[probe] message_box: %s\n", msg);
+    AERO_LOG_INFO("probe", "message_box: %s\n", msg);
     if (msg && std::strncmp(msg, "Error loading mods:", 19) == 0) {
         aero::mods::discard_failed_load();
         aero::menu::report_mod_load_error(msg);
@@ -443,7 +449,7 @@ static void set_application_icon(SDL_Window* window) {
 #if !defined(__ANDROID__)
     char* base_path = SDL_GetBasePath();
     if (base_path == nullptr) {
-        std::fprintf(stderr, "[window] SDL_GetBasePath failed while locating the window icon: %s\n",
+        AERO_LOG_WARN("window", "SDL_GetBasePath failed while locating the window icon: %s\n",
                      SDL_GetError());
         return;
     }
@@ -452,7 +458,7 @@ static void set_application_icon(SDL_Window* window) {
 
     SDL_Surface* icon = SDL_LoadBMP(icon_path.c_str());
     if (icon == nullptr) {
-        std::fprintf(stderr, "[window] Could not load window icon at %s: %s\n",
+        AERO_LOG_WARN("window", "Could not load window icon at %s: %s\n",
                      icon_path.c_str(), SDL_GetError());
         return;
     }
@@ -478,7 +484,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
         // GAMECONTROLLER pulls in JOYSTICK and enables controller hot-plug events.
         if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
-            std::fprintf(stderr, "[rt64] SDL_InitSubSystem(VIDEO|GAMECONTROLLER) failed: %s -- staying headless\n",
+            AERO_LOG_ERROR("rt64", "SDL_InitSubSystem(VIDEO|GAMECONTROLLER) failed: %s -- staying headless\n",
                          SDL_GetError());
             resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
@@ -514,7 +520,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
                                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                               win_size.width, win_size.height, flags);
         if (window == nullptr) {
-            std::fprintf(stderr, "[rt64] SDL_CreateWindow failed: %s -- staying headless\n",
+            AERO_LOG_ERROR("rt64", "SDL_CreateWindow failed: %s -- staying headless\n",
                          SDL_GetError());
             resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
@@ -529,7 +535,7 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         resolve_startup_mode(aero::startup::Mode::AutoStart);
         return ultramodern::renderer::WindowHandle{window};
 #elif defined(__linux__)
-        std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Vulkan surface)\n",
+        AERO_LOG_INFO("rt64", "SDL window created (%dx%d, Vulkan surface)\n",
                      win_size.width, win_size.height);
         resolve_startup_mode(aero::startup::desktop_mode());
         return ultramodern::renderer::WindowHandle{window};
@@ -540,18 +546,18 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
         SDL_SysWMinfo wmInfo;
         SDL_VERSION(&wmInfo.version);
         if (SDL_GetWindowWMInfo(window, &wmInfo) != SDL_TRUE) {
-            std::fprintf(stderr, "[rt64] SDL_GetWindowWMInfo failed: %s -- staying headless\n",
+            AERO_LOG_ERROR("rt64", "SDL_GetWindowWMInfo failed: %s -- staying headless\n",
                          SDL_GetError());
             SDL_DestroyWindow(window);
             resolve_startup_mode(aero::startup::Mode::AutoStart);
             return ultramodern::renderer::WindowHandle{};
         }
-        std::fprintf(stderr, "[rt64] SDL window created (%dx%d, Win32 HWND -> D3D12)\n",
+        AERO_LOG_INFO("rt64", "SDL window created (%dx%d, Win32 HWND -> D3D12)\n",
                      win_size.width, win_size.height);
         resolve_startup_mode(aero::startup::desktop_mode());
         return ultramodern::renderer::WindowHandle{wmInfo.info.win.window, GetCurrentThreadId()};
 #else
-        std::fprintf(stderr, "[rt64] window handle wiring not implemented on this platform\n");
+        AERO_LOG_WARN("rt64", "window handle wiring not implemented on this platform\n");
         SDL_DestroyWindow(window);
         resolve_startup_mode(aero::startup::Mode::AutoStart);
         return ultramodern::renderer::WindowHandle{};
@@ -600,7 +606,7 @@ static void update_gfx_stub(void* /*gfx_data*/) {
                 aero::menu::toggle_fullscreen();
             }
             if (g_window_close_requested.exchange(false, std::memory_order_acq_rel)) {
-                std::fprintf(stderr, "[probe] window closed; quitting\n");
+                AERO_LOG_INFO("probe", "window closed; quitting\n");
                 release_all_controller_handles();
                 aero::menu::update();
                 // The coordinated shutdown runs on the next update_gfx call, on
@@ -987,9 +993,35 @@ static ultramodern::input::connected_device_info_t input_device_info(int control
     return { Device::None, Pak::None };
 }
 
-int main(int argc, char** argv) {
+// The ROM path is the first argument that belongs to the port. The logger
+// owns the switch vocabulary and reports where its own arguments end, so the
+// two parsers cannot drift apart: a logging switch this function did not know
+// about used to become a bogus ROM path.
+static const char* rom_path_argument(int argc, char** argv) {
+    const int index = aero_log_first_free_argument();
+    if (index < 1 || index >= argc) return nullptr;
+    return argv[index];
+}
+
+static int application_main(int argc, char** argv) {
 #if defined(__ANDROID__)
     if (!aero::android::initialize()) return 2;
+#endif
+    // Parse and initialise logging before any startup path can emit a message.
+    // The Windows target is GUI-subsystem, so --console is responsible for
+    // attaching or allocating the live stderr sink.
+    if (!aero_log_parse_args(argc, argv)) {
+        (void)aero_log_initialize();
+        // Command-line syntax errors must remain visible even when the user
+        // did not request a console or the log directory is unavailable.
+        std::fprintf(stderr, "[error] [log] %s\n", aero_log_last_error());
+        return 2;
+    }
+    (void)aero_log_initialize();
+#if defined(_WIN32)
+    // SDL2main normally performs this when it owns WinMain. This target owns
+    // WinMain because it is a GUI-subsystem executable.
+    SDL_SetMainReady();
 #endif
     // Deterministic lighting self-test: no ROM, no runtime -- exercises the swrender
     // light-decode + Lambert path on a synthetic display list and exits.
@@ -1002,7 +1034,7 @@ int main(int argc, char** argv) {
     // sleep then a deliberate crash so the dump format can be verified in
     // CI / field testing without waiting for a real bug.
     if (const char* ct = std::getenv("AERO_CRASH_TEST")) {
-        std::fprintf(stderr, "[probe] AERO_CRASH_TEST=%s; injecting deliberate crash in 2s\n", ct);
+        AERO_LOG_INFO("probe", "AERO_CRASH_TEST=%s; injecting deliberate crash in 2s\n", ct);
         std::thread([](const char* reason){
             std::this_thread::sleep_for(std::chrono::seconds(2));
             aero::crash::record_recent(0x80001CD0u, 0x800024F8u);  // func_800028D0 entry, $ra into menu driver
@@ -1057,9 +1089,12 @@ int main(int argc, char** argv) {
     recomp::register_game(japan_game);
 #endif
 
+    const char* rom_argument = rom_path_argument(argc, argv);
     const auto selected_rom = aero::rom::select_startup_rom(
-        argc > 1 ? std::optional<std::filesystem::path>(
-                       std::filesystem::path(reinterpret_cast<const char8_t*>(argv[1]))) : std::nullopt,
+        rom_argument != nullptr
+            ? std::optional<std::filesystem::path>(
+                  std::filesystem::path(reinterpret_cast<const char8_t*>(rom_argument)))
+            : std::nullopt,
         game,
 #ifdef AERO_JAPAN_SUPPORT
         &japan_game,
@@ -1072,13 +1107,16 @@ int main(int argc, char** argv) {
         aero_rt64::enabled()
 #endif
     );
-    if (!selected_rom.region) return selected_rom.cancelled ? 0 : 1;
+    if (!selected_rom.region) {
+        aero_log_shutdown();
+        return selected_rom.cancelled ? 0 : 1;
+    }
     std::u8string game_id = game.game_id;
 #ifdef AERO_JAPAN_SUPPORT
     aero_japan = *selected_rom.region == aero::rom::Region::JapanRevA;
     if (aero_japan) game_id = japan_game.game_id;
 #endif
-    std::fprintf(stderr, "[probe] ROM validated; rom_hash matches (%s)\n",
+    AERO_LOG_INFO("probe", "ROM validated; rom_hash matches (%s)\n",
                  AERO_BRANCH("USA", "Japan Rev A"));
 #ifdef AERO_JAPAN_SUPPORT
     if (aero_japan) register_overlays_jp();
@@ -1115,7 +1153,7 @@ int main(int argc, char** argv) {
         // and now sits on every launch, so a run that starts cleanly at a
         // shorter delay may reduce it.
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        std::fprintf(stderr, "[probe] calling start_game\n");
+        AERO_LOG_INFO("probe", "calling start_game\n");
         std::u8string gid = game_id;
         recomp::start_game(gid, "");
     });
@@ -1125,7 +1163,7 @@ int main(int argc, char** argv) {
     const int wd_sec = watchdog_seconds();
     std::thread watchdog([wd_sec]() {
         std::this_thread::sleep_for(std::chrono::seconds(wd_sec));
-        std::fprintf(stderr, "[probe] WATCHDOG %ds: threads=%d vis=%d first_vi=%d\n",
+        AERO_LOG_INFO("probe", "WATCHDOG %ds: threads=%d vis=%d first_vi=%d\n",
                      wd_sec, g_threads.load(), g_vis.load(), (int)g_first_vi.load());
         // Exit deterministically (same as the VI-cap path) rather than ultramodern::quit(),
         // whose teardown munmaps RDRAM out from under the live game threads (SIGSEGV race).
@@ -1178,10 +1216,10 @@ int main(int argc, char** argv) {
                                     ((uint64_t)(uint8_t)sx << 48) |
                                     ((uint64_t)(uint8_t)sy << 56);
             g_after_input_packed.store(packed, std::memory_order_release);
-            std::fprintf(stderr, "[probe] input after: vi=%d buttons=%04x stick=%d,%d\n",
+            AERO_LOG_DEBUG("probe", "input after: vi=%d buttons=%04x stick=%d,%d\n",
                          start_vi, buttons, sx, sy);
         } else {
-            std::fprintf(stderr, "[probe] ignoring malformed AERO_MODERN_INPUT_AFTER=%s\n", in);
+            AERO_LOG_WARN("probe", "ignoring malformed AERO_MODERN_INPUT_AFTER=%s\n", in);
         }
     }
     if (const char* pu = std::getenv("AERO_INPUT_PULSE")) {
@@ -1194,7 +1232,7 @@ int main(int argc, char** argv) {
         if (end && *end == ':') g_pulse_duty   = (int)std::strtol(end + 1, &end, 10);
         if (end && *end == ':') g_pulse_start  = (int)std::strtol(end + 1, &end, 10);
         if (end && *end == ':') g_pulse_count  = (int)std::strtol(end + 1, nullptr, 10);
-        std::fprintf(stderr, "[probe] input pulse: btn=%04x period=%d duty=%d start=%d count=%d\n",
+        AERO_LOG_DEBUG("probe", "input pulse: btn=%04x period=%d duty=%d start=%d count=%d\n",
                      g_pulse_buttons, g_pulse_period, g_pulse_duty, g_pulse_start, g_pulse_count);
     }
     cfg.input_callbacks.poll_input = input_poll_stub;
@@ -1203,7 +1241,7 @@ int main(int argc, char** argv) {
         aero::haptics::motor(on, channel);
     };
     cfg.input_callbacks.get_connected_device_info = input_device_info;
-    std::fprintf(stderr, "[probe] input: controller0 connected (default), buttons=%04x\n", g_held_buttons);
+    AERO_LOG_INFO("probe", "input: controller0 connected (default), buttons=%04x\n", g_held_buttons);
 
     // Audio path: populate the host callbacks before starting the runtime.
     // The runtime sets the AI frequency during startup; generated audio calls
@@ -1211,7 +1249,7 @@ int main(int argc, char** argv) {
     // docs/reference/audio.md for the ownership and generated-code boundary.
     aero::audio::init(48000);
     aero::audio::get_callbacks(&cfg.audio_callbacks);
-    std::fprintf(stderr, "[probe] audio: callbacks wired (queue_samples/get_frames_remaining/set_frequency)\n");
+    AERO_LOG_INFO("probe", "audio: callbacks wired (queue_samples/get_frames_remaining/set_frequency)\n");
 
     // Harness knob: request the coordinated quit after a delay. It exercises
     // the same path as closing the window, so the coordinated shutdown can be
@@ -1222,14 +1260,14 @@ int main(int argc, char** argv) {
         if (value > 0) {
             std::thread([value]() {
                 std::this_thread::sleep_for(std::chrono::milliseconds{value});
-                std::fprintf(stderr, "[probe] AERO_QUIT_AFTER_MS=%ld; requesting the coordinated quit\n",
+                AERO_LOG_INFO("probe", "AERO_QUIT_AFTER_MS=%ld; requesting the coordinated quit\n",
                              value);
                 request_quit();
             }).detach();
         }
     }
 
-    std::fprintf(stderr, "[probe] calling recomp::start\n");
+    AERO_LOG_INFO("probe", "calling recomp::start\n");
     recomp::start(cfg);
 
     // The coordinated shutdown returns here: recomp::start()'s teardown has
@@ -1242,5 +1280,45 @@ int main(int argc, char** argv) {
         g_port_window = nullptr;
     }
     print_boot_summary();
+    aero_log_shutdown();
     return g_first_vi.load() ? 0 : 2;
 }
+
+#if defined(_WIN32)
+// The release executable uses the GUI subsystem so Explorer launches do not
+// create a console window. CommandLineToArgvW gives the same argv shape
+// SDL2main used to synthesise, and the logger decides whether --console needs
+// to allocate a window.
+static int windows_command_line_main() {
+    int argument_count = 0;
+    wchar_t** wide_arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
+    if (wide_arguments == nullptr) return 2;
+    std::vector<std::string> argument_strings;
+    std::vector<char*> argument_pointers;
+    argument_strings.reserve(static_cast<size_t>(argument_count));
+    argument_pointers.reserve(static_cast<size_t>(argument_count) + 1);
+    for (int i = 0; i < argument_count; ++i) {
+        const int size = WideCharToMultiByte(CP_UTF8, 0, wide_arguments[i], -1, nullptr, 0,
+                                             nullptr, nullptr);
+        std::string utf8(size > 0 ? static_cast<size_t>(size - 1) : 0, '\0');
+        if (size > 0) {
+            WideCharToMultiByte(CP_UTF8, 0, wide_arguments[i], -1, utf8.data(), size, nullptr,
+                                nullptr);
+        }
+        argument_strings.push_back(std::move(utf8));
+    }
+    LocalFree(wide_arguments);
+    for (std::string& argument : argument_strings)
+        argument_pointers.push_back(argument.data());
+    argument_pointers.push_back(nullptr);
+    return application_main(argument_count, argument_pointers.data());
+}
+
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    return windows_command_line_main();
+}
+#else
+int main(int argc, char** argv) {
+    return application_main(argc, argv);
+}
+#endif

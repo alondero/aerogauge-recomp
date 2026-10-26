@@ -2,6 +2,7 @@
 #include "librecomp/game.hpp"
 #include <cstdio>
 #include <vector>
+#include "aero_log.h"
 #if !defined(__ANDROID__)
 #include <SDL.h>
 #include <nfd.h>
@@ -70,7 +71,7 @@ Selection select_startup_rom(const std::optional<std::filesystem::path>& explici
             recomp::get_config_path() / selected->stored_filename(), error);
         if (error || stored_size != RomSize || !recomp::load_stored_rom(selected->game_id))
             return {{}, "Cannot read a valid imported ROM from the save directory. Check free space and permissions."};
-        std::fprintf(stderr, "[rom] validated %s\n", region == Region::USA ? "USA" : "Japan Rev A");
+        AERO_LOG_INFO("rom", "validated %s\n", region == Region::USA ? "USA" : "Japan Rev A");
         return {region, {}};
     };
 
@@ -124,7 +125,7 @@ Selection select_startup_rom(const std::optional<std::filesystem::path>& explici
     auto result = resolve(explicit_path, candidates, validate, pick);
     if (picker_failed) result = {{}, false, "Native ROM picker failed; pass a ROM path as the first argument."};
     if (!result.region && !result.cancelled) {
-        std::fprintf(stderr, "[rom] %s\n", result.error.c_str());
+        AERO_LOG_WARN("rom", "%s\n", result.error.c_str());
 #if !defined(__ANDROID__)
         if (interactive && !picker_failed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Unable to load AeroGauge ROM",
                                                  result.error.c_str(), nullptr);

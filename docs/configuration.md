@@ -24,6 +24,12 @@ The files live in the application directory:
 | Android | App-private `files/AeroGaugeRecomp` (use the launcher’s save backup action) |
 | Portable mode | The current working directory, when portable.txt exists there |
 
+Two subfolders sit beside the settings files:
+
+- logs/ holds the per-session log files described in [Debugging](debugging.md#logs).
+- crashes/ holds native crash reports. A report is written only when the
+  process actually crashes.
+
 Portable mode is enabled by creating an empty file named portable.txt in the
 current working directory before launch. The file only needs to exist. Its
 contents are ignored. Run the executable from that directory.
@@ -242,7 +248,8 @@ interface.
 | AERO_AUDIO_STATS | present | Prints audio device and queue statistics |
 | AERO_AUDIO_RMS | present | Prints a periodic RMS value for submitted PCM |
 | AERO_AUDIO_BACKLOG_DRAIN | 0 | Keeps the ROM scheduler's one-audio-start-per-append rule |
-| AERO_HARNESS_LOG | 1 | Enables low-rate thread diagnostics |
+| AERO_HARNESS_LOG | 1 | Enables low-rate thread diagnostics; an alias for the `--verbose` switch |
+| AERO_LOG_DIR | file path | Replaces the directory that holds the session log and crash reports |
 | AERO_FRAME_LOG | file path | Logs slow graphics and VI timing events; the VI log adds .vi |
 | AERO_CRASH_SYMBOLS | file path | Adds a symbol-table search path for crash reports |
 | AERO_CRASH_TEST | text | Injects a deliberate crash for crash-report testing |
@@ -351,7 +358,8 @@ extra output unless the row says otherwise.
 | AERO_AUDIO_STATS | Audio investigation; any present value | Unset means no device statistics | Audio initialization | Logs device and queue counters; src/aero_audio.cpp | AERO_AUDIO_STATS=1 ./build/aerogauge_modern |
 | AERO_AUDIO_RMS | Audio investigation; any present value | Unset means no RMS output | First submitted PCM, then audio callbacks | Logs the RMS of submitted PCM; src/aero_audio.cpp | AERO_AUDIO_RMS=1 ./build/aerogauge_modern |
 | AERO_AUDIO_BACKLOG_DRAIN | Audio investigation; use 0 | Unset or another value starts a stranded queued audio task | First scheduler pass | 0 disables the scheduler audio-backlog recovery for comparison; src/aero_audio_sched.c | AERO_AUDIO_BACKLOG_DRAIN=0 ./build/aerogauge_modern |
-| AERO_HARNESS_LOG | Timing investigation; use 1 | Unset or another value means off | First call to the shared helper | Enables low-rate thread and renderer logs; src/aero_config.cpp, src/main.cpp, and renderer files | AERO_HARNESS_LOG=1 ./build/aerogauge_modern |
+| AERO_HARNESS_LOG | Timing investigation; use 1 | Unset or another value means off | First call to the shared helper | Enables low-rate thread and renderer logs, and raises the log level to debug; src/aero_config.cpp, src/aero_log.cpp, src/main.cpp, and renderer files | AERO_HARNESS_LOG=1 ./build/aerogauge_modern |
+| AERO_LOG_DIR | Logging investigation; directory path | Unset uses the logs and crashes subfolders of the app data directory | Logger initialization | Selects where the session log and crash reports are written; src/aero_log.cpp and src/aero_crash.cpp | AERO_LOG_DIR=tmp/logs ./build/aerogauge_modern |
 | AERO_FRAME_LOG | Timing investigation; file path | Unset means no frame log | Each request to open a frame log | Creates or truncates the named log and optional VI log; src/aero_config.cpp | AERO_FRAME_LOG=tmp/frame.log ./build/aerogauge_modern |
 | AERO_CRASH_SYMBOLS | Crash investigation; file or directory path | Unset searches the working directory and executable locations | Crash-handler startup | Adds a symbol-table search location; src/aero_crash.cpp | AERO_CRASH_SYMBOLS=aerogauge.syms.toml ./build/aerogauge_modern |
 | AERO_CRASH_TEST | Crash-test run; text or any present value | Unset means no injected crash | Startup | Schedules a deliberate crash and report; src/main.cpp and src/aero_crash.cpp | AERO_CRASH_TEST=smoke ./build/aerogauge_modern |

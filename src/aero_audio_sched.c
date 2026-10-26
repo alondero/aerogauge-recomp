@@ -26,6 +26,7 @@
 #include <stdlib.h>
 
 #include "recomp.h"
+#include "aero_log.h"
 
 #define SC_AUDIO_LIST_HEAD 0x264u
 #define SC_DO_AUDIO        0x280u
@@ -58,6 +59,6 @@ void aero_audio_sched_schedule(uint8_t* rdram, recomp_context* ctx) {
     MEM_W(SC_DO_AUDIO, sc) = 1;
     if (!g_drain_logged) {
         g_drain_logged = 1;
-        fprintf(stderr, "[probe] audio: scheduler audio backlog detected; starting queued task\n");
+        AERO_LOG_WARN("probe", "audio: scheduler audio backlog detected; starting queued task\n");
     }
 }

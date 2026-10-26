@@ -35,3 +35,11 @@ add_test(NAME user_data_dir COMMAND test_user_data_dir)
 add_executable(test_dev_warp_chord tests/test_dev_warp_chord.cpp)
 target_include_directories(test_dev_warp_chord PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME dev_warp_chord COMMAND test_dev_warp_chord)
+
+# Logging policy: argument parsing, the console/session-file thresholds, and
+# what reaches the session file. It belongs here so the host-test matrix
+# builds it with every compiler, including MSVC, which has no __atomic
+# builtins and therefore needs its own threshold access path.
+add_executable(test_aero_log tests/test_aero_log.cpp)
+target_link_libraries(test_aero_log PRIVATE aero_log)
+add_test(NAME logging_policy COMMAND test_aero_log)

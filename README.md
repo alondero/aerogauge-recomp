@@ -150,6 +150,11 @@ Start assist setting, the per-player rumble and motion preferences, and the
 master volume and mute. Game saves are in the `saves` subfolder. Back up
 that folder before testing a new build.
 
+The Windows release opens no console window. Each run writes a log file to
+the `logs` subfolder, and a crash report to the `crashes` subfolder. Attach
+the log file when you report a problem; see
+[Debugging](docs/debugging.md#logs) for the details.
+
 ## Known limitations
 
 - Supported ROMs are USA and Japan Rev A. Local USA-only builds remain possible.

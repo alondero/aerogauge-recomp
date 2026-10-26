@@ -24,6 +24,7 @@
 
 #include "recomp.h"
 #include "aero_region.h"
+#include "aero_log.h"
 
 // After a wholesale RDRAM restore, guest RAM's OSThread.context fields hold the SAVE
 // process's native pointers (dangling here). ultramodern re-points them to this process's
@@ -85,12 +86,12 @@ static const char* slot_path(void) {
 static void do_save(uint8_t* rdram, const char* path) {
     char tmp[1100];
     if ((size_t)snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= sizeof(tmp)) {
-        fprintf(stderr, "[savestate] save: path too long: %s\n", path);
+        AERO_LOG_ERROR("savestate", "save: path too long: %s\n", path);
         return;
     }
     FILE* f = fopen(tmp, "wb");
     if (f == NULL) {
-        fprintf(stderr, "[savestate] save: cannot open %s for write\n", tmp);
+        AERO_LOG_ERROR("savestate", "save: cannot open %s for write\n", tmp);
         return;
     }
     state_header_t h;
@@ -107,7 +108,7 @@ static void do_save(uint8_t* rdram, const char* path) {
     ok = ok && (fflush(f) == 0);
     fclose(f);
     if (!ok) {
-        fprintf(stderr, "[savestate] save: write failed for %s\n", path);
+        AERO_LOG_ERROR("savestate", "save: write failed for %s\n", path);
         remove(tmp);
         return;
     }
@@ -119,11 +120,11 @@ static void do_save(uint8_t* rdram, const char* path) {
     if (rename(tmp, path) != 0) {
         remove(path);
         if (rename(tmp, path) != 0) {
-            fprintf(stderr, "[savestate] save: could not publish %s; snapshot kept at %s\n", path, tmp);
+            AERO_LOG_ERROR("savestate", "save: could not publish %s; snapshot kept at %s\n", path, tmp);
             return;
         }
     }
-    fprintf(stderr, "[savestate] saved %u bytes to %s (scene=%u)\n",
+    AERO_LOG_INFO("savestate", "saved %u bytes to %s (scene=%u)\n",
             RDRAM_SNAP_SIZE, path, h.scene);
 }
 
@@ -133,33 +134,33 @@ static void do_save(uint8_t* rdram, const char* path) {
 static void do_load(uint8_t* rdram, const char* path) {
     FILE* f = fopen(path, "rb");
     if (f == NULL) {
-        fprintf(stderr, "[savestate] load: cannot open %s\n", path);
+        AERO_LOG_ERROR("savestate", "load: cannot open %s\n", path);
         return;
     }
     state_header_t h;
     if (fread(&h, 1, sizeof(h), f) != sizeof(h) ||
         memcmp(h.magic, STATE_MAGIC, 8) != 0) {
-        fprintf(stderr, "[savestate] load: %s is not a save-state (bad magic)\n", path);
+        AERO_LOG_ERROR("savestate", "load: %s is not a save-state (bad magic)\n", path);
         fclose(f);
         return;
     }
     if (h.version != STATE_VERSION || h.rdram_size != RDRAM_SNAP_SIZE ||
         h.region != AERO_BRANCH(0u, 1u)) {
-        fprintf(stderr, "[savestate] load: %s version/size/region mismatch (v%u size %u)\n",
+        AERO_LOG_ERROR("savestate", "load: %s version/size/region mismatch (v%u size %u)\n",
                 path, h.version, h.rdram_size);
         fclose(f);
         return;
     }
     uint8_t* buf = (uint8_t*)malloc(RDRAM_SNAP_SIZE);
     if (buf == NULL) {
-        fprintf(stderr, "[savestate] load: out of memory\n");
+        AERO_LOG_ERROR("savestate", "load: out of memory\n");
         fclose(f);
         return;
     }
     size_t got = fread(buf, 1, RDRAM_SNAP_SIZE, f);
     fclose(f);
     if (got != RDRAM_SNAP_SIZE) {
-        fprintf(stderr, "[savestate] load: %s truncated (%zu/%u bytes)\n",
+        AERO_LOG_ERROR("savestate", "load: %s truncated (%zu/%u bytes)\n",
                 path, got, RDRAM_SNAP_SIZE);
         free(buf);
         return;
@@ -182,7 +183,7 @@ static void do_load(uint8_t* rdram, const char* path) {
             MEM_W(4, (gpr)(int32_t)hi_addr) = (int32_t)(uint32_t)t;
         }
     }
-    fprintf(stderr, "[savestate] loaded %u bytes from %s (scene=%u)\n",
+    AERO_LOG_INFO("savestate", "loaded %u bytes from %s (scene=%u)\n",
             RDRAM_SNAP_SIZE, path, h.scene);
 }
 
@@ -193,12 +194,12 @@ static void do_load(uint8_t* rdram, const char* path) {
 // line a held request is indistinguishable from a dead hotkey.
 void aero_savestate_request_save(void) {
     atomic_fetch_or_explicit(&g_req, REQ_SAVE, memory_order_relaxed);
-    fprintf(stderr, "[savestate] F7: save requested (slot %s); fires at the next settled frame\n",
+    AERO_LOG_INFO("savestate", "F7: save requested (slot %s); fires at the next settled frame\n",
             slot_path());
 }
 void aero_savestate_request_load(void) {
     atomic_fetch_or_explicit(&g_req, REQ_LOAD, memory_order_relaxed);
-    fprintf(stderr, "[savestate] F8: load requested (slot %s); fires at the next settled frame\n",
+    AERO_LOG_INFO("savestate", "F8: load requested (slot %s); fires at the next settled frame\n",
             slot_path());
 }
 
@@ -288,7 +289,7 @@ void aero_savestate_tick(uint8_t* rdram, recomp_context* ctx) {
         uint32_t pending = atomic_load_explicit(&g_req, memory_order_relaxed);
         if (pending != 0 && !held_logged) {
             held_logged = 1;
-            fprintf(stderr, "[savestate] request held: scene not settled "
+            AERO_LOG_INFO("savestate", "request held: scene not settled "
                             "(scene=%d req=%u phase=%u stable_ticks=%d); fires when it settles\n",
                     scene, req_scene, phase, stable_ticks);
         } else if (pending == 0) {

@@ -22,6 +22,7 @@
 
 #include "aero_config.h"
 #include "aero_full_track_policy.h"
+#include "aero_log.h"
 
 // Region-specific helpers are resolved from the selected overlay table.
 // The node ABI (0xB8 stride, sentinel + 47 slots) is shared by both ROMs.
@@ -211,7 +212,7 @@ int bucket_list_for(uint16_t hw4) {
 // Build (or rebuild) the synthetic DLs + fake entries for the current course.
 bool build_course(uint8_t* rdram, const CourseKey& k) {
     const bool trace = std::getenv("AERO_FT_TRACE") != nullptr;
-    if (trace) { std::fprintf(stderr, "[ft] build_course enter track=%d\n", k.track); std::fflush(stderr); }
+    if (trace) { AERO_LOG_INFO("ft", "build_course enter track=%d\n", k.track); std::fflush(stderr); }
     g_course = BuiltCourse{};
     g_course.key = k;
 
@@ -223,12 +224,12 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
         // Adjacency layout not confirmed on this course: fall back to the visibility
         // closure from zone 0 (tracks loop, so the graph is connected in practice).
         zones = zone_closure(rdram, k, rbu(rdram, k.map), zone_ids);
-        std::fprintf(stderr, "[fulltrack] table-adjacency derivation failed; visibility"
+        AERO_LOG_WARN("fulltrack", "table-adjacency derivation failed; visibility"
                              " closure found %d zones\n", zones);
         if (zones <= 0) return false;
     }
     g_course.zones = zones;
-    if (trace) { std::fprintf(stderr, "[ft] zones=%d\n", zones); std::fflush(stderr); }
+    if (trace) { AERO_LOG_INFO("ft", "zones=%d\n", zones); std::fflush(stderr); }
 
     // Collect section pairs into (hw4, hw6) buckets.
     int total = 0;
@@ -255,7 +256,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
                 if (bb.hw4 == hw4 && bb.hw6 == hw6) { b = &bb; break; }
             if (!b) {
                 if (g_course.buckets.size() >= MAX_BUCKETS) {
-                    std::fprintf(stderr, "[fulltrack] bucket overflow -- windowed fallback\n");
+                    AERO_LOG_WARN("fulltrack", "bucket overflow -- windowed fallback\n");
                     return false;
                 }
                 g_course.buckets.push_back(Bucket{hw4, hw6, list, 0, {}});
@@ -266,7 +267,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
         }
     }
 
-    if (trace) { std::fprintf(stderr, "[ft] collected %d DLs, %zu buckets\n", total, g_course.buckets.size()); std::fflush(stderr); }
+    if (trace) { AERO_LOG_INFO("ft", "collected %d DLs, %zu buckets\n", total, g_course.buckets.size()); std::fflush(stderr); }
     // Emit one synthetic DL + one fake 8-byte-compatible entry per bucket, into
     // the bank the in-flight frame is NOT using. First build_course (boot, with
     // bank 0 sitting uninitialised in RDRAM) picks bank 1 so the boot frame's
@@ -285,7 +286,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
         b.fake_entry = fake;
         uint32_t need = ((uint32_t)b.dls.size() + 1) * 8;
         if (dlcur + need > bank_end) {
-            std::fprintf(stderr, "[fulltrack] DL arena overflow -- windowed fallback\n");
+            AERO_LOG_WARN("fulltrack", "DL arena overflow -- windowed fallback\n");
             return false;
         }
         uint32_t dl = dlcur;
@@ -304,7 +305,7 @@ bool build_course(uint8_t* rdram, const CourseKey& k) {
     }
 
     g_course.valid = true;
-    std::fprintf(stderr, "[fulltrack] course track=%d: %d zones, %d section DLs -> %zu"
+    AERO_LOG_INFO("fulltrack", "course track=%d: %d zones, %d section DLs -> %zu"
                          " synthetic buckets\n",
                  k.track, zones, total, g_course.buckets.size());
     return true;
@@ -410,7 +411,7 @@ void register_object(uint8_t* rdram, recomp_context* ctx, uint32_t craft, int cs
     if (s >= SIDE_SLOTS) {
         if (!g_course.warned_side_overflow) {
             g_course.warned_side_overflow = true;
-            std::fprintf(stderr, "[fulltrack] side arena exhausted (list +0x%X)\n",
+            AERO_LOG_WARN("fulltrack", "side arena exhausted (list +0x%X)\n",
                          OBJ_LISTS[li]);
         }
         return;

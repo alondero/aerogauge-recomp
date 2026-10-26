@@ -43,6 +43,7 @@
 
 #include "recomp.h"
 #include "aero_region.h"
+#include "aero_log.h"
 
 // Recompiled per-course record/ghost loader (see the preload comment at the launch
 // stores): reads RP_GROUP/RP_TRACK, resolves the blob id (0x800974F0 table), copies
@@ -129,7 +130,7 @@ static void parse_env_request(void) {
     while (*c != '\0' && *c != ':') c++;
     if (*c == ':') craft = (int)strtol(c + 1, NULL, 10);
     if (track < 1 || track > 6 || craft < 0 || craft > 10) {
-        fprintf(stderr, "[warp] AERO_WARP=%s invalid: track 1-6[, craft 1-10]\n", env);
+        AERO_LOG_WARN("warp", "AERO_WARP=%s invalid: track 1-6[, craft 1-10]\n", env);
         return;
     }
     aero_warp_request(track - 1, craft - 1);
@@ -247,7 +248,7 @@ void aero_warp_tick(uint8_t* rdram, recomp_context* ctx) {
     MEM_W(0, (gpr)(int32_t)SCENE_PHASE) = PHASE_ENTRY;
     MEM_W(0, (gpr)(int32_t)SCENE_REQ)   = SCENE_RACE;
 
-    fprintf(stderr, "[warp] %s: game-mode 0 race, craft %d (from scene %u)\n",
+    AERO_LOG_INFO("warp", "%s: game-mode 0 race, craft %d (from scene %u)\n",
             aero_scene_table[track],
             (int)(int8_t)MEM_B(0, (gpr)(int32_t)RP_CRAFT1) + 1, cur);
 }

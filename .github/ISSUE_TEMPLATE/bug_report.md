@@ -37,6 +37,9 @@ Actual behavior:
 
 ## Evidence
 
+- Session log file: <!-- The Windows build opens no console window. The log is
+     in %LOCALAPPDATA%/AeroGaugeRecomp/logs, or in the logs/ folder next to the
+     executable in portable mode. Attach it, or paste a small relevant excerpt. -->
 - Complete log or a small relevant excerpt:
 - Test command and result:
 - Does the problem reproduce with AERO_HEADLESS=1?

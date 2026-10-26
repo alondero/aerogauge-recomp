@@ -27,6 +27,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "aero_log.h"
 
 // RecompFrontend host contract. SDL owns the window; RT64 owns rendering.
 SDL_Window* window = nullptr;
@@ -162,7 +163,7 @@ void attach(SDL_Window* value) {
     if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(window), &display) == 0)
         recompui::config::graphics::update_refresh_rate(display.refresh_rate);
     RT64::SetRenderHooks(initialize, render, deinitialize);
-    std::fprintf(stderr, "[menu] Settings: Escape / F10 / controller Back\n");
+    AERO_LOG_INFO("menu", "Settings: Escape / F10 / controller Back\n");
 }
 
 bool captures_input() { return capture.load(std::memory_order_acquire); }
@@ -207,7 +208,7 @@ void apply_window_settings() {
     const auto cfg = aero::config::current_graphics();
     const bool fullscreen = cfg.wm_option == ultramodern::renderer::WindowMode::Fullscreen;
     if (SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
-        std::fprintf(stderr, "[config] fullscreen failed: %s\n", SDL_GetError());
+        AERO_LOG_WARN("config", "fullscreen failed: %s\n", SDL_GetError());
         aero::config::update_saved_window_mode((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP)
             ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed);
     }
@@ -220,7 +221,7 @@ void toggle_fullscreen() {
     if (!window) return;
     const bool fullscreen = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0;
     if (SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
-        std::fprintf(stderr, "[config] fullscreen failed: %s\n", SDL_GetError());
+        AERO_LOG_WARN("config", "fullscreen failed: %s\n", SDL_GetError());
         return;
     }
     aero::config::update_saved_window_mode(fullscreen ? ultramodern::renderer::WindowMode::Fullscreen

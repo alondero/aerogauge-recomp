@@ -20,8 +20,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 #include "hle/rt64_application.h"
@@ -38,6 +40,7 @@
 #include "aero_hud_widescreen.h"
 #include "aero_paths.h"
 #include "aero_shadow_depth.h"
+#include "aero_log.h"
 #if defined(__ANDROID__)
 #include "android/aero_android.h"
 #endif
@@ -265,7 +268,7 @@ public:
         setup_result = map_setup_result(app->setup(thread_id));
         chosen_api = map_graphics_api(app->chosenGraphicsAPI);
         if (setup_result != ultramodern::renderer::SetupResult::Success) {
-            std::fprintf(stderr, "[rt64] RT64::Application::setup FAILED (SetupResult=%d)\n",
+            AERO_LOG_ERROR("rt64", "RT64::Application::setup FAILED (SetupResult=%d)\n",
                          (int)setup_result);
 #if defined(__ANDROID__)
             // RT64's partially initialized teardown is not safe on every driver.
@@ -276,7 +279,7 @@ public:
             return;
         }
 
-        std::fprintf(stderr, "[rt64] RT64 renderer initialised (api=%d)\n", (int)chosen_api);
+        AERO_LOG_INFO("rt64", "RT64 renderer initialised (api=%d)\n", (int)chosen_api);
 
         // Publish the app pointer for the widescreen HUD rect-aspect helper
         // (aero_ws_get_hud_rect_aspect_bits reads this on the game-logic thread),
@@ -293,14 +296,14 @@ public:
             // Setting this non-empty makes TextureManager::dumpTexture write every
             // uploaded texture (raw TMEM + RDRAM + tile JSON) to the directory.
             app->state->dumpingTexturesDirectory = std::filesystem::path(dump_dir);
-            std::fprintf(stderr, "[rt64] texture dump enabled -> %s\n", dump_dir.c_str());
+            AERO_LOG_INFO("rt64", "texture dump enabled -> %s\n", dump_dir.c_str());
         }
 
         const std::string pack = aero::config::texture_pack_path();
         if (!pack.empty()) {
             const bool ok = app->textureCache->loadReplacementDirectory(
                 RT64::ReplacementDirectory(std::filesystem::path(pack)));
-            std::fprintf(stderr, "[rt64] texture pack %s: %s\n",
+            AERO_LOG_INFO("rt64", "texture pack %s: %s\n",
                          ok ? "loaded" : "FAILED to load", pack.c_str());
         }
     }
@@ -368,8 +371,7 @@ public:
         const auto fp_start = std::chrono::steady_clock::now();
         static int count = 0;
         if (++count == 1) {
-            std::fprintf(stderr,
-                         "[rt64] first send_dl: ucode=0x%08x ucode_data=0x%08x dl=0x%08x\n",
+            AERO_LOG_DEBUG("rt64", "first send_dl: ucode=0x%08x ucode_data=0x%08x dl=0x%08x\n",
                          (uint32_t)task->t.ucode, (uint32_t)task->t.ucode_data,
                          (uint32_t)task->t.data_ptr);
         }
@@ -406,9 +408,18 @@ public:
                         p = end;
                     }
                     s_skip_init = true;
-                    std::fprintf(stderr, "[dl-skip] %d DL(s) marked for skip: ", s_skip_n);
-                    for (int i = 0; i < s_skip_n; ++i)
-                        std::fprintf(stderr, "0x%08X%s", s_skip[i], i + 1 == s_skip_n ? "\n" : ",");
+                    // Build the address list into one buffer: a record per
+                    // entry would put a timestamp on every address and
+                    // scatter the line the skip trace is meant to show.
+                    std::ostringstream line;
+                    line << s_skip_n << " DL(s) marked for skip: ";
+                    for (int i = 0; i < s_skip_n; ++i) {
+                        line << "0x" << std::hex << std::setw(8) << std::setfill('0')
+                             << s_skip[i];
+                        if (i + 1 != s_skip_n) line << ",";
+                    }
+                    line << "\n";
+                    AERO_LOG_DEBUG("dl-skip", "%s", line.str().c_str());
                 }
                 uint8_t* rdram = app->core.RDRAM;
                 uint32_t phys = (uint32_t)task->t.data_ptr & 0x3FFFFFFu;
@@ -426,7 +437,7 @@ public:
                             if (w1 == s_skip[i]) {
                                 *(uint32_t*)(rdram + phys) = 0u; // G_SPNOOP, preserves target
                                 ++hits;
-                                std::fprintf(stderr, "[dl-skip] hit 0x%08X send_dl #%d\n",
+                                AERO_LOG_DEBUG("dl-skip", "hit 0x%08X send_dl #%d\n",
                                              s_skip[i], count);
                                 break;
                             }
@@ -488,8 +499,7 @@ public:
                 res_scale_x = sq->resolutionScale.x;
                 res_scale_y = sq->resolutionScale.y;
             }
-            std::fprintf(stderr,
-                         "[rt64] send_dl count=%d VI_ORIGIN=0x%08x VI_STATUS=0x%04x VI_WIDTH=%u"
+            AERO_LOG_DEBUG("rt64", "send_dl count=%d VI_ORIGIN=0x%08x VI_STATUS=0x%04x VI_WIDTH=%u"
                          " | viRate=%u targetRate=%u swapHz=%u interp count=%u presented=%u"
                          " | resScale=%.3fx%.3f\n",
                          count, vr->VI_ORIGIN_REG, vr->VI_STATUS_REG, vr->VI_WIDTH_REG,

@@ -53,6 +53,7 @@ target_include_directories(test_rom_picker PRIVATE src ${SDL2_INCLUDE_DIRS}
     $<TARGET_PROPERTY:ultramodern,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:nfd,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(test_rom_picker PRIVATE SDL_MAIN_HANDLED)
+target_link_libraries(test_rom_picker PRIVATE aero_log)
 add_test(NAME rom_picker_init_failure COMMAND test_rom_picker init)
 add_test(NAME rom_picker_open_failure COMMAND test_rom_picker open)
 set_tests_properties(rom_picker_init_failure rom_picker_open_failure PROPERTIES
@@ -73,7 +74,7 @@ target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIR
 target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker
 # (Threads::Threads is resolved once in the top-level CMakeLists.txt).
-target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads)
+target_link_libraries(test_frontend_settings PRIVATE recompui recompinput librecomp ultramodern rt64 Threads::Threads aero_log)
 # SDL virtual pads have no serial field. Wrap only the serial query in this
 # test executable so reconnect checks can supply deterministic driver identities.
 target_link_options(test_frontend_settings PRIVATE "LINKER:--wrap=SDL_GameControllerGetSerial")

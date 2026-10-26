@@ -38,8 +38,51 @@ use the scene lines and input probes before changing the renderer.
 
 ## Logs
 
-The program writes diagnostic output to stderr. These switches add focused
-evidence:
+The Windows executable is a GUI-subsystem program: a launch from Explorer does
+not open a console window. Diagnostics therefore go to a per-session log file
+first, and the console is opt-in.
+
+Each record looks like this:
+
+~~~
+[2026-10-26 18:33:38] [info] [rom] validated USA
+~~~
+
+The fields are the timestamp, the level, and the source tag.
+
+### Where the records go
+
+| Destination | Path | Contents |
+| --- | --- | --- |
+| Session log | `%LOCALAPPDATA%/AeroGaugeRecomp/logs/aerogauge-<timestamp>-<pid>.log` | Every record at `info` and above, plus anything more verbose that was requested |
+| Crash report | `%LOCALAPPDATA%/AeroGaugeRecomp/crashes/crash-<timestamp>-<pid>.txt` | Written only when the process actually crashes |
+
+On Linux the same two folders live under `$XDG_CONFIG_HOME/AeroGaugeRecomp`
+(or `~/.config/AeroGaugeRecomp`). `AERO_LOG_DIR` overrides both locations.
+The ten newest session logs are kept; older ones are removed.
+
+A run started from a terminal still writes to that terminal, so the existing
+`2> boot.log` capture keeps working. A run started from Explorer writes only
+to the session log.
+
+### Console and verbosity
+
+| Switch | Effect |
+| --- | --- |
+| `--console` | Attach to the parent console, or allocate one. Use it when launching from Explorer and you want to see the output live |
+| `--log-level=error\|warn\|info\|debug\|trace` | Console verbosity. The default is `info` |
+| `--verbose` | Same as `--log-level=debug` |
+
+The console honours the requested level exactly. The session log keeps `info`
+and above even when the console is narrowed with `--log-level=error`, because
+the file is the channel a player sends with a bug report. Debug and trace
+records stay out of the file unless they are asked for.
+
+`AERO_HARNESS_LOG=1` is an alias for `--verbose`.
+
+### Focused probes
+
+These switches add focused evidence:
 
 | Setting | What it shows |
 | --- | --- |
@@ -55,9 +98,10 @@ Create the logs directory first. These probes are intentionally quiet by
 default because synchronous console output can affect timing.
 
 The crash handler prints a guest PC, a native backtrace when available, and a
-recent trace ring to stderr. Keep the complete output. A symbol table beside
-the executable gives names for generated functions; AERO_CRASH_SYMBOLS can
-point to another copy of aerogauge.syms.toml.
+recent trace ring. It writes that report to the crash file above, and also to
+the console when a console exists. Keep the complete output. A symbol table
+beside the executable gives names for generated functions; AERO_CRASH_SYMBOLS
+can point to another copy of aerogauge.syms.toml.
 
 To test the crash-report path without waiting for a real fault:
 
