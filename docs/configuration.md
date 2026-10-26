@@ -135,6 +135,8 @@ The file contains separate player assist and rumble settings:
 | rumble_player2 | object (fields below) | All strengths 100; events enabled | Player 2's feedback preferences |
 | gyro_player1 | object | See below | Player 1's motion steering preferences |
 | gyro_player2 | object | See below | Player 2's independent motion steering preferences |
+| master_volume | integer 0 to 100 | 100 | Host master volume percentage; 0 mutes the game |
+| master_muted | true or false | false | Silences the game's music, effects and announcer |
 
 Each rumble object contains:
 
@@ -162,6 +164,14 @@ Settings > Motion saves these preferences independently of Easy Turbo.
 Calibration and sensor identity are never saved. See
 [gyro steering](controllers.md#optional-gyro-steering) for calibration,
 supported sensor paths, lifecycle behavior, and manual-input priority.
+
+The master volume and the mute switch are edited on the port's own
+Settings > Audio page. The port owns the persistence; the audio module applies
+the gain to the host output only, so the game's own music/effects/announcer
+balance is unchanged. Percentages outside 0-100 are clamped, and the port never
+amplifies the source. AERO_MASTER_VOLUME overrides the saved percentage for one
+run without changing the file. See the
+[audio reference](reference/audio.md#master-volume-and-mute) for the boundary.
 
 ## controls.json
 
@@ -193,6 +203,7 @@ setting, its value wins for that run.
 | AERO_FORCE_FULL_LOD | 0 or 1 | Overrides force_full_lod |
 | AERO_EASY_TURBO | 0 or 1 | Overrides Player 1's easy_turbo_boost |
 | AERO_EASY_TURBO_P2 | 0 or 1 | Overrides Player 2's easy_turbo_boost_player2 |
+| AERO_MASTER_VOLUME | 0 to 100 | Overrides the saved master_volume percentage; 0 mutes the game |
 | AERO_HEADLESS | 1 | Skips the window and RT64 and uses the software test renderer |
 
 AERO_GRAPHICS_CONFIG and AERO_ENHANCEMENTS_CONFIG point the two JSON loaders
@@ -309,6 +320,7 @@ $env:NAME before running the executable.
 | AERO_FULL_TRACK | Launch or test; 0 or 1 | Unset uses JSON, true by default; set wins | Each full-track policy query | Enables or disables all-course registration; src/aero_config.cpp and src/aero_full_track.cpp | AERO_FULL_TRACK=0 ./build/aerogauge_modern |
 | AERO_FORCE_FULL_LOD | Launch or test; 0 or 1 | Unset uses JSON, false by default; set wins | Each car LOD hook | Forces near-detail car meshes and removes their distance cutoff; src/aero_car_lod.c | AERO_FORCE_FULL_LOD=1 ./build/aerogauge_modern |
 | AERO_EASY_TURBO | Launch or test; 0 or 1 | Unset uses JSON, false by default; set wins | First semantic input query | Enables the alternate Turbo and Boost Start input path; src/aero_config.cpp and src/aero_turbo_boost.c | AERO_EASY_TURBO=1 ./build/aerogauge_modern |
+| AERO_MASTER_VOLUME | Launch or test; 0 to 100 | Unset uses JSON, 100 by default; set wins and is clamped | Each master gain publication | Overrides the saved host master volume; 0 mutes the game; src/aero_config.cpp and src/aero_audio.cpp | AERO_MASTER_VOLUME=0 ./build/aerogauge_modern |
 | AERO_HEADLESS | Test or investigation; use 1 or any present value | Unset uses the RT64 window path when available | Startup | Skips the window and selects the software renderer; src/aero_rt64.h and src/main.cpp | AERO_HEADLESS=1 ./build/aerogauge_modern |
 
 ### Developer, headless, and crash controls

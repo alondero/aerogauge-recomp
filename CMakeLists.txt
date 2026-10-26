@@ -305,6 +305,21 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                 $<TARGET_FILE_DIR:test_audio_playback>)
     endif()
     add_test(NAME audio_playback_buffering COMMAND test_audio_playback)
+    # Host master gain: the audio module scales its own copy of the submitted
+    # PCM and leaves the guest buffer untouched. Same stubbed device as the
+    # playback test, but the stub captures the queued samples.
+    add_executable(test_audio_gain tests/test_audio_gain.cpp)
+    target_include_directories(test_audio_gain PRIVATE
+        ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(test_audio_gain PRIVATE ${SDL2_LIBRARIES})
+    if(WIN32)
+        add_custom_command(TARGET test_audio_gain POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+                $<TARGET_FILE_DIR:test_audio_gain>)
+    endif()
+    add_test(NAME audio_gain COMMAND test_audio_gain)
     if(WIN32)
         add_test(NAME audio_intro_playback
             COMMAND powershell -NoProfile -ExecutionPolicy Bypass

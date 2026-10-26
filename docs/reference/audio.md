@@ -10,6 +10,7 @@ translated game audio code
     -> generated aspMain RSP code
     -> AI buffer
     -> byte-order correction
+    -> master gain (host copy only)
     -> SDL audio queue
 ~~~
 
@@ -43,6 +44,37 @@ Normal player audio uses SDL on the supported Windows and Linux targets. An
 unavailable host device is a host setup problem; it does not prove that the
 generated audio task is wrong. Use the audio statistics and RMS probes in
 [debugging](../debugging.md) to separate those cases.
+
+## Master volume and mute
+
+The port owns a player-facing master volume and a mute switch. They live on
+the port's own Audio settings page, persist in enhancements.json as
+`master_volume` (0-100) and `master_muted`, and are overridable for one run
+with AERO_MASTER_VOLUME. The port settings own the persistence; the audio
+module owns the cross-thread gain snapshot and the host PCM conversion.
+
+The gain is applied to the host's own copy of the submitted PCM, after the
+byte-order correction and before the host conversion. Consequences that the
+current implementation guarantees:
+
+- The guest's source buffer is never written to, so a buffer the game reuses
+  is never attenuated twice.
+- The guest's own music, effects and announcer balance is unchanged. Nothing
+  in the generated mixer is touched.
+- Scaling rounds half away from zero and saturates to the int16 range. A gain
+  of 1.0 is an exact pass-through and 0.0 is exact silence.
+- The published gain is clamped to [0, 1]. The port attenuates; it never
+  amplifies the source.
+
+The gain is a cross-thread snapshot: the settings layer publishes it from the
+SDL main thread, and the audio path reads it once per submitted buffer. A
+change therefore lands on the next buffer, without a lock, without reopening
+the device, and without resetting the conversion stream.
+
+Muting silences the host output only. The game keeps synthesising at the same
+cadence, the virtual AI FIFO keeps advancing, and the guest-side backpressure
+is unchanged. The RMS probe reports the PCM the guest submitted, so a muted run
+still shows the generated content; it is not a measurement of speaker output.
 
 ## Audio evidence
 

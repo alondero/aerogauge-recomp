@@ -1,4 +1,5 @@
 #include "aero_config.h"
+#include "aero_audio.h"
 #include "aero_cheats.h"
 #include "aero_region.h"
 #include "aero_gyro_sdl.h"
@@ -48,10 +49,12 @@ struct IsolatedConfig {
     std::string previous_enhancements_config;
     std::string previous_debounce;
     std::string previous_force_full_lod;
+    std::string previous_master_volume;
     bool had_previous_graphics_config = false;
     bool had_previous_enhancements_config = false;
     bool had_previous_debounce = false;
     bool had_previous_force_full_lod = false;
+    bool had_previous_master_volume = false;
 
     IsolatedConfig() {
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -86,9 +89,16 @@ struct IsolatedConfig {
             previous_force_full_lod = previous;
             had_previous_force_full_lod = true;
         }
+        if (const char* previous = std::getenv("AERO_MASTER_VOLUME")) {
+            previous_master_volume = previous;
+            had_previous_master_volume = true;
+        }
         set_environment("AERO_GRAPHICS_CONFIG", nullptr);
         set_environment("AERO_ENHANCEMENTS_CONFIG", nullptr);
         set_environment("AERO_FORCE_FULL_LOD", nullptr);
+        // The Audio page reads this override when the tab is created, so the
+        // test must not inherit one from the developer's shell.
+        set_environment("AERO_MASTER_VOLUME", nullptr);
         // Park the background writer: the persistence checks below flush
         // explicitly, so a file read can never race the debounce window.
         set_environment("AERO_CONFIG_WRITE_DEBOUNCE_MS", "60000");
@@ -110,6 +120,8 @@ struct IsolatedConfig {
                         had_previous_debounce ? previous_debounce.c_str() : nullptr);
         set_environment("AERO_FORCE_FULL_LOD",
                         had_previous_force_full_lod ? previous_force_full_lod.c_str() : nullptr);
+        set_environment("AERO_MASTER_VOLUME",
+                        had_previous_master_volume ? previous_master_volume.c_str() : nullptr);
     }
 };
 
@@ -227,6 +239,47 @@ int main(int argc, char** argv) {
         require(std::get<double>(rumble.get_option_value("player1_strength")) == 100.0 &&
                 std::get<double>(rumble.get_option_value("player2_strength")) == 50.0,
                 "rumble refresh mixed player settings");
+        // Port-owned Audio page. The shared General page is hidden because this
+        // port does not implement all of its audio services, so the master
+        // volume and mute live on the port's own page.
+        auto& audio = recompui::config::get_config("audio");
+        require(audio.external_storage && !audio.requires_confirmation,
+                "audio settings must be immediate and port-owned");
+        require(std::get<double>(audio.get_option_value("master_volume")) == 100.0 &&
+                !std::get<bool>(audio.get_option_value("master_muted")),
+                "audio page must show the persisted defaults");
+        audio.set_option_value("master_volume", 35.0);
+        require(aero::config::master_volume() == 100,
+                "audio changes escaped the SDL action queue");
+        flush();
+        require(aero::config::master_volume() == 35, "the queued master volume did not apply");
+        require(aero::audio::master_gain() == 0.35f,
+                "the audio path did not receive the master volume");
+        audio.set_option_value("master_muted", true);
+        flush();
+        require(aero::config::master_muted() && aero::audio::master_gain() == 0.0f,
+                "the mute toggle did not silence the audio path");
+        require(audio.is_config_option_disabled(audio.get_config_schema().options_by_id.at("master_volume")),
+                "the volume slider must be disabled while muted");
+        audio.set_option_value("master_muted", false);
+        flush();
+        require(!aero::config::master_muted() && aero::audio::master_gain() == 0.35f,
+                "unmuting must restore the saved level");
+        require(!audio.is_config_option_disabled(audio.get_config_schema().options_by_id.at("master_volume")),
+                "the volume slider must come back when unmuted");
+        aero::config::flush_config_writes();
+        const auto saved_audio = read(path / "enhancements.json");
+        require(saved_audio.at("master_volume") == 35 && saved_audio.at("master_muted") == false,
+                "the master volume did not persist");
+        aero::config::load_and_apply_graphics();
+        require(aero::config::master_volume() == 35 && !aero::config::master_muted(),
+                "the master volume did not survive a reload");
+        require(aero::audio::master_gain() == 0.35f,
+                "the reload did not publish the persisted gain");
+        aero::menu::refresh_settings();
+        flush();
+        require(std::get<double>(audio.get_option_value("master_volume")) == 35.0,
+                "the audio page did not show the persisted level");
         // Match live_config_updates: preserve unrelated edits made while the
         // game is running, after the load/reload whole-document startup writes.
         auto hand_edit = read(path / "graphics.json");

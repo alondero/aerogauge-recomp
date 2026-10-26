@@ -195,6 +195,55 @@ void configure_rumble() {
     }
 }
 
+// Port-owned Audio page. The shared General page is hidden because this port
+// does not implement all of its audio services, so the master volume and mute
+// live here instead. The port owns the persistence (enhancements.json); the
+// audio module owns the gain snapshot and the host PCM conversion.
+void seed_audio() {
+    auto& page = recompui::config::get_config("audio");
+    sync(page, "master_volume", double(aero::config::master_volume()));
+    sync(page, "master_muted", aero::config::master_muted());
+    page.revert_temp_config();
+}
+
+void configure_audio() {
+    auto& page = recompui::config::create_config_tab("Audio", "audio", false);
+    page.external_storage = true;
+    page.set_load_callback(seed_audio);
+    page.add_number_option("master_volume", "Master volume (%)",
+        "Overall loudness of the game's music, sound effects and announcer. 0 mutes the game "
+        "without changing the system mixer volume or the game's own balance. "
+        "AERO_MASTER_VOLUME overrides this setting.",
+        0, 100, 5, 0, false, double(aero::config::master_volume()));
+    page.add_bool_option("master_muted", "Mute all game audio",
+        "Silence the game's music, sound effects and announcer. The volume above is remembered, "
+        "so unmuting restores it.",
+        aero::config::master_muted());
+    // Grey out the volume slider while muted, and while AERO_MASTER_VOLUME pins
+    // the level for this run. Registered once at schema time so the boot-time
+    // dependency derive (which runs before any UI exists) sees it; re-registering
+    // per seed would duplicate map entries. Explicit bool variant: a bare
+    // `true` would bind to the enum overload and compare as uint32_t. When the
+    // env var pins the level, both values match so the derive cannot re-enable
+    // the slider behind the override.
+    std::vector<ConfigValueVariant> mute_values = {true};
+    if (std::getenv("AERO_MASTER_VOLUME") != nullptr) {
+        mute_values.push_back(false);
+    }
+    page.add_option_disable_dependency("master_volume", "master_muted", mute_values);
+    page.update_option_disabled("master_volume", std::getenv("AERO_MASTER_VOLUME") != nullptr);
+    page.add_option_change_callback("master_volume",
+        [](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+            if (context == OptionChangeContext::Permanent)
+                enqueue([percent = int(std::get<double>(value))] { aero::config::set_master_volume(percent); });
+        });
+    page.add_option_change_callback("master_muted",
+        [](ConfigValueVariant value, ConfigValueVariant, OptionChangeContext context) {
+            if (context == OptionChangeContext::Permanent)
+                enqueue([muted = std::get<bool>(value)] { aero::config::set_master_muted(muted); });
+        });
+}
+
 void save_graphics() {
     auto& page = recompui::config::get_graphics_config();
     auto edited = seeded;
@@ -392,6 +441,7 @@ void refresh_settings() {
     if (!recompui::config::get_config("cheats").is_dirty()) seed_cheats();
     if (!recompui::config::get_config("debug").is_dirty()) seed_debug();
     if (!recompui::config::get_config("rumble").is_dirty()) seed_rumble();
+    if (!recompui::config::get_config("audio").is_dirty()) seed_audio();
     refresh_motion_settings();
 }
 
@@ -495,6 +545,7 @@ void create_settings() {
 #endif
 
     configure_rumble();
+    configure_audio();
     auto& enhancements = settings::create_config_tab("Enhancements", "enhancements", false);
     enhancements.external_storage = true;
     enhancements.set_load_callback(seed_enhancements);

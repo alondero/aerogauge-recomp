@@ -67,8 +67,9 @@ add_test(NAME gyro_sdl_bridge COMMAND test_gyro_sdl)
 
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     tests/test_multiplayer_input.cpp src/ui/aero_frontend_settings.cpp src/aero_config.cpp src/aero_gyro_sdl.cpp
-    src/aero_cheats.cpp)
-target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS})
+    src/aero_cheats.cpp src/aero_audio.cpp)
+target_include_directories(test_frontend_settings PRIVATE src ${SDL2_INCLUDE_DIRS}
+    ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include)
 target_compile_definitions(test_frontend_settings PRIVATE AERO_JAPAN_SUPPORT)
 # aero_config starts a std::thread for the debounced persistence worker
 # (Threads::Threads is resolved once in the top-level CMakeLists.txt).

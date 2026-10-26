@@ -146,6 +146,20 @@ void set_rumble_settings(int player, haptics::Settings settings);
 gyro::Settings gyro_settings(int player);
 void set_gyro_settings(int player, gyro::Settings settings);
 
+// Host master volume and mute in enhancements.json ("master_volume" is a
+// percentage in [0, 100], "master_muted" is a boolean). AERO_MASTER_VOLUME
+// overrides the saved percentage for one run without changing it.
+//
+// The port owns persistence; the audio module owns the gain snapshot and the
+// host PCM conversion. The effective gain is 0.0 while muted and
+// master_volume()/100 otherwise, so the guest's own music/effects/announcer
+// balance is never changed and the source is never amplified.
+int master_volume();
+void set_master_volume(int percent);
+bool master_muted();
+void set_master_muted(bool muted);
+float master_gain();
+
 // C-linkage bridge so the plain-C hook (src/aero_turbo_boost.c) can read the
 // toggle without dragging the C++ config machinery into its TU.
 #ifdef __cplusplus

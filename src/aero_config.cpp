@@ -4,6 +4,7 @@
 // snapshot for the RecompFrontend settings page. Missing keys use defaults;
 // malformed files remain in place so the original text can be recovered.
 #include "aero_config.h"
+#include "aero_audio.h"
 #include "aero_paths.h"
 
 #include <algorithm>
@@ -72,6 +73,18 @@ std::atomic_bool g_easy_turbo_boost{false}, g_easy_turbo_boost_player2{false};
 // Read and edited only on the SDL thread, alongside the graphics snapshot.
 std::array<aero::haptics::Settings, 2> g_rumble;
 constexpr const char* kRumbleKeys[] = {"rumble_player1", "rumble_player2"};
+
+// Host master volume and mute, persisted in enhancements.json. The percentage
+// is the port's own player-facing preference; the audio module owns the gain
+// snapshot and the host PCM conversion. 100 = unmodified, 0 = silent.
+std::atomic_int g_master_volume{100};
+std::atomic_bool g_master_muted{false};
+constexpr int kMasterVolumeMin = 0;
+constexpr int kMasterVolumeMax = 100;
+
+int clamp_master_volume(int percent) {
+    return std::clamp(percent, kMasterVolumeMin, kMasterVolumeMax);
+}
 
 aero::haptics::Settings clamp_rumble(aero::haptics::Settings settings) {
     settings.strength = std::clamp(settings.strength, 0, 100);
@@ -292,6 +305,14 @@ ReadResult read_enhancements_file(const std::filesystem::path& path, bool& easy_
             from_or_default(*it, "dead_zone", settings.dead_zone);
             settings = aero::gyro::sanitize(settings);
         }
+        // Master volume and mute. A missing key keeps the default (100, not
+        // muted); an out-of-range percentage is clamped, never amplified.
+        int volume = g_master_volume.load();
+        bool muted = g_master_muted.load();
+        from_or_default(j, "master_volume", volume);
+        from_or_default(j, "master_muted", muted);
+        g_master_volume.store(clamp_master_volume(volume));
+        g_master_muted.store(muted);
         return ReadResult::Ok;
     } catch (const nlohmann::json::exception& e) {
         std::fprintf(stderr, "[config] %s unparseable (%s); using defaults IN MEMORY\n",
@@ -563,6 +584,8 @@ void queue_enhancements_document(nlohmann::json document) {
 
 nlohmann::json enhancements_json(bool easy_turbo) {
     nlohmann::json result{{"easy_turbo_boost", easy_turbo}, {"easy_turbo_boost_player2", g_easy_turbo_boost_player2.load()}};
+    result["master_volume"] = g_master_volume.load();
+    result["master_muted"] = g_master_muted.load();
     for (int player = 0; player < 2; ++player) {
         const auto& settings = g_rumble[player];
         result[kRumbleKeys[player]] = {{"strength", settings.strength},
@@ -670,6 +693,9 @@ ultramodern::renderer::GraphicsConfig load_and_apply_graphics() {
     g_easy_turbo_boost.store(easy_turbo);
     g_easy_turbo_boost_player2.store(player2_turbo);
     if (enhancements_result != ReadResult::Unparseable) write_enhancements(easy_turbo);
+    // Publish the persisted master volume to the host audio path before the
+    // game starts, so the first submitted buffer already uses the saved gain.
+    aero::audio::set_master_gain(master_gain());
     std::fprintf(stderr, "[config] enhancements config: %s\n", enhancements_path.string().c_str());
     return cfg;
 }
@@ -932,6 +958,42 @@ haptics::Settings rumble_settings(int player) {
 void set_rumble_settings(int player, haptics::Settings settings) {
     if (player < 0 || player >= 2) return;
     g_rumble[player] = clamp_rumble(settings);
+    save_enhancements(g_easy_turbo_boost.load());
+}
+
+int master_volume() {
+    // AERO_MASTER_VOLUME=<0-100> overrides the saved percentage for one run
+    // without changing the file, the same way AERO_FULL_TRACK gates full_track.
+    if (const char* value = std::getenv("AERO_MASTER_VOLUME")) {
+        if (value[0] != '\0') {
+            char* end = nullptr;
+            const long parsed = std::strtol(value, &end, 10);
+            if (end != value) {
+                return clamp_master_volume(static_cast<int>(parsed));
+            }
+        }
+    }
+    return g_master_volume.load();
+}
+
+bool master_muted() {
+    return g_master_muted.load();
+}
+
+float master_gain() {
+    if (master_muted()) return 0.0f;
+    return static_cast<float>(master_volume()) / 100.0f;
+}
+
+void set_master_volume(int percent) {
+    g_master_volume.store(clamp_master_volume(percent));
+    aero::audio::set_master_gain(master_gain());
+    save_enhancements(g_easy_turbo_boost.load());
+}
+
+void set_master_muted(bool muted) {
+    g_master_muted.store(muted);
+    aero::audio::set_master_gain(master_gain());
     save_enhancements(g_easy_turbo_boost.load());
 }
 

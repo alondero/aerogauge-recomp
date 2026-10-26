@@ -37,6 +37,7 @@ The shared frontend has these pages:
 | Cheats | Player 1 Infinite Damage and Always First Position | Immediate, session-only toggles. Reset on application launch; no cheats.json. See [Cheats](cheats.md). |
 | Controls | Assign up to two players and edit each player's keyboard or controller profile for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
 | Rumble | Independent overall strength and collision/Turbo enable and strength controls for each player | Changes apply immediately; the port saves them in `enhancements.json`. Global rumble launch gates disable the affected controls without replacing saved preferences. |
+| Audio | Master volume percentage and a mute switch | Changes apply immediately; the port saves them in `enhancements.json`. The volume slider is disabled while muted. AERO_MASTER_VOLUME pins the level for the run. |
 | Mods | Install and manage AeroGauge code packages and RT64 texture packs | The runtime stores package enablement and order in `mods.json`; code mods load at game start, while texture packs can be toggled and reordered during play. |
 
 F11 and Alt+Enter still switch fullscreen. The shared General page is hidden
@@ -63,6 +64,7 @@ disabled when one is present:
 - AERO_EASY_TURBO
 - AERO_EASY_TURBO_P2
 - AERO_DRAW_DISTANCE_SCALE
+- AERO_MASTER_VOLUME
 
 The override wins for that run. The menu must not copy an overridden value into
 the user's JSON file.
@@ -70,6 +72,10 @@ the user's JSON file.
 AERO_RUMBLE=0 disables the Rumble page's controls for both players;
 AERO_RUMBLE_TURBO=0 disables only their Turbo controls. Other values leave
 the saved strengths and switches active. Neither gate changes stored preferences.
+
+AERO_MASTER_VOLUME pins the Audio page's level for the run and disables its
+slider. The mute switch stays available, because muting is independent of the
+saved level. The override does not change the stored value.
 
 ## Ownership and threads
 
