@@ -7,9 +7,9 @@ checks, the shared patch inventory and application tests, generated-file guard
 and consistency tests, Android build-script checks, and host-test registration
 checks. These checks also run for changes confined to tests or build scripts.
 
-The Linux and Windows host jobs build seven tests without ROMs,
+The Linux and Windows host jobs build eight tests without ROMs,
 submodules, SDL, or a renderer: full_track_policy, gyro_steering, hud_shift_scale,
-input_cadence, startup_mode, rom_startup, and user_data_dir. Their target definitions are shared with the
+input_cadence, startup_mode, rom_startup, user_data_dir, and dev_warp_chord. Their target definitions are shared with the
 full build in cmake/HostTests.cmake. To run this tier locally:
 
 ~~~text
@@ -289,6 +289,7 @@ The current CMake file registers these tests:
 | live_config_updates | Host | Runtime headers; no ROM |
 | graphics_config_threadsafe | Host | Runtime source from the initialized submodule; no ROM |
 | user_data_dir | Host | No ROM |
+| dev_warp_chord | Host | No ROM or SDL; the developer warp chord requires both modifiers, selects one track per press, and re-arms after a release |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
 | scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |
 | car_lod | ROM-backed | Generated car visibility, model and animation functions from the accepted ROM |

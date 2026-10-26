@@ -56,6 +56,7 @@
 #include "aero_input.h"
 #include "aero_gyro_sdl.h"
 #include "aero_input_cadence.h"
+#include "aero_devkeys.h"   // developer warp chord: Ctrl+Shift+1..6
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 #include "aero_rom_desktop.h"
 #include "recompinput/input_events.h"
@@ -80,7 +81,7 @@ void recomp_entrypoint_jp(uint8_t*, recomp_context*);
 void register_overlays_jp();
 #endif
 
-// Developer warp: the SDL/main thread publishes F1-F6 or AERO_WARP_AT;
+// Developer warp: the SDL/main thread publishes a Ctrl+Shift+1..6 chord or AERO_WARP_AT;
 // the game thread consumes it in aero_warp_tick.
 extern "C" void aero_warp_request(int track0, int craft);
 
@@ -344,7 +345,7 @@ extern "C" void lambo_thread_trace_dump(int vi);
 // Scripted warp trigger (PERMANENT harness instrumentation, same class as state_probe):
 // AERO_WARP_AT=vi:track[:craft] (track/craft 1-based, like AERO_WARP) publishes a warp
 // request at the given VI from this main-thread callback — the same cross-thread path the
-// F1-F6 hotkeys use — so headless runs can exercise mid-run and mid-race re-warps.
+// Ctrl+Shift+1..6 chord uses — so headless runs can exercise mid-run and mid-race re-warps.
 static void warp_at_probe(int vi_n) {
     static int at = -1, track = 0, craft = 0;
     if (at == -1) {
@@ -846,13 +847,20 @@ static void developer_input_tick() {
     const Uint8* ks = SDL_GetKeyboardState(nullptr);
     if (ks == nullptr) return;
 
-    // Developer warp menu (src/aero_warp.c): F1..F6 warp straight to that track.
-    static Uint8 warp_prev[6] = {};
-    for (int i = 0; i < 6; i++) {
-        const Uint8 down = ks[SDL_SCANCODE_F1 + i];
-        if (down && !warp_prev[i]) aero_warp_request(i, -1);
-        warp_prev[i] = down;
+    // Developer warp menu (src/aero_warp.c): Ctrl+Shift+1..6 warp straight to
+    // that track. The chord keeps a stray function-key press from launching a
+    // race and leaves F1-F6 free for the RT64 developer tools and for player
+    // bindings. Edge-detected here (main thread); consumed by aero_warp_tick
+    // on the game thread. The chord rules live in src/aero_devkeys.h.
+    aero::devkeys::WarpChord warp_chord;
+    warp_chord.ctrl = ks[SDL_SCANCODE_LCTRL] || ks[SDL_SCANCODE_RCTRL];
+    warp_chord.shift = ks[SDL_SCANCODE_LSHIFT] || ks[SDL_SCANCODE_RSHIFT];
+    for (int i = 0; i < aero::devkeys::kWarpSlots; i++) {
+        warp_chord.digit[i] = ks[SDL_SCANCODE_1 + i];
     }
+    static aero::devkeys::WarpChordTracker warp_tracker;
+    const int warp_track0 = warp_tracker.update(warp_chord);
+    if (warp_track0 >= 0) aero_warp_request(warp_track0, -1);
 
     // Developer save-state: F7 saves and F8 restores at the next game frame.
     static Uint8 f7_prev = 0, f8_prev = 0;

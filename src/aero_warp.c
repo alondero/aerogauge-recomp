@@ -31,8 +31,9 @@
 // Trigger paths (both consumed on the game thread by aero_warp_tick, hooked at
 // the entry of func_80015FD0 via the [[patches.hook]] block in
 // scripts/gen_syms_toml.py PATCH_BLOCKS):
-//   - F1..F6 (SDL keyboard, published from input_sample in main.cpp): warp to
-//     that track as a 1-player game-mode-0 race with the current craft.
+//   - Ctrl+Shift+1..6 (SDL keyboard, published from developer_input_tick in
+//     main.cpp): warp to that track as a 1-player game-mode-0 race with the
+//     current craft.
 //   - AERO_WARP=track[:craft] (track 1-6, craft 1-10; 1-based to match the UI):
 //     one-shot boot warp, fired on the first frame the game is warpable.
 

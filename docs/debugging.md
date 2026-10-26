@@ -79,7 +79,11 @@ AERO_HEADLESS=1 AERO_WARP=1:1 AERO_MODERN_MAX_VIS=2600 ./build/aerogauge_modern
 ~~~
 
 The first number is the track, from 1 to 6. The optional second number is the
-craft, from 1 to 10. F1 through F6 do the same thing in a windowed run.
+craft, from 1 to 10. Ctrl+Shift+1 through Ctrl+Shift+6 do the same thing in a
+windowed run. The chord needs both modifiers, so a stray function-key press
+cannot start a race, and the function keys stay free for the RT64 developer
+tools (`developer_mode` in graphics.json) and for player bindings. A warp
+prints a `[warp]` line to stderr when it lands.
 
 For a scheduled warp:
 

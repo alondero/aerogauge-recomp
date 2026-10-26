@@ -212,7 +212,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/aero_full_track.cpp     # native course-geometry registrars: full-track rendering
                                     # (large-scale pop-in fix); same `ignored` routing
         src/aero_shadow_depth.cpp   # guarded racer-shadow depth-mode patch at RT64 task boundary
-        src/aero_warp.c        # developer warp menu: F1-F6 / AERO_WARP race warp;
+        src/aero_warp.c        # developer warp menu: Ctrl+Shift+1-6 / AERO_WARP race warp;
                                # tick hooked at func_80015FD0 via [[patches.hook]]
         src/aero_hud_widescreen.c  # widescreen 1P-HUD pinning: whole-frame texrect
                                    # retag pass + needle matrix shift, hooked around the
