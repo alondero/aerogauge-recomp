@@ -28,6 +28,29 @@ int main() {
     using aero::paths::app_data_dir;
     using aero::paths::renderer_storage;
 
+    // This is the conversion used by RT64's startup and live texture updates.
+    // Never substitute an empty native path for a failed conversion: the
+    // replacement loader could then interpret it as the working directory.
+    assert(!aero::paths::from_utf8(""));
+    const auto ascii = aero::paths::from_utf8("packs with spaces/test.rtz");
+    assert(ascii && *ascii == std::filesystem::path("packs with spaces/test.rtz"));
+    const std::u8string unicode = u8"packs/\u65e5\u672c\U0001f3ce/pack.rtz";
+    const std::string unicode_bytes(reinterpret_cast<const char*>(unicode.data()), unicode.size());
+    const auto decoded = aero::paths::from_utf8(unicode_bytes);
+    assert(decoded && *decoded == std::filesystem::path(unicode));
+    for (const auto& malformed : {std::string("\xff\xfe"), std::string("\xe2\x82"),
+                                 std::string("\x80"), std::string("\xc0\xaf"),
+                                 std::string("\xed\xa0\x80")}) {
+        const auto path = aero::paths::from_utf8(malformed);
+#if defined(_WIN32)
+        assert(!path && "unconvertible input must be skipped without throwing");
+#else
+        // POSIX paths can contain arbitrary bytes; no transcoding is required.
+        assert(path && path->native() == malformed);
+#endif
+    }
+    assert(aero::paths::from_utf8(unicode_bytes) == decoded);
+
     assert(std::string(kAppFolderName) == "AeroGaugeRecomp");
 
     const auto storage = renderer_storage();

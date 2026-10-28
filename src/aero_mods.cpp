@@ -1,4 +1,5 @@
 #include "aero_mods.h"
+#include "aero_log.h"
 
 #include "librecomp/mods.hpp"
 
@@ -70,7 +71,10 @@ void register_content() {
 
     // RT64 packs are ZIP archives without a code-mod manifest. NRM packages
     // retain the runtime's normal manifest and content checks.
-    recomp::mods::register_mod_container_type(".rtz", {texture_packs}, false);
+    // The runtime prepends the dot and rejects extensions that already have it.
+    if (!recomp::mods::register_mod_container_type(texture_pack_container_extension, {texture_packs}, false)) {
+        AERO_LOG_ERROR("mods", "failed to register .rtz texture-pack container type\n");
+    }
 }
 
 void discard_failed_load() {

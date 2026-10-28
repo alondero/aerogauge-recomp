@@ -32,7 +32,7 @@ The shared frontend has these pages:
 
 | Page | Options | Save behavior |
 | --- | --- | --- |
-| Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture paths, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and texture paths take effect after restart. |
+| Graphics | Resolution, window mode and size, widescreen, HUD placement, presentation rate, manual FPS, anti-aliasing, precision, graphics API, texture dump directory, and Force Full LOD | Apply saves the edited graphics fields. Discard restores the page snapshot. Graphics API, developer tools, and the dump directory take effect after restart. |
 | Enhancements | Draw distance, full-course geometry, and Easy Turbo + Boost Start | Changes become permanent immediately and are written by the port configuration layer. |
 | Cheats | Player 1 Infinite Damage and Always First Position | Immediate, session-only toggles. Reset on application launch; no cheats.json. See [Cheats](cheats.md). |
 | Controls | Assign up to two players and edit each player's keyboard or controller profile for driving and menu actions | The frontend saves bindings to `controls.json` when the page closes. |
@@ -57,7 +57,6 @@ itself and does not cause a boot loop.
 These variables are read-only launch overrides. The matching menu option is
 disabled when one is present:
 
-- AERO_TEXTURE_PACK
 - AERO_TEXTURE_DUMP
 - AERO_FULL_TRACK
 - AERO_FORCE_FULL_LOD
@@ -68,6 +67,10 @@ disabled when one is present:
 
 The override wins for that run. The menu must not copy an overridden value into
 the user's JSON file.
+
+`AERO_TEXTURE_PACK` is a legacy override with priority over Mods packs. It has
+no Graphics control. [Modding](modding.md#legacy-texture-pack-setting) explains
+how to clear it and manage packs in Mods.
 
 AERO_RUMBLE=0 disables the Rumble page's controls for both players;
 AERO_RUMBLE_TURBO=0 disables only their Turbo controls. Other values leave

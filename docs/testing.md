@@ -89,7 +89,33 @@ A test that is skipped because its prerequisite is missing does not prove that
 the missing behavior works. Record the skip reason in the issue or pull
 request that owns the change.
 
+## Texture pack checks
+
+`texture_packs_us` and `texture_packs_jp` exercise the real runtime package
+loader with temporary ZIP archives, without a ROM or graphics device. They
+check manifest-less `.rtz` discovery (including a non-ASCII parent directory),
+invalid ZIP and missing `.nrm` manifest errors, both regional game IDs,
+startup loading, live enable/disable, priority changes, snapshot consumption,
+and failed-load cleanup. Run them with:
+
+~~~text
+ctest --test-dir build -R "texture_packs_|frontend_settings|live_config|^user_data_dir$" --output-on-failure
+~~~
+
+`user_data_dir` also checks the path conversion shared by RT64's startup and
+live texture updates: ASCII, spaces, non-ASCII characters, empty input, and
+malformed UTF-8. Windows must reject unconvertible input without throwing;
+POSIX retains native byte paths. A failed conversion must not become a
+working-directory replacement source.
+
+These tests establish package handling, not visual replacement. To check that
+boundary, install a pack with a visible AeroGauge texture replacement through
+the launcher, start a race using that texture, toggle the pack during play,
+and confirm the artwork changes. Repeat with overlapping packs and change
+their order: the earlier pack must win. Clear any legacy override first.
+
 ## Multiplayer checks
+
 
 `gyro_steering` is a dependency-free synthetic sensor test for neutral and gyro
 bias calibration, sensitivity, dead zone, return to center, recentering, invalid

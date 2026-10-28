@@ -93,7 +93,7 @@ The normal file contains the following keys. Enum values are case-sensitive.
 | developer_mode | true or false | false | RT64 developer tools |
 | window_width | integer from 320 to 7680 | 1600 | Window width |
 | window_height | integer from 240 to 4320 | 900 | Window height |
-| texture_pack | path or empty string | empty | RT64 texture replacement input |
+| texture_pack | path or empty string | empty | Legacy RT64 directory or .rtz override, ahead of Mods packs; hidden from Settings. Clear to use Mods alone. |
 | texture_dump | directory or empty string | empty | RT64 texture dump destination |
 | widescreen_fog_match | true or false | true | 3P/4P fog matching enhancement |
 | widescreen_sky_match | true or false | true | 3P/4P sky matching enhancement |
@@ -103,7 +103,9 @@ The normal file contains the following keys. Enum values are case-sensitive.
 
 The current settings menu exposes the common graphics settings on the supported
 Windows, Linux, and Android paths. Android omits desktop-only window, API, and
-texture-path controls. Some keys, including the 3P/4P fog and sky options, are
+texture-dump controls. Texture packs are managed through Mods; see
+[Modding](modding.md#legacy-texture-pack-setting) to migrate an old override.
+Some keys, including the 3P/4P fog and sky options, are
 currently easiest to edit by hand.
 
 The draw-distance scale has two special values:
@@ -322,7 +324,7 @@ $env:NAME before running the executable.
 | AERO_CONTROLLER_PAK | Launch; 0 or another value | Enabled when unset; exactly 0 disables it | Startup | Controls virtual Controller Pak presence; src/main.cpp and src/aero_pak.cpp | AERO_CONTROLLER_PAK=0 ./build/aerogauge_modern |
 | AERO_RUMBLE | Launch; 0 or another value | Unset or nonzero values use player preferences; exactly 0 disables both players | Startup | Gates all motor output and disables Rumble controls without changing saved values; src/main.cpp | AERO_RUMBLE=0 ./build/aerogauge_modern |
 | AERO_RUMBLE_TURBO | Launch; 0 or another value | Unset or nonzero values use player preferences; exactly 0 disables Turbo for both players | Startup | Gates Turbo feedback and disables Turbo controls without changing saved values; src/main.cpp | AERO_RUMBLE_TURBO=0 ./build/aerogauge_modern |
-| AERO_TEXTURE_PACK | Launch or test; directory or .rtz path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Supplies RT64 texture replacements and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_PACK=assets/textures ./build/aerogauge_modern |
+| AERO_TEXTURE_PACK | Launch or test; legacy directory or .rtz path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and live texture updates | Compatibility override with priority over Mods packs; no Settings control; src/aero_config.cpp and src/rt64_renderer.cpp | AERO_TEXTURE_PACK=assets/textures ./build/aerogauge_modern |
 | AERO_TEXTURE_DUMP | Launch or test; directory path | Unset uses the JSON value, empty by default; set wins over JSON | Startup and menu refresh | Gives RT64 a texture dump destination and disables the matching menu field; src/aero_config.cpp | AERO_TEXTURE_DUMP=tmp/textures ./build/aerogauge_modern |
 | AERO_FOG_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each fog-policy query | Changes the 3P/4P widescreen fog branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_FOG_MATCH_1P=0 ./build/aerogauge_modern |
 | AERO_SKY_MATCH_1P | Launch or test; 0 or 1 | Unset uses the JSON value, true by default; set wins | Each sky-policy query | Changes the 3P/4P sky branch; src/aero_config.cpp and src/aero_hud_widescreen.c | AERO_SKY_MATCH_1P=0 ./build/aerogauge_modern |

@@ -373,10 +373,11 @@ int main(int argc, char** argv) {
         test_multiplayer_input(path / "controls.json");
         require(std::get<uint32_t>(graphics.get_option_value("ds_option")) == 3, "supersampling import");
         require(std::get<uint32_t>(graphics.get_option_value("msaa_option")) == uint32_t(Antialiasing::MSAA8X), "MSAA import");
-        for (const char* key : {"api_option", "hpfb_option", "texture_pack",
+        for (const char* key : {"api_option", "hpfb_option",
                                "texture_dump", "window_size", "force_full_lod"}) {
             require(graphics.has_option(key), "missing graphics option");
         }
+        require(!graphics.has_option("texture_pack"), "texture packs must be managed in Mods");
         // developer_mode moved to the Debug tab, which solely owns it.
         require(graphics.is_config_option_hidden(graphics.get_config_schema().options_by_id.at("developer_mode")),
                 "developer mode still exposed on graphics");
@@ -437,14 +438,13 @@ int main(int argc, char** argv) {
                 "window preset apply");
         require(window_updates >= 1, "window preset did not resize window");
         const int updates_before = window_updates;
-        graphics.set_option_value("texture_pack", std::string("new-pack"));
         graphics.set_option_value("texture_dump", std::string("new-dump"));
         graphics.set_option_value("api_option", uint32_t(GraphicsApi::Vulkan));
         graphics.save_config();
         flush();
         require(window_updates == updates_before, "unrelated apply re-resized window");
         require(aero::config::window_size().width == 2560, "apply lost the picked window size");
-        require(aero::config::texture_pack_path() == "new-pack", "texture pack save");
+        require(aero::config::texture_pack_path() == "seed-pack", "Graphics changed the legacy pack");
         auto& enhancements = recompui::config::get_config("enhancements");
         enhancements.set_option_value("full_track", false);
         enhancements.set_option_value("draw_distance_unlimited", true);
@@ -475,6 +475,7 @@ int main(int argc, char** argv) {
         require(saved.at("future_option") == "preserve me", "unknown config key lost");
         require(saved.at("ds_option") == 4 && saved.at("api_option") == "Vulkan", "graphics persistence");
         require(saved.at("texture_dump") == "new-dump", "texture dump persistence");
+        require(saved.at("texture_pack") == "seed-pack", "Graphics lost the legacy pack key");
         require(read(path / "enhancements.json").at("easy_turbo_boost") == true, "enhancement persistence");
         require(read(path / "enhancements.json").at("easy_turbo_boost_player2") == true, "P2 enhancement persistence");
         enhancements.revert_temp_config();
