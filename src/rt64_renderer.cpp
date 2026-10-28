@@ -66,8 +66,12 @@ uint32_t DPC_TMEM_REG = 0;
 
 void dummy_check_interrupts() {}
 
-std::filesystem::path path_from_utf8(const std::string& path) {
-    return std::filesystem::path(std::u8string(path.begin(), path.end()));
+std::optional<std::filesystem::path> path_from_utf8(const std::string& path, const char* setting) {
+    auto converted = aero::paths::from_utf8(path);
+    if (!converted) {
+        AERO_LOG_ERROR("rt64", "ignoring %s: path cannot be converted from UTF-8\n", setting);
+    }
+    return converted;
 }
 
 // Live swapchain handle for the widescreen HUD rect-aspect helper. The
@@ -300,14 +304,17 @@ public:
         if (!dump_dir.empty()) {
             // Setting this non-empty makes TextureManager::dumpTexture write every
             // uploaded texture (raw TMEM + RDRAM + tile JSON) to the directory.
-            app->state->dumpingTexturesDirectory = path_from_utf8(dump_dir);
-            AERO_LOG_INFO("rt64", "texture dump enabled -> %s\n", dump_dir.c_str());
+            if (auto path = path_from_utf8(dump_dir, "texture_dump")) {
+                app->state->dumpingTexturesDirectory = *path;
+                AERO_LOG_INFO("rt64", "texture dump enabled -> %s\n", dump_dir.c_str());
+            }
         }
 
         const std::string pack = aero::config::texture_pack_path();
         if (!pack.empty()) {
-            const bool ok = app->textureCache->loadReplacementDirectory(
-                RT64::ReplacementDirectory(path_from_utf8(pack)));
+            const auto path = path_from_utf8(pack, "texture_pack");
+            const bool ok = path && app->textureCache->loadReplacementDirectory(
+                RT64::ReplacementDirectory(*path));
             if (ok) {
                 AERO_LOG_INFO("rt64", "legacy texture_pack override active: %s; "
                               "clear texture_pack and AERO_TEXTURE_PACK to use Mods alone\n", pack.c_str());
@@ -537,8 +544,10 @@ public:
             // The legacy config key or environment override remains
             // the final, highest-priority texture replacement source.
             const std::string legacy_pack = aero::config::texture_pack_path();
-            if (!legacy_pack.empty())
-                directories.emplace_back(path_from_utf8(legacy_pack));
+            if (!legacy_pack.empty()) {
+                if (auto path = path_from_utf8(legacy_pack, "texture_pack"))
+                    directories.emplace_back(*path);
+            }
 
             if (directories.empty()) app->textureCache->clearReplacementDirectories();
             else app->textureCache->loadReplacementDirectories(directories);

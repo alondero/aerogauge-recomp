@@ -99,8 +99,14 @@ startup loading, live enable/disable, priority changes, snapshot consumption,
 and failed-load cleanup. Run them with:
 
 ~~~text
-ctest --test-dir build -R "texture_packs_|frontend_settings|live_config" --output-on-failure
+ctest --test-dir build -R "texture_packs_|frontend_settings|live_config|^user_data_dir$" --output-on-failure
 ~~~
+
+`user_data_dir` also checks the path conversion shared by RT64's startup and
+live texture updates: ASCII, spaces, non-ASCII characters, empty input, and
+malformed UTF-8. Windows must reject unconvertible input without throwing;
+POSIX retains native byte paths. A failed conversion must not become a
+working-directory replacement source.
 
 These tests establish package handling, not visual replacement. To check that
 boundary, install a pack with a visible AeroGauge texture replacement through

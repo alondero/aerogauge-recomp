@@ -63,6 +63,8 @@ a loose RT64 directory or `.rtz` file. This compatibility override takes
 priority over every managed texture pack, survives Graphics saves, and is
 not editable in Settings. Startup logs `legacy texture_pack override active`
 when it loads, or `legacy texture_pack override FAILED to load` on failure.
+Paths that cannot be converted to the host filesystem encoding are logged and
+skipped at startup and during live updates; managed packs remain available.
 
 To migrate a configured `.rtz`, install and enable it through Mods, then set
 `"texture_pack": ""` in `graphics.json`, remove `AERO_TEXTURE_PACK` from your

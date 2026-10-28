@@ -2,7 +2,11 @@
 #define AERO_PATHS_H
 
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
 
 // One per-user directory for every host file the port writes: graphics.json,
 // enhancements.json, EEPROM/Pak saves, and RT64's log/imgui files.
@@ -15,6 +19,19 @@ namespace aero {
 namespace paths {
 
 inline constexpr const char* kAppFolderName = "AeroGaugeRecomp";
+
+// User-supplied UTF-8 paths can fail conversion to the host's native encoding.
+// An absent path tells the caller to skip the input, never to open the cwd.
+inline std::optional<std::filesystem::path> from_utf8(std::string_view path) {
+    if (path.empty()) return std::nullopt;
+    try {
+        return std::filesystem::path(std::u8string(
+            reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    }
+    catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
 
 inline std::filesystem::path app_data_dir() {
 #if defined(__ANDROID__)
