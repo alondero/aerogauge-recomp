@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "hle/rt64_application.h"
@@ -64,6 +65,10 @@ uint32_t DPC_PIPEBUSY_REG = 0;
 uint32_t DPC_TMEM_REG = 0;
 
 void dummy_check_interrupts() {}
+
+std::filesystem::path path_from_utf8(const std::string& path) {
+    return std::filesystem::path(std::u8string(path.begin(), path.end()));
+}
 
 // Live swapchain handle for the widescreen HUD rect-aspect helper. The
 // game-space 2D HUD geometry shifts key off the effective rect-pin aspect, which depends
@@ -295,16 +300,21 @@ public:
         if (!dump_dir.empty()) {
             // Setting this non-empty makes TextureManager::dumpTexture write every
             // uploaded texture (raw TMEM + RDRAM + tile JSON) to the directory.
-            app->state->dumpingTexturesDirectory = std::filesystem::path(dump_dir);
+            app->state->dumpingTexturesDirectory = path_from_utf8(dump_dir);
             AERO_LOG_INFO("rt64", "texture dump enabled -> %s\n", dump_dir.c_str());
         }
 
         const std::string pack = aero::config::texture_pack_path();
         if (!pack.empty()) {
             const bool ok = app->textureCache->loadReplacementDirectory(
-                RT64::ReplacementDirectory(std::filesystem::path(pack)));
-            AERO_LOG_INFO("rt64", "texture pack %s: %s\n",
-                         ok ? "loaded" : "FAILED to load", pack.c_str());
+                RT64::ReplacementDirectory(path_from_utf8(pack)));
+            if (ok) {
+                AERO_LOG_INFO("rt64", "legacy texture_pack override active: %s; "
+                              "clear texture_pack and AERO_TEXTURE_PACK to use Mods alone\n", pack.c_str());
+            }
+            else {
+                AERO_LOG_ERROR("rt64", "legacy texture_pack override FAILED to load: %s\n", pack.c_str());
+            }
         }
     }
 
@@ -524,11 +534,11 @@ public:
             directories.reserve(paths->size() + 1);
             for (const auto& path : *paths) directories.emplace_back(path);
 
-            // The existing graphics option or environment override remains
+            // The legacy config key or environment override remains
             // the final, highest-priority texture replacement source.
             const std::string legacy_pack = aero::config::texture_pack_path();
             if (!legacy_pack.empty())
-                directories.emplace_back(std::filesystem::path(legacy_pack));
+                directories.emplace_back(path_from_utf8(legacy_pack));
 
             if (directories.empty()) app->textureCache->clearReplacementDirectories();
             else app->textureCache->loadReplacementDirectories(directories);

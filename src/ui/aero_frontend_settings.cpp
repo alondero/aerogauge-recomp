@@ -22,7 +22,7 @@ using recomp::config::ConfigValueVariant;
 using recomp::config::OptionChangeContext;
 using namespace ultramodern::renderer;
 GraphicsConfig seeded;
-std::string seeded_pack, seeded_dump;
+std::string seeded_dump;
 bool motion_created = false;
 
 // Common desktop resolutions for the windowed-mode size picker (16:9 plus
@@ -74,9 +74,7 @@ void seed_graphics() {
 #undef ENUM
     sync(page, "rendering_preset", uint32_t(RenderingPreset::Choose));
     sync(page, "rr_manual_value", double(seeded.rr_manual_value));
-    seeded_pack = aero::config::texture_pack_path();
     seeded_dump = aero::config::texture_dump_dir();
-    sync(page, "texture_pack", seeded_pack);
     sync(page, "texture_dump", seeded_dump);
     sync(page, "force_full_lod", aero::config::force_full_lod());
     // Picker state for the (possibly JSON- or preset-edited) live size. The
@@ -252,7 +250,6 @@ void save_graphics() {
     ENUM(ar_option); ENUM(msaa_option); ENUM(rr_option); ENUM(hpfb_option); ENUM(ds_option);
 #undef ENUM
     edited.rr_manual_value = int(std::get<double>(page.get_option_value("rr_manual_value")));
-    const auto pack = std::get<std::string>(page.get_option_value("texture_pack"));
     const auto dump = std::get<std::string>(page.get_option_value("texture_dump"));
     const bool full_lod = std::get<bool>(page.get_option_value("force_full_lod"));
     // The window-size picker obeys this page's confirmation flow: the picked
@@ -263,7 +260,7 @@ void save_graphics() {
     // the JSON write they trigger is queued for the background writer. The
     // current lock still means a blocking action can delay rendering; see
     // docs/frontend.md (## Ownership and threads) before changing this boundary.
-    enqueue([edited, before = seeded, pack, dump, picked_preset, full_lod] {
+    enqueue([edited, before = seeded, dump, picked_preset, full_lod] {
         auto cfg = aero::config::current_graphics();
         // Merge only edited fields: F11 may have changed the window mode since
         // this confirmation-backed page was opened.
@@ -281,12 +278,14 @@ void save_graphics() {
             }
         }
         const bool resized = size.width != live.width || size.height != live.height;
-        aero::config::apply_graphics_settings(cfg, size, pack, dump, true, full_lod);
+        // Packs are managed in Mods. Preserve the compatibility override when
+        // applying unrelated Graphics options.
+        aero::config::apply_graphics_settings(cfg, size,
+            aero::config::texture_pack_path(), dump, true, full_lod);
         if (resized || edited.wm_option != before.wm_option) apply_window_settings();
         refresh_settings();
     });
     seeded = edited;
-    seeded_pack = pack;
     seeded_dump = dump;
 }
 
@@ -517,9 +516,7 @@ void create_settings() {
         port::force_full_lod());
     graphics.update_option_disabled("force_full_lod", std::getenv("AERO_FORCE_FULL_LOD") != nullptr);
     graphics.update_option_description("api_option", "Graphics backend. Changes take effect after restarting the application.");
-    graphics.add_string_option("texture_pack", "Texture pack path (restart)", "Directory or .rtz archive. Leave empty for original textures. AERO_TEXTURE_PACK overrides this setting.", port::texture_pack_path());
     graphics.add_string_option("texture_dump", "Texture dump directory (restart)", "Output directory for RT64 texture dumps. Leave empty to disable. AERO_TEXTURE_DUMP overrides this setting.", port::texture_dump_dir());
-    graphics.update_option_disabled("texture_pack", std::getenv("AERO_TEXTURE_PACK") != nullptr);
     graphics.update_option_disabled("texture_dump", std::getenv("AERO_TEXTURE_DUMP") != nullptr);
 
     // Window size picker: common desktop resolutions. The picker obeys the
@@ -538,7 +535,7 @@ void create_settings() {
 #if defined(__ANDROID__)
     // These desktop controls cannot change an Android-owned surface or open
     // a desktop filesystem dialog. Keep the shared schema for saved settings.
-    for (const char* id : {"wm_option", "window_size", "api_option", "texture_pack", "texture_dump"})
+    for (const char* id : {"wm_option", "window_size", "api_option", "texture_dump"})
         graphics.update_option_disabled(id, true);
     graphics.update_option_description("api_option", "Android uses Vulkan. Choose a GPU driver in the launcher.");
     graphics.update_option_description("wm_option", "Android manages the fullscreen display.");

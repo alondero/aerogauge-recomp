@@ -93,7 +93,7 @@ The normal file contains the following keys. Enum values are case-sensitive.
 | developer_mode | true or false | false | RT64 developer tools |
 | window_width | integer from 320 to 7680 | 1600 | Window width |
 | window_height | integer from 240 to 4320 | 900 | Window height |
-| texture_pack | path or empty string | empty | RT64 texture replacement input |
+| texture_pack | path or empty string | empty | Legacy RT64 directory or .rtz override, ahead of Mods packs; hidden from Settings. Clear to use Mods alone. |
 | texture_dump | directory or empty string | empty | RT64 texture dump destination |
 | widescreen_fog_match | true or false | true | 3P/4P fog matching enhancement |
 | widescreen_sky_match | true or false | true | 3P/4P sky matching enhancement |
@@ -103,7 +103,9 @@ The normal file contains the following keys. Enum values are case-sensitive.
 
 The current settings menu exposes the common graphics settings on the supported
 Windows, Linux, and Android paths. Android omits desktop-only window, API, and
-texture-path controls. Some keys, including the 3P/4P fog and sky options, are
+texture-dump controls. Texture packs are managed through Mods; see
+[Modding](modding.md#legacy-texture-pack-setting) to migrate an old override.
+Some keys, including the 3P/4P fog and sky options, are
 currently easiest to edit by hand.
 
 The draw-distance scale has two special values:

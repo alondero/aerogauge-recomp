@@ -121,13 +121,17 @@ Choose the game's **2 Players** mode to race in split screen. Assign devices
 again after restarting or reconnecting a controller; saved bindings and profile
 choices are retained. Before assignment, keyboard and gamepads share Player 1.
 See [Controllers](docs/controllers.md) for device and assist behavior.
-F11 and Alt+Enter switch fullscreen. Graphics API and texture-path changes take
+F11 and Alt+Enter switch fullscreen. Graphics API and texture-dump changes take
 effect after a restart.
 
 The **Mods** page installs and manages AeroGauge packages. Install packages
 before starting the game; scanning and installation are disabled while it is
 running. Code mods load at game start and require a restart after changing
 them. RT64 texture packs can be enabled, disabled, and reordered while playing.
+To install a texture pack, set `AERO_LAUNCHER=1`, open **Mods** in the launcher,
+and use **Install Mods** to select its `.rtz` archive. You can also copy the
+archive into your user-data `mods/` folder before launching. Manage texture
+packs in Mods; Graphics has no separate texture-pack path control.
 Mod support is experimental; see [Modding](docs/modding.md) for package
 requirements and limits.
 

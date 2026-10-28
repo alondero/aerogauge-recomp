@@ -47,6 +47,16 @@ target_link_libraries(aerogauge_modern PRIVATE recompui recompinput)
 # This host-only test exercises the settings adapter without a ROM or generated
 # game output.
 if(NOT ANDROID)
+add_executable(test_texture_packs tests/test_texture_packs.cpp src/aero_mods.cpp)
+target_include_directories(test_texture_packs PRIVATE src ${N64MR}/N64Recomp/include)
+target_link_libraries(test_texture_packs PRIVATE librecomp ultramodern aero_log)
+foreach(region us jp)
+    add_test(NAME texture_packs_${region}
+        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_texture_pack_test.py
+                $<TARGET_FILE:test_texture_packs> ${region})
+    set_tests_properties(texture_packs_${region} PROPERTIES TIMEOUT 30)
+endforeach()
+
 add_executable(test_rom_picker tests/test_rom_picker.cpp src/aero_rom_desktop.cpp)
 target_include_directories(test_rom_picker PRIVATE src ${SDL2_INCLUDE_DIRS}
     $<TARGET_PROPERTY:aerogauge_modern,INCLUDE_DIRECTORIES>
