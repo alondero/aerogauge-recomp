@@ -6,6 +6,10 @@ The normal player renderer is
 The parent gitlink is the version used by the build. Before removing or
 refreshing a local patch, compare it with that exact source.
 
+See [Graphics compatibility](graphics-compatibility.md) for the Direct3D 11
+porting constraints, the existing Windows Vulkan path, and why another
+recompiled game's hardware support does not establish RT64 compatibility.
+
 ## What RT64 already owns
 
 RT64's public project documentation covers:

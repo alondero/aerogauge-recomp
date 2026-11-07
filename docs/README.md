@@ -56,6 +56,8 @@ Developers need clear build steps, evidence, and ownership.
   threads, callbacks, and shutdown limits.
 - [Renderer reference](reference/renderer.md) separates RT64 capabilities
   from AeroGauge behavior.
+- [Graphics compatibility](reference/graphics-compatibility.md) explains the
+  Direct3D 11 porting constraints and the existing Windows Vulkan path.
 - [Audio reference](reference/audio.md) records audio and save-device
   ownership.
 - [Controllers and accessories](controllers.md) records the input and
