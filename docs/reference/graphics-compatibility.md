@@ -119,3 +119,33 @@ lacking the API features needed by this renderer. The next useful step is to
 check that machine's Vulkan capability; the source does not justify promising
 DX11 in a future AeroGauge release or telling the player to buy hardware
 before identifying the GPU and driver.
+
+## Public maintainer discussions
+
+The same compatibility question has been raised upstream. These dated responses
+record project decisions; they are not guarantees about future work.
+
+- In [Zelda64Recomp's DirectX 11 request](https://github.com/Zelda64Recomp/Zelda64Recomp/issues/73#issuecomment-2106047958)
+  on 2024-05-11, RT64 developer DarioSamo questioned the feasibility of a
+  DX11/OpenGL backend because RT64 is built around modern API features and a
+  thin rendering abstraction. The issue was subsequently closed with a
+  [redirect to RT64](https://github.com/Zelda64Recomp/Zelda64Recomp/issues/73#issuecomment-2119377434).
+- On 2024-06-02, [Mr-Wiseguy's response to an OpenGL request](https://github.com/Zelda64Recomp/Zelda64Recomp/issues/342#issuecomment-2143950624)
+  described older API support as effectively requiring a new renderer. A
+  [2025-03-06 response from Reonu](https://github.com/Zelda64Recomp/Zelda64Recomp/issues/135#issuecomment-2703751718)
+  reiterated that it was not planned. Both requests are closed as not planned.
+- [RT64 issue 219](https://github.com/rt64/rt64/issues/219), opened on
+  2025-12-07 and still open when checked, proposes experimenting with a DX11
+  context to investigate NVIDIA power states. It has no description or
+  comments specifying a DX11 rendering backend; its title is not evidence
+  of a compatibility implementation or release commitment.
+- In a different stack, [Dusklight issue 1004](https://github.com/TwilitRealm/dusklight/issues/1004#issuecomment-4422682993)
+  received a no-current-plans response on 2026-05-11, while leaving room for
+  a convincing contribution. Its [v1.2.0 release](https://github.com/TwilitRealm/dusklight/releases/tag/v1.2.0)
+  on 2026-05-18 then added experimental Windows D3D11 support with accuracy
+  and performance caveats. This is an implemented alternative on its own
+  stack, not an RT64 roadmap.
+- [UnleashedRecomp issue 876](https://github.com/hedge-dev/UnleashedRecomp/issues/876#issuecomment-2695826845)
+  was closed as not planned on 2025-03-03, with a project member stating that
+  older graphics APIs were not planned. That response records policy for
+  another recomp; it supplies no technical justification about RT64.
