@@ -42,8 +42,11 @@ For a texture pack, use **Install Mods** in the launcher to select its `.rtz`
 file, or copy that file into the user-data `mods/` directory before launching.
 Enable the pack in Mods, then start AeroGauge. The archive is a ZIP containing
 `rt64.json` at its root and the replacement files referenced by that database.
-Texture-only packs do not need `mod.json` and are listed for both supported
-ROM regions; actual replacements depend on matching the textures in that ROM.
+Texture-only packs without a `mod.json` manifest are listed for both supported
+ROM regions (in builds that include Japan Rev A support); actual replacements
+depend on matching the textures in that ROM.
+Packs that include a `mod.json` manifest declare a target `game_id` (such as
+`aerogauge` for USA), so the manager lists them only when running that matching ROM.
 Keep the filename stable: without a manifest, the runtime uses the file stem
 as the package ID, so renaming it changes its saved enablement and order.
 
@@ -55,6 +58,15 @@ If a code package fails to load, the runtime error opens over Settings > Mods.
 Disable the incompatible package, close Settings, and start AeroGauge again. A
 failed load does not retry on its own, so a restart is the recovery step; a bad
 package does not turn into a boot loop.
+
+### Companion texture packs (planned)
+
+Companion RT64 texture packs are planned under two variants targeting the USA ROM (`aerogauge`):
+
+- **HUD variant** (`aerogauge-rt64-text-hud.rtz`): fonts, race banners, craft name banners, HUD, minimaps, menus, boot splash, and title screen.
+- **Text-only variant** (`aerogauge-rt64-text-only.rtz`): fonts, race banners, and craft name banners.
+
+Because these packs ship a `mod.json` manifest targeting the USA ROM, they appear in Mods only when running USA (`aerogauge`), not Japan Rev A (`aerogauge.jp.rev_a`). When distributed, copy the desired `.rtz` into the user-data `mods/` directory or select it using **Install Mods** in the pre-game launcher (`AERO_LAUNCHER=1`).
 
 ## Legacy texture pack setting
 
