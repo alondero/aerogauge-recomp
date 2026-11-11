@@ -53,6 +53,56 @@ reservations are not written to controls.json or restored across launches.
 The gamepad path uses SDL's standard game-controller mapping. A connected
 controller without a rumble motor can still provide input.
 
+### Generic Chinese N64 USB pad (Windows, opt-in)
+
+The [optional Windows mapping](controller-profiles/generic-n64-windows.txt)
+describes one transparent-red, three-prong N64-shaped USB pad. It is not loaded
+automatically: other controllers share its `0079:0006` VID/PID and have different
+layouts. Confirm the physical layout below before using it.
+
+| Physical control | Raw SDL input (zero-based) |
+| --- | --- |
+| A / B / Start | buttons 5 / 4 / 9 |
+| Z / L / R | buttons 8 / 6 / 7 |
+| C up / right / down / left | buttons 0 / 1 / 2 / 3 |
+| Stick X / Y | axes 0 / 1 |
+| D-pad | hat 0 |
+
+Native SDL reports 4 axes, 12 buttons and 1 hat. The same physical unit was
+observed as `USB Joystick`, CRC `8630` with SDL2 2.32.10 and `8e4f` with SDL2
+2.26.3; SDL3 3.4.18 calls it `Microntek USB Joystick`, CRC `79be`.
+The file includes those three Windows variants. CRCs are not serial numbers;
+older SDL can also fall back across CRCs, so a match alone cannot prove layout.
+
+For a session-local test, put the mapping file beside `aerogauge_modern.exe`,
+open PowerShell in that folder, and run:
+
+~~~powershell
+$savedMapping = $env:SDL_GAMECONTROLLERCONFIG
+try {
+    $env:SDL_GAMECONTROLLERCONFIG = (Get-Content .\generic-n64-windows.txt |
+        Where-Object { $_ -and -not $_.StartsWith('#') }) -join "`n"
+    & .\aerogauge_modern.exe
+} finally {
+    $env:SDL_GAMECONTROLLERCONFIG = $savedMapping
+}
+~~~
+
+This uses SDL's mapping override without changing system environment variables.
+Use Controls to check the assigned player's profile, especially if it was edited
+before: physical B maps to SDL B, L/R to shoulders, Z to the left trigger and C
+buttons to signed right-stick directions. Existing saved bindings are not reset.
+No physical Select button was identified; Back is deliberately unassigned.
+Use Escape or F10 for Settings. Do not sacrifice Z to make a menu button.
+
+The owner's capture contains 18 physical assignments and 206 frames over 10
+seconds. Native SDL detection and SDL2 2.32.10 virtual mapping checks support the
+profile, including C directions, hat diagonals and intermediate stick values.
+This pad has not been playtested in AeroGauge, and no Linux/Android GUID is
+inferred from the Windows capture. A 2% radial inner deadzone is only a starting
+recommendation for this unit; the mapping file does not apply it. Do not treat an
+axis deadzone or the Motion page's gyro dead zone as that radial calibration.
+
 The host hands the runtime a normalized stick value, not an N64-scale one.
 `ultramodern`'s `convert_to_n64_range` maps that input through the N64 stick
 octagon, whose cardinal inradius is 82. The port therefore normalizes stick
