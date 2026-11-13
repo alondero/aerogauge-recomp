@@ -562,3 +562,40 @@ Choose the smallest test that can fail for the bug:
 The test must state its expected and actual behavior, thread assumptions,
 generated inputs, and skip conditions. A screenshot alone is evidence, not a
 repeatable test.
+
+## Shared renderer and platform regressions
+
+The desktop CTest `renderer_platform_regressions` runs the imported renderer
+fixtures and AeroGauge integration checks. With initialized submodules and
+GCC/G++ on PATH, run the suite without a ROM or GPU:
+
+~~~text
+python -B -m unittest tests.test_android_resolution_limit tests.test_rt64_frame_matching tests.test_rt64_queue_barrier tests.test_vulkan_swapchain tests.test_vulkan_mapped_memory tests.test_vulkan_clear_bounds tests.test_vulkan_descriptor_pool tests.test_android_presentation_lifecycle tests.test_android_sdl_surface tests.test_frontend_event_batch tests.test_android_activity_lifecycle
+~~~
+
+Fixtures replay the Android patch manifest against pinned dependency files in
+temporary directories. They execute production matching, scale selection,
+queue waits, Vulkan cache/WSI boundaries and runtime timers against recording
+host APIs. SDL callback tests require the pinned source under
+build-android/deps/SDL (prepared by scripts/build_android.py). Missing
+submodules or compilers are reported as skips, not platform passes.
+
+The CTest `audio_locking` compiles the real sink with gated device operations.
+It holds open, conversion and close while checking AI feedback and lifecycle
+publication can still finish. The Android lifecycle fixture requires both store
+barriers to finish within the pause callback, outside the lifecycle mutex,
+before SDL can park until resume. It also checks that suspension clears playback,
+rejects stale converted PCM and permits new PCM after resume. Existing
+`audio_playback_buffering` and `audio_gain` retain prebuffer, feedback, gain
+and guest-buffer coverage:
+
+~~~text
+cmake --build build --target test_audio_locking test_audio_playback test_audio_gain test_frontend_settings
+ctest --test-dir build -R "audio_locking|audio_playback_buffering|audio_gain|frontend_settings|renderer_platform_regressions" --output-on-failure
+~~~
+
+Android still needs device acceptance: Home/resume, screen lock, repeated
+surface replacement, rotation, controller connect/disconnect, Menu with held
+touch input, manual resolution and Auto at 30/60/120 Hz. Record driver/device
+and compare the same race before and after. Host fixtures and a successful APK
+build do not establish visual parity or a mobile frame-time gain.

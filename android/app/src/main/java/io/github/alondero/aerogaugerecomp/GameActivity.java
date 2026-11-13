@@ -2,6 +2,8 @@ package io.github.alondero.aerogaugerecomp;
 
 import android.app.AlertDialog;
 import android.hardware.display.DisplayManager;
+import android.hardware.input.InputManager;
+import org.libsdl.app.SDLControllerManager;
 import android.os.Bundle;
 import android.os.Looper;
 import android.system.Os;
@@ -12,7 +14,7 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
-public final class GameActivity extends SDLActivity {
+public final class GameActivity extends SDLActivity implements SurfaceHolder.Callback {
     static native void nativeTouch(int buttons, int x, int y);
     static native boolean nativeMenuOpen();
     static native void nativeBackground(boolean background);
@@ -22,6 +24,29 @@ public final class GameActivity extends SDLActivity {
     private boolean librariesReady;
     private boolean resumed;
     private DisplayManager displayManager;
+    private InputManager inputManager;
+    private final InputManager.InputDeviceListener devices = new InputManager.InputDeviceListener() {
+        @Override public void onInputDeviceAdded(int id) { refreshTouchControls(); }
+        @Override public void onInputDeviceRemoved(int id) { refreshTouchControls(); }
+        @Override public void onInputDeviceChanged(int id) { refreshTouchControls(); }
+    };
+
+    private void refreshTouchControls() {
+        if (controls == null) return;
+        boolean connected = false;
+        for (int id : InputDevice.getDeviceIds()) {
+            if (SDLControllerManager.isDeviceSDLJoystick(id)) { connected = true; break; }
+        }
+        controls.setControllerConnected(connected);
+    }
+
+    // SDL owns surface recovery. Retire all held touch input even when the
+    // SurfaceView changes without an Activity pause.
+    @Override public void surfaceDestroyed(SurfaceHolder holder) {
+        if (controls != null) controls.release();
+    }
+    @Override public void surfaceCreated(SurfaceHolder holder) { }
+    @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) { }
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
         @Override public void onDisplayAdded(int id) { }
         @Override public void onDisplayRemoved(int id) { }
@@ -63,6 +88,11 @@ public final class GameActivity extends SDLActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         controls = new TouchControls(this, getSharedPreferences("player", 0).getInt("touch", 0));
         mLayout.addView(controls, new android.widget.RelativeLayout.LayoutParams(-1, -1));
+        mSurface.getHolder().addCallback(this);
+        inputManager = (InputManager) getSystemService(INPUT_SERVICE);
+        if (inputManager != null) inputManager.registerInputDeviceListener(devices,
+            new android.os.Handler(getMainLooper()));
+        refreshTouchControls();
         immersive();
     }
     private void immersive() {
@@ -82,6 +112,7 @@ public final class GameActivity extends SDLActivity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        refreshTouchControls();
         if (librariesReady) {
             publishMotionRotation();
             nativeBackground(false);
@@ -95,6 +126,8 @@ public final class GameActivity extends SDLActivity {
         super.onPause();
     }
     @Override protected void onDestroy() {
+        if (inputManager != null) inputManager.unregisterInputDeviceListener(devices);
+        if (mSurface != null) mSurface.getHolder().removeCallback(this);
         if (displayManager != null) displayManager.unregisterDisplayListener(displayListener);
         super.onDestroy();
     }

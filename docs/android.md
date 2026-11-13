@@ -177,9 +177,38 @@ install, Home/screen-lock resume, and an in-place signed update with existing
 saves still need a device run before claiming universal hardware coverage.
 
 The Android platform boundary lives in `src/android/`, the launcher/input UI
-in `android/app/`, and dependency changes in patches 0019–0023. The game process
+in `android/app/`, and dependency changes in patches 0019–0023 plus the shared backports below. The game process
 uses the normal RecompFrontend input and save paths. Java publishes touch samples
 atomically; SDL and game threads retain their existing ownership. Backgrounding
-releases touch input and waits at the VI callback boundary; SDL owns audio and
-surface lifecycle. The runtime's process-exit shutdown is confined to a separate
+releases touch input, clears host audio and freezes the shared guest clock,
+retraces and timers. Activity/dialog and SDL surface pause reasons must both
+clear before resuming; SDL owns the native surface lifecycle. Pause callbacks
+flush stores before SDL can park its event pump. The runtime's process-exit
+shutdown is confined to a separate
 `:game` process so the launcher remains available.
+
+## Shared Android rendering fixes
+
+Automatic resolution now respects an 80 million pixel/second budget that
+accounts for aspect ratio and presentation rate, plus the narrow Adreno 615
+system-driver limit. This affects Auto only. Select a manual scale to override
+the budget, or use Low power for native-resolution rendering without MSAA or
+interpolated presentation. The inherited budget has not been tuned from an
+AeroGauge device measurement.
+
+SDL Vulkan windows avoid EGL backup/restore, and Plume detects native-window
+replacement even when its address or dimensions are unchanged. Failed or timed
+out image acquisition skips submission; recovery drains presentation resources
+before replacing framebuffers and semaphores. Vulkan clear bounds, descriptor
+allocation retry and mapped-memory visibility fixes are shared with desktop.
+The full patch contract is in [the inventory](../patches/README.md).
+
+Auto touch visibility follows SDL-compatible controller device-change events,
+including devices connected while backgrounded. Surface destruction releases
+held controls even without an Activity pause. APK staging validates all UI
+fonts and styles while retaining the launcher's existing assets directory and
+regional symbol files.
+
+The new host regressions are listed in [Testing](testing.md#shared-renderer-and-platform-regressions).
+Previous device acceptance above predates these backports; repeat lifecycle,
+controller and race checks on hardware before claiming device coverage.

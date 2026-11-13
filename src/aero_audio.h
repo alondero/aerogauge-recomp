@@ -38,6 +38,10 @@ void get_callbacks(ultramodern::audio_callbacks_t* out);
 // clean shutdown when the watchdog quits the process.
 void shutdown();
 
+// Clear host playback on lifecycle transitions; resume re-primes the prebuffer.
+// Thread-safe and does not wait for conversion or device open/close.
+void set_suspended(bool suspended);
+
 // --- Master gain ------------------------------------------------------------
 //
 // The host-side master gain for the generated audio. 1.0 keeps the guest PCM

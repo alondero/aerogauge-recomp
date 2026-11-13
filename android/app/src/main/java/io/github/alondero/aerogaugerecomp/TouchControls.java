@@ -22,16 +22,17 @@ final class TouchControls extends View {
 
     TouchControls(GameActivity activity, int mode) {
         super(activity); this.activity = activity; this.mode = mode;
+        hidden = mode == 2;
         setFocusable(false);
         setContentDescription("Game touch controls. Analog steering on the left; A, B and Z on the right.");
         for (int i = 0; i < buttons.length; i++) buttons[i] = new RectF();
     }
-    private boolean controllerConnected() {
-        for (int id : InputDevice.getDeviceIds()) {
-            InputDevice input = InputDevice.getDevice(id);
-            if (input != null && ((input.getSources() & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD)) return true;
-        }
-        return false;
+    void setControllerConnected(boolean connected) {
+        boolean nextHidden = mode == 2 || (mode == 0 && connected);
+        if (nextHidden == hidden) return;
+        if (nextHidden) release();
+        hidden = nextHidden;
+        invalidate();
     }
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         unit = Math.min(height, width / 1.6f);
@@ -51,9 +52,8 @@ final class TouchControls extends View {
     private void place(int index, float x, float y, float size) { buttons[index].set(x, y, x+size, y+size); }
     @Override protected void onDraw(Canvas canvas) {
         boolean newMenu = GameActivity.nativeMenuOpen();
-        boolean newHidden = mode == 2 || (mode == 0 && controllerConnected());
-        if ((newMenu && !menu) || (newHidden && !hidden)) release();
-        menu = newMenu; hidden = newHidden;
+        if (newMenu && !menu) release();
+        menu = newMenu;
         if (!menu) drawButton(canvas, menuButton, "Menu", false);
         if (!menu && !hidden) {
             paint.setColor(0x60355165); canvas.drawCircle(cx, cy, radius, paint);

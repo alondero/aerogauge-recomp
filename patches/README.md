@@ -146,3 +146,35 @@ A general renderer fix needs a small reproducer and an upstream proposal. A
 game-specific display-list rule belongs in the port. A compiler or platform
 compatibility patch should stay small and should be removed when the pinned
 upstream supports the same toolchain.
+
+## Shared performance and Android fixes
+
+The following backports use the same pinned dependency revisions as the
+[Automobili Lamborghini implementation](https://github.com/alondero/automobililamborghini-recomp/tree/0b13e40/patches).
+Numbers are retained from that series for traceability; gaps are intentional.
+Patch 0032 is AeroGauge's adaptation of the host event-batching seam. These
+are generic dependency/platform fixes, candidates for upstream comparison and
+submission. They do not contain Lamborghini guest-address policy. The pinned
+sources lack these behaviors; no dependency pin is advanced by this series.
+
+| Patches | Dependency | Contract |
+| --- | --- | --- |
+| [0032](0032-recompfrontend-batched-input-events.patch) | RecompFrontend | Dispatch an SDL event batch under the frontend lock after the host collects it without that lock. Preserve binding completion and game-start notification. |
+| [0041](0041-plume-variable-descriptor-pool-retry.patch) | Plume | Retry variable descriptor allocations using layout capacity when the driver exhausts an undersized pool. |
+| [0042](0042-rt64-adreno-615-automatic-resolution-limit.patch), [0059](0059-rt64-android-automatic-resolution-budget.patch) | RT64 | Android Auto-only scale limits; desktop and manually selected scales are preserved. Patch 0059's include context is adapted to AeroGauge's renderer without the other port's render hooks. |
+| [0043](0043-plume-vulkan-clear-rect-bounds.patch) | Plume | Clip Vulkan clear rectangles to the active render area. |
+| [0046](0046-rt64-queue-barrier-wait.patch) | RT64 | Sleep on queue barriers and wake producers on consumer advancement or shutdown. |
+| [0047](0047-plume-vulkan-surface-capabilities.patch), [0049](0049-plume-android-surface-format-without-gralloc-probe.patch) | Plume | Honor supported surface extent, image count, alpha, transform and usage; avoid the Android gralloc format probe. |
+| [0048](0048-sdl-android-vulkan-surface-lifecycle.patch), [0054](0054-sdl-android-native-window-generation.patch) | Android SDL | Keep EGL operations off Vulkan windows; publish retained native-window snapshots and replacement generations. |
+| [0050](0050-plume-vulkan-mapped-memory.patch), [0051](0051-plume-vulkan-mapped-memory-contract.patch), [0052](0052-plume-vulkan-map-failure-recovery.patch), [0053](0053-plume-vulkan-nested-read-map-guard.patch) | Plume | Maintain noncoherent mapped-memory caches, enforce byte ranges and balanced map references, recover failed maps and reject unsafe nested reads. |
+| [0055](0055-plume-android-surface-recovery.patch), [0056](0056-rt64-present-resource-retirement.patch) | Plume and RT64 | Recover replaced Android surfaces; submit only acquired images and retire attachments/semaphores after GPU completion. Preserve resources when completion cannot be established. |
+| [0057](0057-runtime-app-suspension.patch) | N64ModernRuntime | Freeze the shared guest clock, VI and timer deadlines while suspended, without resume catch-up. The port combines Activity/dialog and SDL surface pause reasons. |
+| [0060](0060-rt64-frame-matching-reused-containers.patch), [0061](0061-rt64-frame-matching-joined-call-keys.patch) | RT64 | Reuse matching storage and join distinct call keys while preserving candidate pair sets and order. |
+
+All RT64, Plume and runtime fixes are listed for Windows, Linux and Android;
+Android-only policies are compile-time guarded. SDL patches apply only to its
+Android source. Patch 0022 already selects the matching Android frontend RGBA
+format, so the other port's patch 0045 is unnecessary here. The pair of surface
+recovery patches 0055/0056 and SDL generation patch 0054 must remain together.
+See [the performance comparison](../docs/performance.md#shared-performance-and-android-backports-november-2026)
+for excluded game-specific changes and evidence limits.

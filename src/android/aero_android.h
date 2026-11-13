@@ -5,8 +5,10 @@
 namespace aero::android {
 bool initialize();
 [[noreturn]] void startup_error(const char* message);
-void handle_event(const SDL_Event& event);
+// Lifecycle publication may run from JNI or SDL's event filter. Pause flushes
+// stores before SDL can park; callers must not hold the frontend lock.
+void notify_event(const SDL_Event& event);
+void flush_stores(); // Thread-safe store barriers; no lifecycle/frontend lock.
 void controller_back();
 void sample_touch(uint16_t& buttons, int& x, int& y);
-void wait_foreground(); // VI boundary; no SDL calls and no runtime locks held.
 }
