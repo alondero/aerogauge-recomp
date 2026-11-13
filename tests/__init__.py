@@ -1,0 +1,1 @@
+"""AeroGauge regression fixtures."""

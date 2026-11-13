@@ -2,6 +2,10 @@
 import re
 from pathlib import Path
 import unittest
+import tempfile
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import build_android as android
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,6 +23,31 @@ class DryRunVersionTests(unittest.TestCase):
         # Mirrors android/app/build.gradle; Android requires a positive code.
         version_code = major * 1_000_000 + minor * 1_000 + patch
         self.assertGreater(version_code, 0, f"Invalid Android versionCode for {version}")
+
+
+class AssetLayoutTests(unittest.TestCase):
+    def test_staging_preserves_the_launcher_asset_graph_and_regions(self):
+        with tempfile.TemporaryDirectory(prefix="aero-assets-") as temporary:
+            root = Path(temporary)
+            native = root / "native"
+            for name in android.REQUIRED_RUNTIME_ASSETS:
+                file = native / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b"runtime asset")
+            for name in ("aerogauge.syms.toml", "aerogauge.jp.syms.toml", "LICENSE", "SDL.txt"):
+                (root / name).write_bytes(name.encode("ascii"))
+            for japan in (False, True):
+                staged = root / str(japan)
+                android.stage_package_assets(staged, native, root, {"SDL.txt": root / "SDL.txt"}, japan)
+                for name in android.REQUIRED_RUNTIME_ASSETS:
+                    self.assertEqual((staged / "assets" / name).read_bytes(), b"runtime asset")
+                self.assertTrue((staged / "aerogauge.syms.toml").is_file())
+                self.assertEqual((staged / "aerogauge.jp.syms.toml").is_file(), japan)
+                self.assertTrue((staged / "licenses/SDL.txt").is_file())
+                self.assertFalse((staged / "assets/assets").exists())
+            (native / "promptfont/promptfont.ttf").unlink()
+            with self.assertRaisesRegex(RuntimeError, "Missing runtime asset"):
+                android.stage_package_assets(root / "invalid", native, root, {})
 
 
 if __name__ == "__main__":

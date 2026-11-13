@@ -362,6 +362,31 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                 $<TARGET_FILE_DIR:test_audio_gain>)
     endif()
     add_test(NAME audio_gain COMMAND test_audio_gain)
+    add_executable(test_audio_locking tests/test_audio_locking.cpp)
+    target_include_directories(test_audio_locking PRIVATE
+        ${N64MR}/ultramodern/include ${N64MR}/N64Recomp/include
+        ${N64MR}/thirdparty ${N64MR}/thirdparty/concurrentqueue ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(test_audio_locking PRIVATE ${SDL2_LIBRARIES} aero_log Threads::Threads)
+    if(WIN32)
+        add_custom_command(TARGET test_audio_locking POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+                $<TARGET_FILE_DIR:test_audio_locking>)
+    endif()
+    add_test(NAME audio_locking COMMAND test_audio_locking)
+    set_tests_properties(audio_locking PROPERTIES TIMEOUT 20)
+    add_test(NAME renderer_platform_regressions
+        COMMAND ${Python3_EXECUTABLE} -B -m unittest
+            tests.test_android_resolution_limit tests.test_rt64_frame_matching
+            tests.test_rt64_queue_barrier tests.test_vulkan_swapchain
+            tests.test_vulkan_mapped_memory tests.test_vulkan_clear_bounds
+            tests.test_vulkan_descriptor_pool tests.test_android_presentation_lifecycle
+            tests.test_android_sdl_surface tests.test_frontend_event_batch
+            tests.test_android_activity_lifecycle)
+    set_tests_properties(renderer_platform_regressions PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} TIMEOUT 180)
+
+
     if(WIN32)
         add_test(NAME audio_intro_playback
             COMMAND powershell -NoProfile -ExecutionPolicy Bypass

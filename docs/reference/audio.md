@@ -25,6 +25,15 @@ state must survive across submitted buffers. The audio module also has a
 headless virtual AI FIFO so a no-window test can exercise game-side audio
 backpressure without requiring an audio device.
 
+Device open/close use a lifecycle mutex; the audio callback never takes it.
+The short device-state lock covers field snapshots and SDL queue operations,
+while resampling uses a separate stream lock. These two locks never nest.
+Generation changes discard PCM prepared for an old rate/device or before a
+pause. Suspension clears host playback and the virtual FIFO; resume resets
+the resampler lazily and re-primes the existing playback prebuffer. The
+`audio_locking` regression holds slow host operations while checking that AI
+feedback and lifecycle publication can still progress.
+
 Both host build scripts apply patch 0013: non-graphics RSP tasks execute on
 the submitting thread before the game can reuse the task descriptor and
 command buffer. A failed task still signals SP completion instead of exiting

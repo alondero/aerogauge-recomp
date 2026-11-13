@@ -1,0 +1,47 @@
+diff --git a/recompinput/include/recompinput/input_events.h b/recompinput/include/recompinput/input_events.h
+--- a/recompinput/include/recompinput/input_events.h
++++ b/recompinput/include/recompinput/input_events.h
+@@ -1,8 +1,11 @@
+ #pragma once
+ 
+ #include "recompinput.h"
++#include <span>
+ 
+ namespace recompinput {
+     void handle_events();
++    // SDL thread: dispatch a collected batch under the host frontend lock.
++    void handle_events(std::span<const SDL_Event> events);
+     void purge_deferred_controller_profiles();
+ }
+diff --git a/recompinput/src/input_events.cpp b/recompinput/src/input_events.cpp
+--- a/recompinput/src/input_events.cpp
++++ b/recompinput/src/input_events.cpp
+@@ -247,11 +247,12 @@
+     return false;
+ }
+ 
+-void handle_events() {
+-    SDL_Event cur_event;
++void handle_events(std::span<const SDL_Event> events) {
+     static bool started = false;
+     static bool exited = false;
+-    while (SDL_PollEvent(&cur_event) && !exited) {
++    for (const auto& sample : events) {
++        if (exited) break;
++        SDL_Event cur_event = sample;
+         exited = sdl_event_filter(nullptr, &cur_event);
+ 
+         bool has_mouse_sensitivity = recompui::config::general::has_mouse_sensitivity_option();
+@@ -278,4 +279,11 @@
+     }
+ }
+ 
+-}
++void handle_events() {
++    std::vector<SDL_Event> events;
++    SDL_Event event;
++    while (SDL_PollEvent(&event)) events.push_back(event);
++    handle_events(events);
++}
++
++}

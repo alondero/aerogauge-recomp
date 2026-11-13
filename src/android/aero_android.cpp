@@ -3,6 +3,8 @@
 #include "aero_config.h"
 #include "aero_menu.h"
 #include "aero_gyro_sdl.h"
+#include "aero_audio.h"
+#include <ultramodern/ultramodern.hpp>
 #include <jni.h>
 #include <SDL_system.h>
 #include <atomic>
@@ -10,7 +12,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <condition_variable>
 #include <mutex>
 #include <unistd.h>
 #include "aero_log.h"
@@ -21,22 +22,41 @@ namespace {
 // merges it with keyboard/gamepad input; game threads retain their usual snapshot.
 std::atomic<uint32_t> touch{0};
 std::mutex lifecycle_mutex;
-std::condition_variable foreground;
-bool background = false;
+bool activity_background = false;
+bool surface_background = false;
+
+// JNI and SDL can report distinct pause reasons. A focus/surface notification
+// must not resume the game underneath the Android action sheet.
+void publish_background() {
+    const bool suspended = activity_background || surface_background;
+    aero::gyro::suspend(suspended);
+    aero::audio::set_suspended(suspended);
+    ultramodern::set_app_suspended(suspended);
+    if (suspended) {
+        touch.store(0);
+    }
+}
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_io_github_alondero_aerogaugerecomp_GameActivity_nativeBackground(JNIEnv*, jclass, jboolean value) {
-    aero::gyro::suspend(value);
-    { std::lock_guard lock(lifecycle_mutex); background = value; }
-    if (value) touch.store(0);
-    foreground.notify_all();
+    {
+        std::lock_guard lock(lifecycle_mutex);
+        activity_background = value;
+        publish_background();
+    }
+    // JNI runs this before SDLActivity enters nativePause. Do not defer to a
+    // main-thread pump: SDL_PollEvent can already be waiting for resume there.
+    if (value) aero::android::flush_stores();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_io_github_alondero_aerogaugerecomp_GameActivity_nativeRequestQuit(JNIEnv*, jclass) {
-    { std::lock_guard lock(lifecycle_mutex); background = false; }
-    foreground.notify_all();
+    {
+        std::lock_guard lock(lifecycle_mutex);
+        activity_background = surface_background = false;
+        publish_background();
+    }
     SDL_Event event{}; event.type = SDL_QUIT; SDL_PushEvent(&event);
 }
 
@@ -60,14 +80,11 @@ namespace aero::android {
     std::_Exit(1); // Confined to the game process; the launcher displays the error.
 }
 
-void wait_foreground() {
-    std::unique_lock lock(lifecycle_mutex);
-    if (!background) return;
-    lock.unlock();
+void flush_stores() {
+    // Both store barriers are thread-safe and use their existing writer threads.
+    // Never wait for them with the lifecycle or frontend mutex held.
     aero_flush_eeprom();
     aero::config::flush_config_writes();
-    lock.lock();
-    foreground.wait(lock, [] { return !background; });
 }
 
 bool initialize() {
@@ -86,12 +103,16 @@ bool initialize() {
     return true;
 }
 
-void handle_event(const SDL_Event& event) {
-    if (event.type == SDL_APP_WILLENTERBACKGROUND || event.type == SDL_APP_TERMINATING) {
-        touch.store(0);
-        aero_flush_eeprom();
-        aero::config::flush_config_writes();
+void notify_event(const SDL_Event& event) {
+    if (event.type != SDL_APP_WILLENTERBACKGROUND && event.type != SDL_APP_TERMINATING &&
+        event.type != SDL_APP_DIDENTERFOREGROUND) return;
+    {
+        std::lock_guard lock(lifecycle_mutex);
+        surface_background = event.type != SDL_APP_DIDENTERFOREGROUND;
+        publish_background();
     }
+    // SDL invokes its event filter before parking the Android event pump.
+    if (event.type != SDL_APP_DIDENTERFOREGROUND) flush_stores();
 }
 
 void controller_back() {

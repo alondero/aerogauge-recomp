@@ -7,7 +7,9 @@
 // boundary are recorded in docs/reference/rom.md.
 //
 // Ownership and failure behavior:
-//   - queueing and conversion are protected by g_state_mtx;
+//   - device fields and short queue calls use g_state_mtx;
+//   - conversion uses g_stream_mtx; open/close uses g_lifecycle_mtx;
+//   - state and stream locks are never held together; lifecycle may take either;
 //   - the persistent SDL stream carries resampler state across buffers;
 //   - a headless run uses the virtual AI FIFO because no device drains it;
 //   - a missing device leaves the game path measurable but cannot prove
@@ -47,19 +49,20 @@
 
 namespace {
 
-// File-static device state. The struct is intentionally not in a singleton --
-// the public API in aero_audio.h is the only entry point. Mutating the static
-// vars is safe because all three callbacks plus init/shutdown are called from
-// the same OS process and SDL2's queue API is internally serialised.
+// The public API in aero_audio.h is the only entry point. Device fields use
+// g_state_mtx; g_stream fields use g_stream_mtx. Lifecycle owns open/close.
 SDL_AudioDeviceID g_dev = 0;
 SDL_AudioSpec     g_obtained{};
 uint32_t         g_desired_rate = 0;
 // Persistent stream converter: resampling needs filter state carried across
 // submits. Recreating a one-shot converter for every small buffer resets that
-// state at each boundary and can corrupt the mix. Guarded by g_state_mtx;
-// recreated when the game changes the AI frequency. See docs/reference/audio.md.
+// state at each boundary and can corrupt the mix. Guarded by g_stream_mtx;
+// recreated when the device generation or AI frequency changes. See docs/reference/audio.md.
 SDL_AudioStream*  g_stream = nullptr;
 uint32_t          g_stream_src_rate = 0;
+uint64_t          g_stream_generation = 0;
+uint64_t          g_generation = 0; // guarded by g_state_mtx
+bool              g_suspended = false; // guarded by g_state_mtx
 bool              g_playback_started = false; // guarded by g_state_mtx
 uint32_t          g_playback_rebuffers = 0;
 bool              g_playback_stats = false;
@@ -79,7 +82,12 @@ std::atomic<float> g_master_gain{1.0f};
 // we just store into a dead local and the device path is never taken. The
 // callback contract and its fallback behavior are recorded in
 // docs/reference/audio.md.
+// Lifecycle calls can wait for SDL's device thread; callbacks never take this lock.
+std::mutex g_lifecycle_mtx;
 std::mutex g_state_mtx;
+// Serializes the persistent resampler, bounded by one AI buffer. Scratch buffers
+// belong to each submitting thread. The state and stream locks never nest.
+std::mutex g_stream_mtx;
 
 // Real AI hardware masks the length register to 18 bits (max DMA 256 KB); anything above
 // that ceiling is not a real audio frame. Early boot submits one garbage-sized buffer
@@ -102,12 +110,12 @@ bool drop_oversize(size_t sample_count) {
     return true;
 }
 
-void log_opened_once() {
+void log_opened_once(const SDL_AudioSpec& obtained) {
     bool expected = false;
     if (g_init_logged.compare_exchange_strong(expected, true)) {
         AERO_LOG_INFO("probe", "audio: opened SDL2 device freq=%u fmt=%d ch=%u samples=%u\n",
-                     (unsigned)g_obtained.freq, (int)g_obtained.format,
-                     (unsigned)g_obtained.channels, (unsigned)g_obtained.samples);
+                     (unsigned)obtained.freq, (int)obtained.format,
+                     (unsigned)obtained.channels, (unsigned)obtained.samples);
     }
 }
 
@@ -146,11 +154,31 @@ void queue_output_locked(const void* data, uint32_t bytes) {
     }
 }
 
+// A snapshot cannot keep an SDL id alive. Validate under the state lock, then
+// queue while holding it so shutdown cannot close that device concurrently.
+void queue_if_current(uint64_t generation, const void* data, uint32_t bytes) {
+    std::lock_guard<std::mutex> lock(g_state_mtx);
+    if (g_suspended || g_dev == 0 || generation != g_generation) return;
+    queue_output_locked(data, bytes);
+}
+
 void submit(const int16_t* pcm, size_t sample_count) {
     if (pcm == nullptr || sample_count == 0) {
         return;
     }
-    std::lock_guard<std::mutex> lock(g_state_mtx);
+    if (drop_oversize(sample_count)) return;
+    SDL_AudioSpec obtained{};
+    bool device_opened;
+    uint32_t desired_rate;
+    uint64_t generation;
+    {
+        std::lock_guard<std::mutex> lock(g_state_mtx);
+        if (g_suspended) return;
+        device_opened = g_device_opened.load() && g_dev != 0;
+        obtained = g_obtained;
+        desired_rate = g_desired_rate;
+        generation = g_generation;
+    }
     // One-shot content probe: distinguishes non-zero submitted PCM from host
     // device playback. It runs before the device check so headless runs can
     // still report generated audio without claiming speaker output.
@@ -166,7 +194,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
             }
         }
     }
-    if (!g_device_opened.load() || g_dev == 0) {
+    if (!device_opened) {
         // Graceful degradation: drop the host submission. The content probe
         // above still records whether the game produced non-zero PCM.
         return;
@@ -180,7 +208,7 @@ void submit(const int16_t* pcm, size_t sample_count) {
     // through that convention. A raw int16 view therefore reverses the two samples in each
     // aligned word. Swapping each pair restores the guest L/R interleave. AI buffers are
     // 8-byte aligned, so the pair operation matches the guest words.
-    static std::vector<int16_t> swapped;
+    thread_local std::vector<int16_t> swapped;
     swapped.resize(sample_count);
     for (size_t i = 0; i + 1 < sample_count; i += 2) {
         swapped[i + 0] = pcm[i + 1];
@@ -200,22 +228,24 @@ void submit(const int16_t* pcm, size_t sample_count) {
                                    g_master_gain.load(std::memory_order_relaxed));
 
     // Cheap passthrough: native format + native channels + native rate.
-    const bool native_rate  = (uint32_t)g_obtained.freq == g_desired_rate;
-    const bool native_fmt   = g_obtained.format == AUDIO_S16LSB;
-    const bool native_chan  = g_obtained.channels == 2;
+    const bool native_rate  = (uint32_t)obtained.freq == desired_rate;
+    const bool native_fmt   = obtained.format == AUDIO_S16LSB;
+    const bool native_chan  = obtained.channels == 2;
     if (native_rate && native_fmt && native_chan) {
-        queue_output_locked(swapped.data(), byte_count);
+        queue_if_current(generation, swapped.data(), byte_count);
     } else {
+        std::unique_lock<std::mutex> stream_lock(g_stream_mtx);
         // Convert via a PERSISTENT SDL_AudioStream (stateful resampler — see the note at
         // g_stream). Recreate only when the game's AI frequency changes (rare: once at boot).
-        if (g_stream == nullptr || g_stream_src_rate != g_desired_rate) {
+        if (g_stream == nullptr || g_stream_src_rate != desired_rate || g_stream_generation != generation) {
             if (g_stream != nullptr) {
                 SDL_FreeAudioStream(g_stream);
             }
-            g_stream = SDL_NewAudioStream(AUDIO_S16LSB, 2, (int)g_desired_rate,
-                                          g_obtained.format, g_obtained.channels,
-                                          g_obtained.freq);
-            g_stream_src_rate = g_desired_rate;
+            g_stream = SDL_NewAudioStream(AUDIO_S16LSB, 2, (int)desired_rate,
+                                          obtained.format, obtained.channels,
+                                          obtained.freq);
+            g_stream_src_rate = desired_rate;
+            g_stream_generation = generation;
             if (g_stream == nullptr) {
                 AERO_LOG_ERROR("probe", "audio: SDL_NewAudioStream failed: %s\n",
                              SDL_GetError());
@@ -223,7 +253,8 @@ void submit(const int16_t* pcm, size_t sample_count) {
         }
         if (g_stream == nullptr) {
             // Degraded fallback: queue unconverted (wrong rate beats silence).
-            queue_output_locked(swapped.data(), byte_count);
+            stream_lock.unlock();
+            queue_if_current(generation, swapped.data(), byte_count);
             return;
         }
         if (SDL_AudioStreamPut(g_stream, swapped.data(), (int)byte_count) != 0) {
@@ -232,11 +263,12 @@ void submit(const int16_t* pcm, size_t sample_count) {
         }
         const int avail = SDL_AudioStreamAvailable(g_stream);
         if (avail > 0) {
-            static std::vector<uint8_t> out;
+            thread_local std::vector<uint8_t> out;
             out.resize((size_t)avail);
             const int got = SDL_AudioStreamGet(g_stream, out.data(), avail);
+            stream_lock.unlock();
             if (got > 0) {
-                queue_output_locked(out.data(), (Uint32)got);
+                queue_if_current(generation, out.data(), (Uint32)got);
             }
         }
     }
@@ -262,7 +294,7 @@ void queue_samples(int16_t* pcm, size_t sample_count) {
     // (see get_frames_remaining).
     {
         std::lock_guard<std::mutex> lock(g_state_mtx);
-        ai_fifo_queue_locked(sample_count / 2);
+        if (!g_suspended) ai_fifo_queue_locked(sample_count / 2);
     }
     // AERO_AUDIO_RMS=1: print a per-second RMS of the submitted PCM. Headless smoke
     // runs use this to tell "music/SFX playing" from "silence" without capturing a
@@ -309,7 +341,7 @@ void ai_fifo_queue_locked(size_t stereo_frames) {
 
 size_t get_frames_remaining() {
     std::lock_guard<std::mutex> lock(g_state_mtx);
-    if (g_desired_rate == 0) {
+    if (g_suspended || g_desired_rate == 0) {
         return 0;
     }
     if (g_device_opened.load() && g_dev != 0) {
@@ -347,6 +379,7 @@ void set_frequency(uint32_t freq) {
     if (freq != g_desired_rate) {
         AERO_LOG_DEBUG("probe", "audio: set_frequency %u -> %u\n", g_desired_rate, freq);
     }
+    if (freq != g_desired_rate) ++g_generation;
     g_desired_rate = freq;
     // We do not reopen the device on every set_frequency. SDL honours the
     // requested rate via SDL_AUDIO_ALLOW_ANY_CHANGE at open time. If the
@@ -360,11 +393,14 @@ void set_frequency(uint32_t freq) {
 namespace aero::audio {
 
 void init(uint32_t desired_sample_rate) {
-    std::lock_guard<std::mutex> lock(g_state_mtx);
-    if (g_device_opened.load()) {
-        return;  // idempotent
+    std::lock_guard<std::mutex> lifecycle(g_lifecycle_mtx);
+    uint32_t requested_rate;
+    {
+        std::lock_guard<std::mutex> lock(g_state_mtx);
+        if (g_device_opened.load()) return;
+        g_desired_rate = desired_sample_rate ? desired_sample_rate : 48000;
+        requested_rate = g_desired_rate;
     }
-    g_desired_rate = desired_sample_rate ? desired_sample_rate : 48000;
 
     // A headless run deliberately gets no audio device. In a no-window
     // environment the SDL queue never drains (Pulse has no real sink; SDL's dummy driver buffers
@@ -394,26 +430,31 @@ void init(uint32_t desired_sample_rate) {
     }
 
     SDL_AudioSpec want{};
-    want.freq     = (int)g_desired_rate;
+    want.freq     = (int)requested_rate;
     want.format   = AUDIO_S16LSB;  // int16 little-endian, host-native on x86
     want.channels = 2;            // stereo, matching the N64 AI output
     want.samples  = 0x100;        // 256 frames ~= 5.3 ms at 48 kHz; the value
                                   // the runtime's buffer-offset heuristic plays nicely with
     want.callback = nullptr;      // use SDL_QueueAudio, not a callback
 
-    g_dev = SDL_OpenAudioDevice(/*device=*/nullptr, /*iscapture=*/0,
-                                &want, &g_obtained,
+    SDL_AudioSpec obtained{};
+    const SDL_AudioDeviceID opened = SDL_OpenAudioDevice(/*device=*/nullptr, /*iscapture=*/0,
+                                &want, &obtained,
                                 SDL_AUDIO_ALLOW_ANY_CHANGE);
-    if (g_dev == 0) {
+    if (opened == 0) {
         AERO_LOG_ERROR("probe", "audio: SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
         return;
     }
+    std::lock_guard<std::mutex> lock(g_state_mtx);
+    g_dev = opened;
+    g_obtained = obtained;
+    ++g_generation;
     // SDL opens paused. queue_output_locked starts it once PCM is buffered.
     g_playback_started = false;
     g_playback_rebuffers = 0;
     g_playback_stats = std::getenv("AERO_AUDIO_STATS") != nullptr;
     g_device_opened.store(true);
-    log_opened_once();
+    log_opened_once(obtained);
 }
 
 void get_callbacks(ultramodern::audio_callbacks_t* out) {
@@ -422,20 +463,38 @@ void get_callbacks(ultramodern::audio_callbacks_t* out) {
     out->set_frequency        = &set_frequency;
 }
 
-void shutdown() {
+void set_suspended(bool suspended) {
     std::lock_guard<std::mutex> lock(g_state_mtx);
-    if (g_stream != nullptr) {
-        SDL_FreeAudioStream(g_stream);
-        g_stream = nullptr;
-        g_stream_src_rate = 0;
-    }
-    if (g_dev != 0) {
-        SDL_CloseAudioDevice(g_dev);
-        g_dev = 0;
-    }
-    g_device_opened.store(false);
-    g_playback_started = false;
+    if (g_suspended == suspended) return;
+    g_suspended = suspended;
+    ++g_generation;
     g_ai_fifo_end = {};
+    g_playback_started = false;
+    if (g_dev != 0) {
+        SDL_PauseAudioDevice(g_dev, 1);
+        SDL_ClearQueuedAudio(g_dev);
+    }
+    // Resume re-primes the normal prebuffer. Stream history resets lazily on
+    // the next submission, so this lifecycle callback never waits for conversion.
+}
+
+void shutdown() {
+    std::lock_guard<std::mutex> lifecycle(g_lifecycle_mtx);
+    SDL_AudioDeviceID detached;
+    {
+        std::lock_guard<std::mutex> lock(g_state_mtx);
+        detached = g_dev;
+        g_dev = 0;
+        ++g_generation;
+        g_device_opened.store(false);
+        g_playback_started = false;
+        g_ai_fifo_end = {};
+    }
+    if (detached != 0) SDL_CloseAudioDevice(detached);
+    std::lock_guard<std::mutex> stream_lock(g_stream_mtx);
+    if (g_stream != nullptr) SDL_FreeAudioStream(g_stream);
+    g_stream = nullptr;
+    g_stream_src_rate = 0;
 }
 
 void set_master_gain(float gain) {

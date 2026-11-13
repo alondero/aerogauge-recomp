@@ -101,3 +101,56 @@ All seven follow-up issues include concrete source evidence, ownership,
 acceptance cases and the measurements needed before claiming a gain. Runtime
 and renderer changes require reproducible dependency patches and an upstream
 comparison. Generated C/C++ and ROM data must remain outside commits.
+
+## Shared performance and Android backports (November 2026)
+
+Compared with Automobili Lamborghini: Recompiled through `0b13e40`, the ports
+pin the same RT64 (`f0728a2`), Plume (`51b1ad4`), N64ModernRuntime (`cdf5abb`)
+and RecompFrontend (`b1a1477`) revisions. The applicable changes are now build
+inputs in [the patch manifest](../patches/series.json); the source-project
+commit numbers below identify the reviewed implementation, not AeroGauge
+measurements.
+
+| Source change | AeroGauge implementation and boundary |
+| --- | --- |
+| `64481d4`, `b3aed7f`: frame matching | Patches 0060 and 0061 reuse sorted vectors and join call keys instead of repeatedly expanding equal-hash call pairs. Original matching order and the resulting pair sets are checked against the original container algorithm, including duplicate hashes and steady-state allocations. Applies to desktop and Android. |
+| `725bf97`: stalled queue producers | Patch 0046 waits on condition variables instead of spinning while a GPU consumer holds the barrier; shutdown wakes both producer waits. Applies to desktop and Android. |
+| `64481d4`: Android automatic resolution | Patches 0042 and 0059 bound Auto by an 80 million pixel/second budget and retain the narrow Adreno 615 system-driver 2x workaround. Manual and Original settings and desktop Auto retain their behavior. Tests cover aspect ratios and refresh rates; the budget is a starting policy inherited from the other port, not a measured AeroGauge optimum. |
+| `96676ff`: frontend and audio lock scopes | SDL event collection precedes the frontend lock; batch dispatch, profile updates, sampling and rumble remain inside it. Patch 0032 adds the batch dispatcher while preserving the existing no-argument API. Audio opens/closes outside the device-state mutex and resamples under its own mutex; generation checks discard output prepared before a frequency, device or suspension change. |
+| Android Vulkan fixes through `f3b751d` | Surface capabilities, native-window generations, retryable acquisition, resource retirement, descriptor-pool retry, bounded clears and mapped-memory cache maintenance are portable renderer fixes; see [Android](android.md) and [the patch inventory](../patches/README.md). |
+| `51187bf`: controller-aware touch visibility | Retains AeroGauge's Auto/Always/Hidden policy and analog overlay. Device-change callbacks use SDL's joystick acceptance rule, replacing repeated device enumeration during drawing. Surface destruction releases held touch input. |
+
+The settings refresh optimization in `8d208f2` is unnecessary here: AeroGauge
+refreshes its settings on opening or explicit actions, rather than walking the
+schema every visible frame. It already debounces settings persistence.
+Lamborghini's rain, fog, replay, harness and vehicle changes depend on systems
+or guest functions absent here. Its asynchronous save-state writer is not
+ported: AeroGauge's developer save-state path has its own guest-memory and
+renderer-safety limitations. Its Pak batching cannot be copied without
+changing AeroGauge's guarantee that a successful guest write is already on
+disk; retain that failure/acknowledgement contract until a separately tested
+storage design replaces it. Background crash-symbol loading and renderer cost
+telemetry remain separate opportunities; neither is required by these patches.
+
+The fixed-descriptor-table and shader non-uniform fallback patches are also
+excluded. The latter relies on Lamborghini's verified texture-LOD behavior;
+removing SPIR-V capabilities without equivalent AeroGauge evidence would be
+unsafe. The Vulkan readback backport extends a diagnostic interface absent
+here and is not needed by normal presentation.
+
+Verification commands and device acceptance limits are in
+[Testing](testing.md#shared-renderer-and-platform-regressions). These changes
+have host regression coverage; no AeroGauge before/after FPS, power or Android
+frame-time improvement is claimed. Measure a fixed live race on the same
+device before tuning the budget or changing defaults further.
+
+Validation of this backport on Windows x64, GCC 15.2 Release: the game and
+focused audio/frontend targets built; all 63 renderer/platform fixture tests,
+the audio buffering/gain/locking tests, and both regional settings-schema tests
+passed. The nine dependency-free host checks passed. A four-second USA headless
+run reached VI retraces, generated non-silent PCM and joined all guest threads
+on coordinated exit. The unchanged USA translation was reused for this host
+build; no generated source was edited. Android ARM64 built with NDK
+28.2.13676358, packaged as a debug APK, and passed `lintDebug`. No physical
+Android run, desktop GPU
+visual check or before/after frame-time measurement was performed.

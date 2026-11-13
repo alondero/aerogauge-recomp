@@ -138,7 +138,6 @@ static std::unordered_map<SDL_JoystickID, uint32_t> g_custom_controller_toggle_b
 static std::atomic<bool> g_fullscreen_requested{false};
 #if defined(__ANDROID__)
 static std::atomic<bool> g_android_back_requested{false};
-static std::atomic<Uint32> g_android_lifecycle_event{0};
 #endif
 static std::mutex g_removed_controller_mutex;
 static std::vector<SDL_GameController*> g_removed_controllers;
@@ -390,9 +389,6 @@ static void vi_pace_probe() {
 }
 
 static void vi_cb() {
-#if defined(__ANDROID__)
-    aero::android::wait_foreground();
-#endif
     vi_pace_probe();
     state_probe();
     menu_probe();
@@ -582,8 +578,13 @@ static void update_gfx_stub(void* /*gfx_data*/) {
         static AeroInputCadence cadence;
         if (!cadence.due(AeroInputCadence::Clock::now())) return;
         aero::menu::update();
-        aero::menu::run_input_update([] {
-            recompinput::handle_events();
+        // SDL can block in the window move/size loop or Android pause. Collect
+        // without the frontend mutex; dispatch and profile sampling stay locked.
+        std::vector<SDL_Event> events;
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) events.push_back(event);
+        aero::menu::run_input_update([&events] {
+            recompinput::handle_events(events);
             release_removed_controllers();
             close_detached_rumble_controller();
             recompinput::players::restore_controllers();
@@ -592,12 +593,7 @@ static void update_gfx_stub(void* /*gfx_data*/) {
             if (g_android_back_requested.exchange(false, std::memory_order_acq_rel)) {
                 aero::android::controller_back();
             }
-            const Uint32 lifecycle_event = g_android_lifecycle_event.exchange(0, std::memory_order_acq_rel);
-            if (lifecycle_event != 0) {
-                SDL_Event event{};
-                event.type = lifecycle_event;
-                aero::android::handle_event(event);
-            }
+
 #endif
             if (g_menu_toggle_requested.exchange(false, std::memory_order_acq_rel)) {
                 aero::menu::toggle();
@@ -687,9 +683,7 @@ static bool is_custom_keyboard_menu_toggle(const SDL_KeyboardEvent& event) {
 static int sdl_event_filter(void*, SDL_Event* event) {
     aero::gyro::notify_event(*event);
 #if defined(__ANDROID__)
-    if (event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_TERMINATING) {
-        g_android_lifecycle_event.store(event->type, std::memory_order_release);
-    }
+    aero::android::notify_event(*event);
 #endif
     const bool binding = recompinput::binding::is_binding();
     if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
