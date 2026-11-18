@@ -76,6 +76,20 @@ target_compile_definitions(test_gyro_sdl PRIVATE SDL_MAIN_HANDLED)
 target_link_libraries(test_gyro_sdl PRIVATE Threads::Threads)
 add_test(NAME gyro_sdl_bridge COMMAND test_gyro_sdl)
 
+add_executable(test_controller_db_sdl tests/test_controller_db_sdl.cpp)
+target_include_directories(test_controller_db_sdl PRIVATE src ${SDL2_INCLUDE_DIRS})
+target_compile_definitions(test_controller_db_sdl PRIVATE SDL_MAIN_HANDLED)
+if(WIN32)
+    target_link_libraries(test_controller_db_sdl PRIVATE aero_log SDL2)
+    add_custom_command(TARGET test_controller_db_sdl POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${SDL2_WIN32_DEPS}/lib/x64/SDL2.dll
+            $<TARGET_FILE_DIR:test_controller_db_sdl>)
+else()
+    target_link_libraries(test_controller_db_sdl PRIVATE aero_log ${SDL2_LIBRARIES})
+endif()
+add_test(NAME controller_db_sdl COMMAND test_controller_db_sdl)
+
 add_executable(test_frontend_settings tests/test_frontend_settings.cpp
     tests/test_multiplayer_input.cpp src/ui/aero_frontend_settings.cpp src/aero_config.cpp src/aero_gyro_sdl.cpp
     src/aero_cheats.cpp src/aero_audio.cpp)

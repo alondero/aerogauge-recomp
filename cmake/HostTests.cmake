@@ -30,6 +30,10 @@ add_executable(test_user_data_dir tests/test_user_data_dir.cpp)
 target_include_directories(test_user_data_dir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME user_data_dir COMMAND test_user_data_dir)
 
+add_executable(test_controller_db tests/test_controller_db.cpp)
+target_include_directories(test_controller_db PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME controller_db COMMAND test_controller_db)
+
 # The developer warp chord: both modifiers are required, one press selects one
 # track, and releasing the chord re-arms it. No SDL or ROM needed.
 add_executable(test_dev_warp_chord tests/test_dev_warp_chord.cpp)

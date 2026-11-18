@@ -11,6 +11,7 @@ Controls page first saves its bindings. The mod manager creates `mods.json` and
 - mods.json stores installed package enablement and order.
 - mod_config/ stores per-package settings.
 - mods/ contains installed packages.
+- gamecontrollerdb.txt (optional, user-supplied) adds custom SDL game-controller mappings on startup.
 
 The [Cheats](cheats.md) page is session-only. Both toggles start off on each
 application launch; no cheats.json is loaded or written.

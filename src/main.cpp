@@ -63,6 +63,7 @@
 #include "aero_devkeys.h"   // developer warp chord: Ctrl+Shift+1..6
 #include "aero_crash.h"   // native crash reporting and symbol lookup
 #include "aero_log.h"     // levelled logging and the Windows console policy
+#include "aero_controller_db.h"
 #include "aero_rom_desktop.h"
 #include "recompinput/input_events.h"
 #include "recompinput/input_binding.h"
@@ -486,17 +487,12 @@ static ultramodern::renderer::WindowHandle create_window_stub(void* /*gfx_data*/
             return ultramodern::renderer::WindowHandle{};
         }
         SDL_SetEventFilter(sdl_event_filter, nullptr);
+        aero::controller_db::load_user_mappings(aero::paths::app_data_dir());
         // RecompFrontend opens controllers, enables sensors, and registers their
-        // profiles while consuming ADDED events. SDL does not enqueue ADDED for
-        // devices present before initialization, so replay those notifications
-        // through the same owner instead of opening a second port-local handle.
-        for (int i = 0; i < SDL_NumJoysticks(); i++) {
-            if (!SDL_IsGameController(i)) continue;
-            SDL_Event event{};
-            event.type = SDL_CONTROLLERDEVICEADDED;
-            event.cdevice.which = i;
-            SDL_PushEvent(&event);
-        }
+        // profiles while consuming ADDED events. Flush any events already queued
+        // by SDL_InitSubSystem/mapping import (SDL2-compat/SDL3) and emit once
+        // per controller so classic SDL2 and SDL2-compat both open once.
+        aero::controller_db::queue_startup_controllers();
         uint32_t flags = SDL_WINDOW_RESIZABLE;
 #if defined(__ANDROID__)
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;

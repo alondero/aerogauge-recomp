@@ -7,10 +7,10 @@ checks, the shared patch inventory and application tests, generated-file guard
 and consistency tests, Android build-script checks, and host-test registration
 checks. These checks also run for changes confined to tests or build scripts.
 
-The Linux and Windows host jobs build nine tests without ROMs,
+The Linux and Windows host jobs build ten tests without ROMs,
 submodules, SDL, or a renderer: full_track_policy, gyro_steering, hud_shift_scale,
-input_cadence, startup_mode, rom_startup, user_data_dir, dev_warp_chord, and
-logging_policy. Their target definitions are shared with the
+input_cadence, startup_mode, rom_startup, user_data_dir, controller_db,
+dev_warp_chord, and logging_policy. Their target definitions are shared with the
 full build in cmake/HostTests.cmake. To run this tier locally:
 
 ~~~text
@@ -317,6 +317,8 @@ The current CMake file registers these tests:
 | live_config_updates | Host | Runtime headers; no ROM |
 | graphics_config_threadsafe | Host | Runtime source from the initialized submodule; no ROM |
 | user_data_dir | Host | No ROM |
+| controller_db | Host | No ROM or SDL; checks `gamecontrollerdb.txt` discovery order and deduplication |
+| controller_db_sdl | Host | Real SDL2 virtual joystick; checks startup mapping load, `platform:` tag requirement, and override precedence |
 | dev_warp_chord | Host | No ROM or SDL; the developer warp chord requires both modifiers, selects one track per press, and re-arms after a release |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
 | scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |

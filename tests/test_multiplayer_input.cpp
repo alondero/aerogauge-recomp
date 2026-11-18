@@ -4,6 +4,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <SDL.h>
+#include "recompinput/input_events.h"
 #include "recompinput/input_state.h"
 #include "recompinput/players.h"
 #include "recompinput/profiles.h"
@@ -295,6 +296,28 @@ void test_multiplayer_input(const std::filesystem::path& controls_path) {
     disconnect(0); connect(0, "unit-a"); players::restore_controllers();
     assert(!players::get_player_is_assigned(0));
     disconnect(0); disconnect(1);
+    // Duplicate SDL_CONTROLLERDEVICEADDED events for the same device must not
+    // open a second handle (e.g. startup replay racing SDL2-compat hotplug).
+    {
+        const int dup_index = SDL_JoystickAttachVirtualEx(&desc);
+        assert(dup_index >= 0);
+        const SDL_JoystickID dup_id = SDL_JoystickGetDeviceInstanceID(dup_index);
+        assert(dup_id != -1);
+        SDL_FlushEvent(SDL_CONTROLLERDEVICEADDED);
+        for (int n = 0; n < 2; ++n) {
+            SDL_Event add_event{};
+            add_event.type = SDL_CONTROLLERDEVICEADDED;
+            add_event.cdevice.which = dup_index;
+            assert(SDL_PushEvent(&add_event) == 1);
+        }
+        handle_events();
+        SDL_GameController* opened = get_controller_from_joystick_id(dup_id);
+        assert(opened != nullptr);
+        remove_controller_state(dup_id);
+        SDL_GameControllerClose(opened);
+        assert(SDL_GameControllerFromInstanceID(dup_id) == nullptr);
+        SDL_JoystickDetachVirtual(dup_index);
+    }
 #ifndef _WIN32
     SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 #else
