@@ -35,29 +35,22 @@ ignored = [
     "guPerspectiveF",
 ]
 
+# Whole-function car LOD replacements. See src/aero_car_lod.c.
+
 [[patches.hook]]
 func = "jp_func_80007980"
-before_vram = 0x80007AB0
-text = "extern void aero_car_lod_visibility(uint8_t*, recomp_context*); aero_car_lod_visibility(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_8005A38C"
-before_vram = 0x8005A3A4
-text = "extern void aero_car_lod_model(uint8_t*, recomp_context*); aero_car_lod_model(rdram, ctx);"
-
+before_vram = 0x80007980
+text = "extern void aero_update_car_visibility(uint8_t*, recomp_context*); aero_update_car_visibility(rdram, ctx); return;"
 
 [[patches.hook]]
 func = "jp_func_8005A38C"
-before_vram = 0x8005A43C
-text = "extern void aero_car_lod_mesh_mode(uint8_t*, recomp_context*); aero_car_lod_mesh_mode(rdram, ctx);"
-
+before_vram = 0x8005A38C
+text = "extern void aero_rebuild_car_model(uint8_t*, recomp_context*); aero_rebuild_car_model(rdram, ctx); return;"
 
 [[patches.hook]]
 func = "jp_func_8005A660"
-before_vram = 0x8005A6F4
-text = "extern void aero_car_lod_animation_mode(uint8_t*, recomp_context*); aero_car_lod_animation_mode(rdram, ctx);"
-
+before_vram = 0x8005A660
+text = "extern void aero_update_car_animation(uint8_t*, recomp_context*); aero_update_car_animation(rdram, ctx); return;"
 
 [[patches.hook]]
 func = "jp_func_80023238"

@@ -221,7 +221,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         src/aero_rom_desktop.cpp # validated ROM selection before region-specific runtime setup
         src/aero_race_intro.c  # full-output race fade and scrolling ticker
         src/aero_scene_scissor.c # remove full-screen world overscan clipping
-        src/aero_car_lod.c      # optional maximum car detail and distance visibility
+        src/aero_car_lod.c      # recovered car visibility, model rebuild and animation
         src/register_overlays.cpp
         src/stub_renderer.cpp
         src/aero_audio.cpp     # SDL2 push-audio sink for the AI buffer
@@ -316,6 +316,8 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         -fms-extensions
         -ggdb
     )
+    # Keep the recovered LOD math's guest multiply/add rounding on all targets.
+    set_source_files_properties(src/aero_car_lod.c PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
     if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
         target_compile_options(aerogauge_modern PRIVATE -march=nehalem)
     endif()
@@ -540,6 +542,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
                     VERBATIM)
                 add_executable(test_${boundary}_jp tests/test_${boundary}.c
                     src/aero_${boundary}.c ${jp_test_funcs})
+                if(boundary STREQUAL "car_lod")
+                    # The shared implementation can call either region's helpers.
+                    target_sources(test_car_lod_jp PRIVATE ${CAR_LOD_TEST_FUNCS})
+                endif()
                 target_compile_definitions(test_${boundary}_jp PRIVATE AERO_JAPAN_SUPPORT)
                 target_include_directories(test_${boundary}_jp PRIVATE ${N64MR}/N64Recomp/include)
                 target_compile_options(test_${boundary}_jp PRIVATE -fno-strict-aliasing)

@@ -68,10 +68,6 @@ INDIRECT_STARTS = [0x80002164, 0x8000E480, 0x8000A390, 0x8000E540,
 # Reviewed from Rev A disassembly; register/stack contracts match unless
 # explicitly adapted in aero_race_intro.c. Guards reject stale boundaries.
 HOOKS = [
-    (0x80007980, 0x80007AB0, 0x4614C03C, 'extern void aero_car_lod_visibility(uint8_t*, recomp_context*); aero_car_lod_visibility(rdram, ctx);'),
-    (0x8005A38C, 0x8005A3A4, 0x90820001, 'extern void aero_car_lod_model(uint8_t*, recomp_context*); aero_car_lod_model(rdram, ctx);'),
-    (0x8005A38C, 0x8005A43C, 0x150E003D, 'extern void aero_car_lod_mesh_mode(uint8_t*, recomp_context*); aero_car_lod_mesh_mode(rdram, ctx);'),
-    (0x8005A660, 0x8005A6F4, 0x17210004, 'extern void aero_car_lod_animation_mode(uint8_t*, recomp_context*); aero_car_lod_animation_mode(rdram, ctx);'),
     (0x80023238, 0x8002347C, 0x3C19801A, 'extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);'),
     (0x80023238, 0x800235EC, 0x8FBF001C, 'extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);'),
     (0x800165FC, 0x800165FC, 0x3C038014, 'extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);'),
