@@ -34,29 +34,35 @@ void register_patches(const char*, size_t size, SectionTableEntry* sections, siz
 
 int main(int argc, char** argv) {
     std::span<const uint32_t> guards = usa::protected_mod_functions;
-    uint32_t hook_address = 0x80007538; // car LOD hook in the USA profile
+    constexpr uint32_t usa_car_lod[] = {0x80007538, 0x8005A034, 0x8005A2D4};
+    std::span<const uint32_t, 3> car_lod = usa_car_lod;
 #ifdef AERO_JAPAN_SUPPORT
     if (argc > 1 && std::strcmp(argv[1], "jp") == 0) {
         guards = japan::protected_mod_functions;
-        hook_address = 0x80007980; // corresponding Japanese car LOD hook
+        static constexpr uint32_t jp_car_lod[] = {0x80007980, 0x8005A38C, 0x8005A660};
+        car_lod = jp_car_lod;
     }
 #endif
     constexpr uint32_t base = 0x80000400;
     FuncEntry funcs[] = {
-        {.func = nullptr, .offset = hook_address - base, .rom_size = 64},
+        {.func = nullptr, .offset = car_lod[0] - base, .rom_size = 64},
+        {.func = nullptr, .offset = car_lod[1] - base, .rom_size = 64},
+        {.func = nullptr, .offset = car_lod[2] - base, .rom_size = 64},
         {.func = nullptr, .offset = 0x123456, .rom_size = 64},
     };
     SectionTableEntry sections[] = {
         {.rom_addr = 0x1000, .ram_addr = base, .size = 0x200000,
-         .funcs = funcs, .num_funcs = 2},
+         .funcs = funcs, .num_funcs = 4},
     };
     int overlays[] = {-1};
     aero_register_overlays({sections, 1, 1}, {overlays, 1}, guards);
-    assert(crash_functions == 2);
-    assert(funcs[0].rom_size == 0); // runtime must reject regenerating a port hook
-    assert(funcs[1].rom_size == 64); // ordinary functions remain moddable
+    assert(crash_functions == 4);
+    assert(funcs[3].rom_size == 64); // ordinary functions remain moddable
     assert(registered_patch_count == 1);
-    assert(registered_patches[0].num_funcs == 1);
-    assert(registered_patches[0].funcs[0].offset == hook_address - base);
+    assert(registered_patches[0].num_funcs == car_lod.size());
+    for (size_t i = 0; i < car_lod.size(); ++i) {
+        assert(funcs[i].rom_size == 0); // reject regenerating an entry replacement
+        assert(registered_patches[0].funcs[i].offset == car_lod[i] - base);
+    }
     assert(registered_patches[0].ram_addr == base);
 }

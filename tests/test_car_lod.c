@@ -1,4 +1,4 @@
-// Exercise generated ROM code, not a duplicate of its decision logic.
+// Exercise the live entries and compare their guest outputs with the ROM.
 #undef NDEBUG
 #include <assert.h>
 #include <math.h>
@@ -12,6 +12,9 @@ int aero_japan = 1;
 #define func_80007538 jp_func_80007980
 #define func_8005A034 jp_func_8005A38C
 #define func_8005A2D4 jp_func_8005A660
+#define rom_func_80007538 rom_jp_func_80007980
+#define rom_func_8005A034 rom_jp_func_8005A38C
+#define rom_func_8005A2D4 rom_jp_func_8005A660
 #define CAR_BASE 0x8013D030u
 #define CAR_STRIDE 0x2094
 #define RENDER_OFFSET(x) ((x) - 12)
@@ -21,10 +24,8 @@ int aero_japan = 1;
 #define RENDER_OFFSET(x) (x)
 #endif
 
-void func_80007538(uint8_t*, recomp_context*);
-void func_8005A034(uint8_t*, recomp_context*);
-void func_8005A2D4(uint8_t*, recomp_context*);
-void aero_car_lod_model(uint8_t*, recomp_context*);
+recomp_func_t func_80007538, func_8005A034, func_8005A2D4;
+recomp_func_t rom_func_80007538, rom_func_8005A034, rom_func_8005A2D4;
 static int enabled;
 int aero_force_full_lod_enabled(void) { return enabled; }
 // The extracted car-LOD closure contains a jump-table switch whose default arm
@@ -57,6 +58,7 @@ static gpr addr(unsigned value) {
     case 0x8008F7A4: value = 0x8008D704; break;
     case 0x80098330: value = 0x80095BA0; break;
     case 0x800984A4: value = 0x80095D14; break;
+    case 0x80097B20: value = 0x80095390; break;
     }
 #endif
     return (gpr)(int32_t)value;
@@ -64,11 +66,12 @@ static gpr addr(unsigned value) {
 static void putf(gpr base, unsigned offset, float value) {
     int32_t bits; memcpy(&bits, &value, 4); MEM_W(offset, base) = bits;
 }
-static void call(void (*fn)(uint8_t*, recomp_context*), gpr arg) {
+static void call(recomp_func_t* fn, gpr arg) {
     recomp_context ctx = {0};
     ctx.r29 = addr(0x807FF000); ctx.r4 = arg;
     ctx.f_odd = &ctx.f0.u32h;
     fn(rdram, &ctx);
+    assert(ctx.r29 == addr(0x807FF000));
 }
 static void setup(void) {
     memset(ram, 0, sizeof(ram));
@@ -90,6 +93,10 @@ static void setup(void) {
     // Craft 1's animated part uses transform +0x16 in the selected table.
     MEM_H(0x16, addr(0x80098330)) = 22;
     MEM_H(0x16, addr(0x800984A4)) = 33;
+    MEM_H(0x22, addr(0x80098330)) = -17;
+    MEM_H(0x22, addr(0x800984A4)) = -21;
+    for (unsigned i = 0; i < 6; ++i)
+        MEM_W(i * 8, addr(0x80097B20)) = 0x40468000; // guest double 45.0
 }
 static void visibility(float distance, float x, int visible, int low) {
     putf(car, RENDER_OFFSET(0x4D0), x); putf(car, RENDER_OFFSET(0x4D8), distance);
@@ -110,14 +117,101 @@ static void model(int low) {
     for (unsigned i = 0; i < 3; ++i)
         assert(MEM_W(RENDER_OFFSET(0x544) + i * 0xB8, car) ==
                MEM_W((part + i) * 4, addr(low ? 0x8008F7A4 : 0x8008F728)));
-    assert(!(MEM_BU(1, car) & 0x80)); // rebuild consumed by ROM
+    assert(!(MEM_BU(1, car) & 0x80));
     assert(MEM_W(RENDER_OFFSET(0x4B0), car) == MEM_W(MEM_BU(9, car) * 24,
                addr(low ? 0x8008F910 : 0x8008F820)));
     // An already-correct mesh must not schedule another rebuild every frame.
-    call(aero_car_lod_model, car);
-    assert(!(MEM_BU(1, car) & 0x80));
+    MEM_W(RENDER_OFFSET(0x4A8), car) = 99;
+    call(func_8005A034, car);
+    assert(MEM_W(RENDER_OFFSET(0x4A8), car) == 99);
 }
+
+static void compare_with_rom(recomp_func_t* live, recomp_func_t* reference, gpr arg) {
+    // The routines own the car/camera records. Their caller's scratch stack
+    // and volatile registers may differ between the two implementations.
+    uint8_t* records[] = {ram + (uint32_t)(car - addr(0x80000000)),
+                          ram + (uint32_t)(camera - addr(0x80000000))};
+    const size_t sizes[] = {2 * CAR_STRIDE, 0x200};
+    uint8_t before[2 * CAR_STRIDE + 0x200], expected[sizeof(before)];
+    size_t offset = 0;
+    for (unsigned i = 0; i < 2; ++i) {
+        memcpy(before + offset, records[i], sizes[i]);
+        offset += sizes[i];
+    }
+    call(reference, arg);
+    offset = 0;
+    for (unsigned i = 0; i < 2; ++i) {
+        memcpy(expected + offset, records[i], sizes[i]);
+        memcpy(records[i], before + offset, sizes[i]);
+        offset += sizes[i];
+    }
+    call(live, arg);
+    offset = 0;
+    for (unsigned i = 0; i < 2; ++i) {
+        assert(memcmp(records[i], expected + offset, sizes[i]) == 0);
+        offset += sizes[i];
+    }
+}
+
+static void stock_parity(void) {
+    setup();
+    enabled = 0;
+    MEM_BU(0, addr(0x8013FC91)) = 2;
+    MEM_W(4, camera) = (int32_t)car;
+    MEM_BU(CAR_STRIDE + 0xB, car) = 3;
+    MEM_W(4, addr(0x8016C450)) = 11;
+    putf(car + CAR_STRIDE, RENDER_OFFSET(0x4D0), 160);
+    putf(car + CAR_STRIDE, RENDER_OFFSET(0x4D8), 100);
+    const float distances[] = {9, 10, 149, 150, 151, 750, 751, -100};
+    for (unsigned mode = 4; mode <= 5; ++mode) {
+        MEM_B(0, addr(0x8013FF90)) = mode;
+        for (unsigned i = 0; i < sizeof(distances) / sizeof(distances[0]); ++i) {
+            putf(car, RENDER_OFFSET(0x4D8), distances[i]);
+            compare_with_rom(func_80007538, rom_func_80007538, camera);
+        }
+    }
+    // Both ROMs have the same craft-to-part layout.
+    const uint8_t craft_parts[][2] = {
+        {29, 2}, {0, 3}, {3, 3}, {6, 5}, {11, 3},
+        {14, 3}, {17, 3}, {20, 3}, {23, 3}, {26, 3},
+    };
+    for (unsigned craft = 0; craft < 10; ++craft) {
+        MEM_BU(craft * 2, addr(0x80098618)) = craft_parts[craft][0];
+        MEM_BU(craft * 2 + 1, addr(0x80098618)) = craft_parts[craft][1];
+    }
+    for (unsigned part = 0; part < 31; ++part) {
+        for (unsigned field = 0; field < 6; ++field) {
+            MEM_H(part * 12 + field * 2, addr(0x80098330)) = (int)field - (int)part;
+            MEM_H(part * 12 + field * 2, addr(0x800984A4)) = (int)part - (int)field;
+        }
+    }
+    for (unsigned mode = 4; mode <= 5; ++mode) {
+        MEM_B(0, addr(0x8013FF90)) = mode;
+        for (unsigned craft = 0; craft <= 10; ++craft) {
+            MEM_BU(9, car) = craft;
+            MEM_BU(0xA, car) = craft % 6;
+            for (unsigned distant = 0; distant < 2; ++distant) {
+                MEM_BU(0, car) = distant;
+                if (craft < 10) {
+                    MEM_BU(1, car) = 0xA5;
+                    compare_with_rom(func_8005A034, rom_func_8005A034, car);
+                    compare_with_rom(func_8005A034, rom_func_8005A034, car);
+                }
+                for (int sign = -1; sign <= 1; ++sign) {
+                    putf(car, 0x5C, 19.25f * sign);
+                    putf(car, 0x64, 0.5f * sign);
+                    for (unsigned node = 0; node < 4; ++node) {
+                        MEM_W(RENDER_OFFSET(0x5AC) + node * 0xB8, car) = 0x12345678;
+                    }
+                    compare_with_rom(func_8005A2D4, rom_func_8005A2D4, car);
+                }
+            }
+        }
+    }
+}
+
 int main(void) {
+    stock_parity();
     setup();
     enabled = 0;
     visibility(9, 0, 0, 0); visibility(10, 0, 1, 0);
@@ -162,12 +256,12 @@ int main(void) {
     // Invalid addresses/indices fail without touching the car's flag bytes.
     enabled = 1;
     MEM_BU(0, car) = 1; MEM_BU(1, car) = 0;
-    call(aero_car_lod_model, addr(0x1000));
-    call(aero_car_lod_model, addr(0x807FFFFC));
-    call(aero_car_lod_model, car + 1);
-    MEM_BU(9, car) = 10; call(aero_car_lod_model, car);
+    call(func_8005A034, addr(0x1000));
+    call(func_8005A034, addr(0x807FFFFC));
+    call(func_8005A034, car + 1);
+    MEM_BU(9, car) = 10; call(func_8005A034, car);
     MEM_BU(9, car) = 1; MEM_BU(2, addr(0x80098618)) = 31;
-    call(aero_car_lod_model, car);
+    call(func_8005A034, car);
     assert(MEM_BU(0, car) == 1 && MEM_BU(1, car) == 0);
 
     setup();
@@ -179,6 +273,6 @@ int main(void) {
     assert(MEM_W(0x1B8, camera) == (int32_t)(car + RENDER_OFFSET(0x498)));
     assert(MEM_W(0x1BC, camera) == (int32_t)(car + CAR_STRIDE + RENDER_OFFSET(0x498)));
     assert(!(MEM_BU(CAR_STRIDE, car) & 5));
-    puts("PASS car_lod: ROM visibility, model transitions, mode override and animation");
+    puts("PASS car_lod: stock ROM parity, visibility, model transitions and forced detail");
     return 0;
 }

@@ -331,28 +331,35 @@ not the scene word at `0x8013FF80`. `func_8005A2D4` also selects part transforms
 using the detail bit and this mode override (see `0x8005A348`). A maximum-detail
 implementation must keep mesh and animated-part transform selection consistent.
 
-The optional Graphics setting **Force Full LOD** uses
-[aero_car_lod.c](../../src/aero_car_lod.c). At `0x80007648` it substitutes
-infinite far/detail comparison thresholds, preserving the actual distance and
-near/angular rejection. Before the rebuild gate at `0x8005A04C`, it clears the
-distant-detail bit when enabled and requests a rebuild if the flag or installed
-root mesh differs from the desired selection. Comparing the installed mesh
-also restores mode-5 distant detail when disabling, without a host-side state
-cache that could go stale after save-state loading. The two mode comparisons
-at `0x8005A0E0` and `0x8005A368` select near meshes and transforms when enabled.
+The game-thread implementations in [aero_car_lod.c](../../src/aero_car_lod.c)
+take the original camera or car pointer at each function entry. Rev A's
+corresponding entries are `0x80007980`, `0x8005A38C`, and `0x8005A660`.
+Rev A publishes only the primary node pointer, sets bit `0x02` when rejecting
+the camera's own car, and clears both rejection bits on acceptance. Its car
+render block starts at `+0x48C`, 12 bytes earlier than in USA.
 
-These game-thread hooks use the existing car-owned flag bytes and N64Recomp
-memory helpers, validate the car pointer and craft/part indices before memory
-writes, and retain no guest pointers across calls. The UI publishes an atomic
-setting, persisted as `force_full_lod` in graphics.json (default false);
-`AERO_FORCE_FULL_LOD=0/1` overrides it. Projection clipping remains independent.
-A future named source implementation of these selectors can replace the
-register hooks without changing the policy.
+Animation takes a car pointer in `a0` and returns through guest memory. The
+call at USA `0x8005A2EC` steps the float at `car+0x64` toward `car+0x5C`
+using divisor 5. The signed result of `-(car+0x64)/20`, using the float
+stored at that offset, and the craft byte at `+0x09` select float writes
+at `+0x59C` and `+0x654`, plus `+0x70C` and `+0x7C4` for craft 3.
+The matrix routine at `0x80020B68` receives `car+0x550` and `car+0x608`
+on every path, with two additional calls at `car+0x6C0` and
+`car+0x778` for craft 3. Rev A follows the same contract with the
+12-byte render-block shift and helpers at `0x80026130` and `0x8002152C`.
 
-The `car_lod` ROM-backed test exercises the generated routines and hooks for
-distance boundaries, retained culling, model transitions, ten craft IDs and
-mode-5 animated transforms. RT64 visual acceptance and performance checks with
-all racers visible remain separate from this synthetic-data regression.
+**Force Full LOD** skips the 750-unit cutoff and distance detail selection
+while retaining near and angular rejection. Model rebuild and animation share
+the same near/distant selection. The model checks the installed root mesh
+against that selection so a toggle or save-state restore can correct stale
+meshes immediately, including a return to mode-5 distant detail. The UI
+publishes the atomic setting, persisted as `force_full_lod` in graphics.json
+(default false). `AERO_FORCE_FULL_LOD=0/1` overrides it.
+
+The `car_lod` and `car_lod_jp` tests compare guest car and camera records
+against the ROM bodies and exercise the setting with live entry dispatch.
+Both regions protect all three entries from mod regeneration. The tests use
+synthetic records. Visual acceptance and performance require in-game checks.
 
 ## How to use an address
 

@@ -321,36 +321,18 @@ NATIVE_NAMES = {
     0x80007310: "aeroRegisterZoneObjects",
 }
 
+# Keep these replacements at the owning function entries. N64Recomp keeps
+# entry hooks in the overlay table so the runtime can guard the native body.
+CAR_LOD_REPLACEMENTS = (
+    (0x80007538, 0x80007980, "aero_update_car_visibility"),
+    (0x8005A034, 0x8005A38C, "aero_rebuild_car_model"),
+    (0x8005A2D4, 0x8005A660, "aero_update_car_animation"),
+)
+
 # Hand-authored [[patches.hook]] / [[patches.instruction]] blocks appended verbatim to the
 # generated aerogauge.us.toml. Keep the source blocks here: edits made only in the
 # generated TOML disappear on the next regeneration.
 PATCH_BLOCKS = """
-# USA car LOD: c.lt.s f24,f20 at 7648 rejects >750 render units;
-# c.lt.s f28,f20 at 76DC selects distant meshes beyond 150. Preserve f20
-# and the independent <10 / dot<0.5 tests. See src/aero_car_lod.c.
-[[patches.hook]]
-func = "func_80007538"
-before_vram = 0x80007648
-text = "extern void aero_car_lod_visibility(uint8_t*, recomp_context*); aero_car_lod_visibility(rdram, ctx);"
-
-# Rebuild gate reads car+1 at A04C. a0 still owns the car pointer here.
-[[patches.hook]]
-func = "func_8005A034"
-before_vram = 0x8005A04C
-text = "extern void aero_car_lod_model(uint8_t*, recomp_context*); aero_car_lod_model(rdram, ctx);"
-
-# Mode 5 independently forces distant meshes (t6) and animated transforms
-# (t9). Override only these comparison operands; never change the race mode.
-[[patches.hook]]
-func = "func_8005A034"
-before_vram = 0x8005A0E0
-text = "extern void aero_car_lod_mesh_mode(uint8_t*, recomp_context*); aero_car_lod_mesh_mode(rdram, ctx);"
-
-[[patches.hook]]
-func = "func_8005A2D4"
-before_vram = 0x8005A368
-text = "extern void aero_car_lod_animation_mode(uint8_t*, recomp_context*); aero_car_lod_animation_mode(rdram, ctx);"
-
 # Remove the full-screen scene's overscan scissor after the ROM emits it.
 # s0 = viewport descriptor, v1 = just-written command. The port hook validates
 # both; sub-viewports and custom crops retain their original clipping.
@@ -776,6 +758,14 @@ def main():
         for n in sorted(n for n in NATIVE_NAMES.values() if n in known):
             f.write(f'    "{n}",\n')
         f.write("]\n")
+        f.write("\n# Whole-function car LOD replacements. See src/aero_car_lod.c.\n")
+        for us_entry, jp_entry, native in CAR_LOD_REPLACEMENTS:
+            entry = jp_entry if japanese else us_entry
+            name = f'{"jp_" if japanese else ""}func_{entry:08X}'
+            f.write("\n[[patches.hook]]\n")
+            f.write(f'func = "{name}"\n')
+            f.write(f"before_vram = 0x{entry:08X}\n")
+            f.write(f'text = "extern void {native}(uint8_t*, recomp_context*); {native}(rdram, ctx); return;"\n')
         # Verbatim hand-authored patch blocks (hooks/instruction patches; see PATCH_BLOCKS).
         f.write(PATCH_BLOCKS.rstrip() + "\n")
 
