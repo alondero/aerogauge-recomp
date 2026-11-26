@@ -11,6 +11,7 @@ symbols_file_path = "aerogauge.syms.toml"
 rom_file_path = "AeroGauge (USA).z64"
 
 [patches]
+aero_mod_guards = ["func_8001F998"]
 stubs = [
     "func_8006AB10",
     "func_8006CCD0",
@@ -113,44 +114,19 @@ func = "func_80022408"
 before_vram = 0x80022680
 text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);"
 
-# Intro draw boundaries, disassembled from the USA ROM. Each native updates
-# the cursor holder owned by the current function; no timer/state replacement.
+# Recovered race-intro drawing in src/aero_race_intro.c. Keep the
+# original entry symbols in the overlay table, including the indirect callback.
 [[patches.hook]]
 func = "func_8000D708"
-before_vram = 0x8000D708
-text = "extern void aero_intro_ticker_begin(uint8_t*, recomp_context*); aero_intro_ticker_begin(rdram, ctx);"
-[[patches.hook]]
-func = "func_8000D708"
-before_vram = 0x8000D860
-text = "extern void aero_intro_ticker_origin(uint8_t*, recomp_context*); aero_intro_ticker_origin(rdram, ctx);"
-[[patches.hook]]
-func = "func_8000D708"
-before_vram = 0x8000D968
-text = "extern void aero_intro_ticker_end(uint8_t*, recomp_context*); aero_intro_ticker_end(rdram, ctx);"
+text = "extern void aero_intro_draw_ticker(uint8_t*, recomp_context*); aero_intro_draw_ticker(rdram, ctx); return;"
+
 [[patches.hook]]
 func = "func_8000D97C"
-before_vram = 0x8000DBB0
-text = "extern void aero_intro_banner(uint8_t*, recomp_context*); aero_intro_banner(rdram, ctx);"
-[[patches.hook]]
-func = "func_8001F998"
-before_vram = 0x80020174
-text = "extern void aero_intro_glyph(uint8_t*, recomp_context*); aero_intro_glyph(rdram, ctx);"
+text = "extern void aero_intro_draw_banner(uint8_t*, recomp_context*); aero_intro_draw_banner(rdram, ctx); return;"
+
 [[patches.hook]]
 func = "func_800191FC"
-before_vram = 0x800193C4
-text = "extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);"
-[[patches.hook]]
-func = "func_800191FC"
-before_vram = 0x800193CC
-text = "extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);"
-[[patches.hook]]
-func = "func_800191FC"
-before_vram = 0x800194B8
-text = "extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);"
-[[patches.hook]]
-func = "func_800191FC"
-before_vram = 0x800194C0
-text = "extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);"
+text = "extern void aero_intro_draw_overlays(uint8_t*, recomp_context*); aero_intro_draw_overlays(rdram, ctx); return;"
 
 # Championship replay results (modes 9/10, func_800191FC -> func_8001C030).
 # One range covers every per-round page (8001C29C) and the final points table

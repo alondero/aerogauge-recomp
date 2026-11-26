@@ -35,14 +35,21 @@ void register_patches(const char*, size_t size, SectionTableEntry* sections, siz
 int main(int argc, char** argv) {
     std::span<const uint32_t> guards = usa::protected_mod_functions;
     constexpr uint32_t usa_car_lod[] = {0x80007538, 0x8005A034, 0x8005A2D4};
+    constexpr uint32_t usa_intro[] = {0x8000D708, 0x8000D97C, 0x800191FC, 0x8001F998};
     std::span<const uint32_t, 3> car_lod = usa_car_lod;
+    std::span<const uint32_t, 4> intro_entries = usa_intro;
 #ifdef AERO_JAPAN_SUPPORT
     if (argc > 1 && std::strcmp(argv[1], "jp") == 0) {
         guards = japan::protected_mod_functions;
         static constexpr uint32_t jp_car_lod[] = {0x80007980, 0x8005A38C, 0x8005A660};
+        static constexpr uint32_t jp_intro[] = {0x8000DDA0, 0x8000E144, 0x80019C94, 0x8002025C};
         car_lod = jp_car_lod;
+        intro_entries = jp_intro;
     }
 #endif
+    for (uint32_t entry : intro_entries) {
+        assert(std::binary_search(guards.begin(), guards.end(), entry));
+    }
     constexpr uint32_t base = 0x80000400;
     FuncEntry funcs[] = {
         {.func = nullptr, .offset = car_lod[0] - base, .rom_size = 64},

@@ -65,8 +65,7 @@ INDIRECT_STARTS = [0x80002164, 0x8000E480, 0x8000A390, 0x8000E540,
 
 
 # (function entry, instruction boundary, expected instruction, native call).
-# Reviewed from Rev A disassembly; register/stack contracts match unless
-# explicitly adapted in aero_race_intro.c. Guards reject stale boundaries.
+# Reviewed from Rev A disassembly. Guards reject stale boundaries.
 HOOKS = [
     (0x80023238, 0x8002347C, 0x3C19801A, 'extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);'),
     (0x80023238, 0x800235EC, 0x8FBF001C, 'extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);'),
@@ -74,15 +73,10 @@ HOOKS = [
     (0x800165FC, 0x80016600, 0x2463D000, 'extern void aero_savestate_tick(uint8_t*, recomp_context*); aero_savestate_tick(rdram, ctx);'),
     (0x80022E38, 0x80022E38, 0x27BDFF80, 'extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_hud_scan_begin(rdram, ctx);'),
     (0x80022E38, 0x800230C8, 0x8FB00018, 'extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hud_frame_end(rdram, ctx);'),
-    (0x8000DDA0, 0x8000DDA0, 0x3C088014, 'extern void aero_intro_ticker_begin(uint8_t*, recomp_context*); aero_intro_ticker_begin(rdram, ctx);'),
-    (0x8000DDA0, 0x8000DDEC, 0x240500B9, 'extern void aero_intro_ticker_origin(uint8_t*, recomp_context*); aero_intro_ticker_origin(rdram, ctx);'),
-    (0x8000DDA0, 0x8000E130, 0xADCD0000, 'extern void aero_intro_ticker_end(uint8_t*, recomp_context*); aero_intro_ticker_end(rdram, ctx);'),
-    (0x8000E144, 0x8000E380, 0x8FBF0014, 'extern void aero_intro_banner(uint8_t*, recomp_context*); aero_intro_banner(rdram, ctx);'),
-    (0x8002025C, 0x80020A8C, 0x8FBF0024, 'extern void aero_intro_glyph(uint8_t*, recomp_context*); aero_intro_glyph(rdram, ctx);'),
-    (0x80019C94, 0x80019E5C, 0x0C00863A, 'extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);'),
-    (0x80019C94, 0x80019E64, 0x8FB8003C, 'extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);'),
-    (0x80019C94, 0x80019F58, 0x0C00863A, 'extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);'),
-    (0x80019C94, 0x80019F60, 0x8FAD003C, 'extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);'),
+    # Whole-entry race-intro replacements. Keep the indirect callback registered.
+    (0x8000DDA0, None, None, 'extern void aero_intro_draw_ticker(uint8_t*, recomp_context*); aero_intro_draw_ticker(rdram, ctx); return;'),
+    (0x8000E144, None, None, 'extern void aero_intro_draw_banner(uint8_t*, recomp_context*); aero_intro_draw_banner(rdram, ctx); return;'),
+    (0x80019C94, None, None, 'extern void aero_intro_draw_overlays(uint8_t*, recomp_context*); aero_intro_draw_overlays(rdram, ctx); return;'),
     (0x8001C7C0, 0x8001C7C0, 0x27BDFFA0, 'extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));'),
     (0x8001C7C0, 0x8001C9E8, 0x8DCE9448, 'extern void aero_ws_message_end(uint8_t*, gpr); aero_ws_message_end(rdram, MEM_W(0x58, ctx->r29));'),
     (0x8001B628, 0x8001B628, 0x27BDFFC0, 'extern void aero_ws_message_begin(uint8_t*, gpr); aero_ws_message_begin(rdram, MEM_W(0, ctx->r4));'),

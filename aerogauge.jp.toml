@@ -11,6 +11,7 @@ symbols_file_path = "aerogauge.jp.syms.toml"
 rom_file_path = "AeroGauge (Japan) (Rev A).z64"
 
 [patches]
+aero_mod_guards = ["jp_func_8002025C"]
 stubs = [
     "jp_func_8006B5A0",
     "jp_func_8006DDB0",
@@ -90,56 +91,17 @@ text = "extern void aero_ws_hud_frame_end(uint8_t*, recomp_context*); aero_ws_hu
 
 [[patches.hook]]
 func = "jp_func_8000DDA0"
-before_vram = 0x8000DDA0
-text = "extern void aero_intro_ticker_begin(uint8_t*, recomp_context*); aero_intro_ticker_begin(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_8000DDA0"
-before_vram = 0x8000DDEC
-text = "extern void aero_intro_ticker_origin(uint8_t*, recomp_context*); aero_intro_ticker_origin(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_8000DDA0"
-before_vram = 0x8000E130
-text = "extern void aero_intro_ticker_end(uint8_t*, recomp_context*); aero_intro_ticker_end(rdram, ctx);"
+text = "extern void aero_intro_draw_ticker(uint8_t*, recomp_context*); aero_intro_draw_ticker(rdram, ctx); return;"
 
 
 [[patches.hook]]
 func = "jp_func_8000E144"
-before_vram = 0x8000E380
-text = "extern void aero_intro_banner(uint8_t*, recomp_context*); aero_intro_banner(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_8002025C"
-before_vram = 0x80020A8C
-text = "extern void aero_intro_glyph(uint8_t*, recomp_context*); aero_intro_glyph(rdram, ctx);"
+text = "extern void aero_intro_draw_banner(uint8_t*, recomp_context*); aero_intro_draw_banner(rdram, ctx); return;"
 
 
 [[patches.hook]]
 func = "jp_func_80019C94"
-before_vram = 0x80019E5C
-text = "extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_80019C94"
-before_vram = 0x80019E64
-text = "extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_80019C94"
-before_vram = 0x80019F58
-text = "extern void aero_intro_fade_begin(uint8_t*, recomp_context*); aero_intro_fade_begin(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_80019C94"
-before_vram = 0x80019F60
-text = "extern void aero_intro_fade_end(uint8_t*, recomp_context*); aero_intro_fade_end(rdram, ctx);"
+text = "extern void aero_intro_draw_overlays(uint8_t*, recomp_context*); aero_intro_draw_overlays(rdram, ctx); return;"
 
 
 [[patches.hook]]
