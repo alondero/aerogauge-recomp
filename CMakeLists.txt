@@ -589,22 +589,44 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
     target_link_libraries(test_hud_messages PRIVATE aero_log)
     add_test(NAME hud_messages COMMAND test_hud_messages)
-    add_executable(test_race_intro tests/test_race_intro.c)
-    target_include_directories(test_race_intro PRIVATE
-        ${N64MR}/N64Recomp/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    foreach(region IN ITEMS us jp)
+        if(region STREQUAL "jp")
+            if(NOT TARGET RecompiledFuncsJP)
+                continue()
+            endif()
+            set(intro_source "${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncsJP")
+            set(intro_dependencies ${JP_FUNC_SOURCES})
+        else()
+            set(intro_source "${CMAKE_CURRENT_SOURCE_DIR}/RecompiledFuncs")
+            set(intro_dependencies ${FUNC_C_SOURCES})
+        endif()
+        set(intro_funcs_${region} "${CMAKE_CURRENT_BINARY_DIR}/race_intro_${region}_funcs.c")
+        add_custom_command(OUTPUT ${intro_funcs_${region}}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/extract_race_intro_test.py
+                    ${intro_source} ${intro_funcs_${region}} ${region}
+            DEPENDS tests/extract_race_intro_test.py ${intro_dependencies} ${intro_source}/funcs.h
+            VERBATIM)
+    endforeach()
+    add_executable(test_race_intro tests/test_race_intro.c src/aero_race_intro.c ${intro_funcs_us})
+    target_include_directories(test_race_intro PRIVATE src
+        ${N64MR}/N64Recomp/include ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+    target_compile_options(test_race_intro PRIVATE -fno-strict-aliasing)
     if(NOT WIN32)
         target_link_libraries(test_race_intro PRIVATE m)
     endif()
     add_test(NAME race_intro COMMAND test_race_intro)
-    add_executable(test_race_intro_jp tests/test_race_intro.c)
-    target_compile_definitions(test_race_intro_jp PRIVATE AERO_JAPAN_SUPPORT)
-    target_include_directories(test_race_intro_jp PRIVATE
-        ${N64MR}/N64Recomp/include ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
-    if(NOT WIN32)
-        target_link_libraries(test_race_intro_jp PRIVATE m)
+    if(TARGET RecompiledFuncsJP)
+        add_executable(test_race_intro_jp tests/test_race_intro.c src/aero_race_intro.c
+            ${intro_funcs_us} ${intro_funcs_jp})
+        target_compile_definitions(test_race_intro_jp PRIVATE AERO_JAPAN_SUPPORT)
+        target_include_directories(test_race_intro_jp PRIVATE src
+            ${N64MR}/N64Recomp/include ${CMAKE_CURRENT_SOURCE_DIR}/lib/rt64/include)
+        target_compile_options(test_race_intro_jp PRIVATE -fno-strict-aliasing)
+        if(NOT WIN32)
+            target_link_libraries(test_race_intro_jp PRIVATE m)
+        endif()
+        add_test(NAME race_intro_jp COMMAND test_race_intro_jp jp)
     endif()
-    add_test(NAME race_intro_jp COMMAND test_race_intro_jp)
     # Native registrars with synthetic course tables and recorded ROM-helper calls.
     add_executable(test_full_track_registration
         tests/test_full_track_registration.cpp src/aero_full_track.cpp)

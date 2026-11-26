@@ -6,7 +6,7 @@ import tomllib
 
 
 def protected_addresses(config, symbols):
-    """Return sorted VRAM addresses of stubbed or patched game functions."""
+    """Return sorted VRAM addresses of patched and explicitly guarded functions."""
     addresses_by_name = {
         function["name"]: function["vram"]
         for section in symbols.get("section", [])
@@ -14,6 +14,7 @@ def protected_addresses(config, symbols):
     }
     patch_config = config.get("patches", {})
     protected_names = set(patch_config.get("stubs", []))
+    protected_names.update(patch_config.get("aero_mod_guards", []))
     for patch_type in ("hook", "instruction"):
         protected_names.update(
             patch["func"] for patch in patch_config.get(patch_type, [])
@@ -21,7 +22,7 @@ def protected_addresses(config, symbols):
 
     missing = sorted(protected_names - addresses_by_name.keys())
     if missing:
-        raise ValueError("patched functions missing from symbols: " + ", ".join(missing))
+        raise ValueError("guarded functions missing from symbols: " + ", ".join(missing))
     return sorted(addresses_by_name[name] for name in protected_names)
 
 

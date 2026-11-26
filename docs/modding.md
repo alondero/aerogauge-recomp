@@ -96,8 +96,8 @@ The runtime supports function hooks and replacements. CMake aligns translated
 function entries and reserves room for runtime replacement jumps. The build
 also derives regional guard lists from `aerogauge.us.toml` and
 `aerogauge.jp.toml`: functions with port-injected
-hooks, stubs, or instruction patches are registered as base patches so ordinary
-mod replacements cannot silently discard port behavior.
+hooks, stubs, instruction patches, or an explicit guard are registered as base
+patches so ordinary mod replacements cannot silently discard port behavior.
 
 This integration does not expose a general game-data API. Track Lab files and
 port configuration are not mod package types. Android includes the manager UI,

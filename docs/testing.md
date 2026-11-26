@@ -220,8 +220,10 @@ the port hands to the device.
 
 When Japanese generated code is present, `car_lod_jp`, `scene_scissor_jp`, and
 `controller_pak_rom_filesystem_jp` run the corresponding Japanese routines with
-the same behavioral assertions as USA. `race_intro_jp` checks the Japanese
-ticker's register contract. No game bytes are embedded in these tests.
+the same behavioral assertions as USA. `race_intro` and `race_intro_jp` compare
+the recovered entry points with unhooked ROM translations, checking the
+display list and state at 4:3 and the expanded rectangles at wider aspects.
+No game bytes are embedded in these tests.
 `mod_guards` and `mod_guards_jp` check that each generated regional guard list
 protects injected hooks while leaving ordinary functions available to mods,
 and that patch metadata remains valid after overlay registration.
@@ -299,7 +301,7 @@ The current CMake file registers these tests:
 | racer_shadow_depth | Host | Synthetic RDRAM and runtime OSTask type; no ROM or renderer |
 | hud_shift_scale | Host | No ROM |
 | hud_messages | Host | RT64 headers from the initialized submodule |
-| race_intro | Host | RT64 headers from the initialized submodule |
+| race_intro | ROM-backed | Generated regional code and RT64 headers |
 | full_track_policy | Host | No ROM |
 | startup_mode | Host | No ROM; asserts the desktop startup default and the AERO_LAUNCHER=1 opt-in |
 | rom_startup | Host | No ROM; explicit-path precedence, local/cache ordering, noninteractive failure, picker retry and cancellation |
