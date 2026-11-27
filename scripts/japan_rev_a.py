@@ -67,8 +67,6 @@ INDIRECT_STARTS = [0x80002164, 0x8000E480, 0x8000A390, 0x8000E540,
 # (function entry, instruction boundary, expected instruction, native call).
 # Reviewed from Rev A disassembly. Guards reject stale boundaries.
 HOOKS = [
-    (0x80023238, 0x8002347C, 0x3C19801A, 'extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);'),
-    (0x80023238, 0x800235EC, 0x8FBF001C, 'extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);'),
     (0x800165FC, 0x800165FC, 0x3C038014, 'extern void aero_warp_tick(uint8_t*, recomp_context*); aero_warp_tick(rdram, ctx);'),
     (0x800165FC, 0x80016600, 0x2463D000, 'extern void aero_savestate_tick(uint8_t*, recomp_context*); aero_savestate_tick(rdram, ctx);'),
     (0x80022E38, 0x80022E38, 0x27BDFF80, 'extern void aero_ws_hud_scan_begin(uint8_t*, recomp_context*); aero_ws_hud_scan_begin(rdram, ctx);'),

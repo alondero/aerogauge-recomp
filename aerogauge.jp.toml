@@ -36,7 +36,7 @@ ignored = [
     "guPerspectiveF",
 ]
 
-# Whole-function car LOD replacements. See src/aero_car_lod.c.
+# Whole-function native replacements. See src/aero_car_lod.c and src/aero_scene_scissor.c.
 
 [[patches.hook]]
 func = "jp_func_80007980"
@@ -55,15 +55,8 @@ text = "extern void aero_update_car_animation(uint8_t*, recomp_context*); aero_u
 
 [[patches.hook]]
 func = "jp_func_80023238"
-before_vram = 0x8002347C
-text = "extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);"
-
-
-[[patches.hook]]
-func = "jp_func_80023238"
-before_vram = 0x800235EC
-text = "extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);"
-
+before_vram = 0x80023238
+text = "extern void aero_build_scene_viewport(uint8_t*, recomp_context*); aero_build_scene_viewport(rdram, ctx); return;"
 
 [[patches.hook]]
 func = "jp_func_800165FC"

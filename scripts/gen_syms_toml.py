@@ -323,30 +323,17 @@ NATIVE_NAMES = {
 
 # Keep these replacements at the owning function entries. N64Recomp keeps
 # entry hooks in the overlay table so the runtime can guard the native body.
-CAR_LOD_REPLACEMENTS = (
+ENTRY_REPLACEMENTS = (
     (0x80007538, 0x80007980, "aero_update_car_visibility"),
     (0x8005A034, 0x8005A38C, "aero_rebuild_car_model"),
     (0x8005A2D4, 0x8005A660, "aero_update_car_animation"),
+    (0x800227E4, 0x80023238, "aero_build_scene_viewport"),
 )
 
 # Hand-authored [[patches.hook]] / [[patches.instruction]] blocks appended verbatim to the
 # generated aerogauge.us.toml. Keep the source blocks here: edits made only in the
 # generated TOML disappear on the next regeneration.
 PATCH_BLOCKS = """
-# Remove the full-screen scene's overscan scissor after the ROM emits it.
-# s0 = viewport descriptor, v1 = just-written command. The port hook validates
-# both; sub-viewports and custom crops retain their original clipping.
-[[patches.hook]]
-func = "func_800227E4"
-before_vram = 0x800229C8
-text = "extern void aero_scene_scissor(uint8_t*, recomp_context*); aero_scene_scissor(rdram, ctx);"
-
-# The optional solid scene background must cover the same expanded area.
-[[patches.hook]]
-func = "func_800227E4"
-before_vram = 0x80022B2C
-text = "extern void aero_scene_background(uint8_t*, recomp_context*); aero_scene_background(rdram, ctx);"
-
 # Developer warp menu hook (src/aero_warp.c; see docs/reference/runtime.md). Hooked at the entry of the top-level
 # per-frame scene driver func_80015C8C (called every frame from the main game thread's
 # loop func_800658FC): it copies the scene request 0x8013FF84 into the current scene
@@ -737,8 +724,8 @@ def main():
         for n in sorted(n for n in NATIVE_NAMES.values() if n in known):
             f.write(f'    "{n}",\n')
         f.write("]\n")
-        f.write("\n# Whole-function car LOD replacements. See src/aero_car_lod.c.\n")
-        for us_entry, jp_entry, native in CAR_LOD_REPLACEMENTS:
+        f.write("\n# Whole-function native replacements. See src/aero_car_lod.c and src/aero_scene_scissor.c.\n")
+        for us_entry, jp_entry, native in ENTRY_REPLACEMENTS:
             entry = jp_entry if japanese else us_entry
             name = f'{"jp_" if japanese else ""}func_{entry:08X}'
             f.write("\n[[patches.hook]]\n")

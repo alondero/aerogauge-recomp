@@ -67,6 +67,7 @@ N64Recomp memory helpers on their existing game/frame boundaries:
 | Race countdown step | 0x8013FF38 | 0x8013CFB8 |
 | Course pointer / course rows | 0x8013FF44 / 0x8008B290 | 0x8013CFC4 / 0x8008AE40 |
 | HUD display-list cursor holder | 0x8016C508 | 0x80169508 |
+| Scene background color | 0x8019DDFC | 0x8019ADFC |
 | Race time anchor (u64) | 0x8016C4F0 | 0x801694F0 |
 | P1 buttons (u16) | 0x8010CAB2 | 0x80109BA2 |
 | Car array / record stride | 0x8013FFB0 / 0x20A0 | 0x8013D030 / 0x2094 |
@@ -221,6 +222,7 @@ portable API for another ROM.
 | ROM address | Current use | Port owner |
 | --- | --- | --- |
 | 0x80022408 | Main 2D display-list dispatcher | Widescreen HUD hook |
+| 0x800227E4 | Scene viewport, scissor, and background builder (Japan Rev A: 0x80023238) | aero_scene_scissor.c whole-function recovery |
 | 0x8006BA60 | guPerspectiveF, called by the projection sites | Draw-distance replacement |
 | 0x80007150 | Course section registrar using the three-zone visibility row | Full-track section path |
 | 0x80007310 | Course object registrar using the current course table | Full-track object path |
