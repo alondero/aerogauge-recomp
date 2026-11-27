@@ -393,6 +393,126 @@ The CTest wrappers use these skip behaviors:
   `python -B tests/test_vi_features.py --exe build/aerogauge_modern.exe --repo .`
   (omit `.exe` on Linux). A software-renderer run cannot validate this path.
 
+## Graphics acceptance
+
+Use a dual-region Release build and the player RT64 renderer. Start every
+desktop run in a fresh [portable profile](configuration.md) with an explicit
+ROM path. On Android use a dedicated test install or profile and import the
+matching ROM through the launcher. Keep mods, texture replacements, assists and
+overlays off for the baseline. Record the commit and dependency pins, ROM
+region/hash, route and craft, actual backend, OS, GPU and driver, output size,
+window mode, selected display and refresh mode, and the saved graphics settings.
+For Linux also record the compositor and X11/Wayland session. For Android
+record the phone model and whether the Vulkan driver is system or imported.
+
+### Visual route
+
+1. Start from the cold process. Capture the boot logo, title and course-select
+   menu. Start a single-player race on Canyon Rush with the first craft. Capture
+   the flyover or race intro, countdown, and a race frame with the HUD active.
+   Finish the race to inspect the results, then return to course select and
+   launch Bikini Island. Capture the tunnel approach, inside and exit. Check
+   whether walls occlude cars and shadows and whether the player's shadow remains
+   on the road. Keep the same route, craft and camera when comparing runs.
+2. Compare a 4:3 baseline with 16:9 and an ultrawide window. On desktop,
+   1200×900, 1600×900 and 2100×900 are exact examples. Keep
+   `ar_option=Expand` and test Original, Clamp16x9 and Full HUD placement at
+   ultrawide to distinguish their anchors. Inspect image proportions, menu
+   centering, pillarboxes or scissor seams, HUD and needle alignment, and the
+   readability of central messages. Record the actual client size if the window
+   manager adjusts it.
+3. Repeat the Canyon Rush intro and the Bikini Island tunnel in two-player
+   split-screen with two mapped inputs. Observe both viewports and the divider
+   for clipping or cross-view HUD, fog, or geometry leakage. Check the first
+   race start in both supported regions before expanding the scene list.
+4. On a representative wide configuration, compare Full-course geometry
+   off/on at constant Draw distance, and Force Full LOD off/on with the same
+   geometry setting. Look for missing or fighting surfaces at zone boundaries,
+   and compare distant car detail. For an original-visibility control also set
+   Draw distance to 1. Leave the enhancement comparison unchecked when the
+   captured scene did not reach the relevant distance or boundary.
+
+Use one timestamped screenshot or a short clip per checkpoint. For
+repeatable desktop captures of boot, a race intro and a stationary race, use
+`AERO_INPUT_PULSE=1000:120:12:20:3`, `AERO_WARP=1:1` and
+`AERO_MODERN_MAX_VIS=2580`. Change the warp to `2:1` for a Bikini Island race
+start. The warp bypasses the normal course menu and uses single-player. Use the
+manual route for menu, split-screen, tunnel traversal and results evidence.
+
+On Windows with a recent FFmpeg build, this example captures one frame from
+the game window while it is open. Keep a single AeroGauge test window running.
+
+~~~powershell
+ffmpeg -f lavfi -i 'gfxcapture=window_title=^AeroGauge$:capture_cursor=0,hwdownload,format=bgra' `
+  -frames:v 1 -update 1 checkpoint.png
+~~~
+
+### Frame pacing
+
+Start with 16:9 and Clamp16x9 and keep all other settings fixed while comparing
+Original, Manual (60 FPS at 120 Hz) and Display presentation. Record the first
+10 seconds of rendering after process launch and a separate stable race
+interval once the guest finishes the countdown. State whether driver caches
+were already populated. Repeat with fixed refresh and VRR where available
+and verify which mode was active. For mixed refresh, run on each display and
+repeat after moving the window between displays. Include each monitor's mode,
+the window location and its RT64 target rate.
+
+On Windows, run the [PresentMon console executable](https://github.com/GameTechDev/PresentMon/releases)
+and the game through [the capture harness](../tests/measure_graphics_pacing.py).
+Save a graphics.json preset outside the output directory, set
+`api_option` to `D3D12`, `ar_option` to `Expand`, `hr_option` to
+`Clamp16x9` and use a 1600×900 window. Create one preset per presentation
+mode using `rr_option` and `rr_manual_value` from
+[Configuration](configuration.md#graphicsjson).
+
+~~~powershell
+python -B tests/measure_graphics_pacing.py --presentmon ./PresentMon-2.6.0-x64.exe `
+  --exe build/aerogauge_modern.exe --rom 'AeroGauge (USA).z64' `
+  --settings ./display.json --output build/graphics-acceptance/us-display-1
+~~~
+
+The output directory must be new. The harness runs the Canyon Rush warp
+with neutral race input and saves the settings, timestamped game log,
+PresentMon CSV and JSON summary. Re-run in a new directory for each sample.
+The report uses the game's dominant displayed swapchain and includes separate
+present-call and displayed-frame interval distributions. Warm samples start
+at least 15 seconds after the first present and are bracketed by two or more
+logged guest framebuffer swaps in the settled race. The harness uses QPC for
+both streams and timestamps guest events when it reads stderr. Leave video
+capture off during timing runs. If the race settles too late to sample,
+repeat with a larger VI limit such as `--max-vis 3600`.
+
+An interval contributes only when both endpoints fall inside the sample
+window. A window with zero valid display intervals has null display
+percentiles. Present-call timing and dropped counts can still be available.
+
+On native Linux use Vulkan and a physical display. For example, set a writable
+`output_folder` in [MangoHud](https://github.com/flightlessmango/MangoHud),
+enable frame logging with `log_interval=0` and use `autostart_log` or the
+logging hotkey to mark the same windows. Run with
+`AERO_HARNESS_LOG=1` and redirect stderr to a file for the guest probes.
+MangoHud's frame times are app-side data. Collect game-surface presentation
+feedback from the compositor or a high-speed recording of the physical
+display when checking displayed intervals.
+
+On physical Android, export game diagnostics from the launcher and use
+SurfaceFlinger timing for the game surface, where the device exposes it.
+Find it with `adb shell dumpsys SurfaceFlinger --list`. A compositor trace
+must resolve the game layer to establish game presentation cadence. For
+devices that lack usable game-layer timings, use a high-speed recording of
+the display with the in-game race timer visible. Record timer progress
+against wall time if the guest swap probe is unavailable. Perfetto documents
+its [FrameTimeline limits on SurfaceView](https://perfetto.dev/docs/data-sources/frametimeline).
+
+For each interval report sample count, p50, p95, p99, maximum interval and
+dropped or missed presents when available. Document the timing source and
+which events it measures. Compare warm guest VI and framebuffer-swap deltas
+against elapsed time alongside presentation, and verify race-clock progress
+on the manual route. An uneventful steady-state capture covers only its
+recorded scene, settings and driver. Record skipped cases in the
+[graphics acceptance summary](graphics-acceptance.md).
+
 ## Standalone host tests
 
 For Windows CPU measurements, use the optional

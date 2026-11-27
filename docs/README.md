@@ -11,6 +11,7 @@ Developers need clear build steps, evidence, and ownership.
 | Build from source | [BUILDING.md](../BUILDING.md) |
 | Change code | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Run checks | [Testing](testing.md) |
+| Reproduce or check graphics coverage | [Graphics acceptance](graphics-acceptance.md) |
 | Investigate a failure | [Debugging](debugging.md) |
 | Understand dependency patches | [Patch inventory](../patches/README.md) |
 

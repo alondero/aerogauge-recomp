@@ -27,6 +27,15 @@ The port should not reimplement those services in a game hook. Its renderer
 responsibility is to pass the correct window, task, ROM, settings, and
 game-specific evidence to RT64.
 
+RT64's Original presentation rate follows its detected guest frame cadence.
+Manual and Display set presentation targets and can interpolate additional
+output frames between guest graphics workloads. The host display cadence
+depends on the swapchain, compositor and display. The guest's VI retraces
+and changes to `VI_ORIGIN` are independent signals. The latter counts guest
+framebuffer changes and is a proxy for rendered guest progress. Compare those
+signals with elapsed time and the race clock when checking game speed.
+The [acceptance record](../graphics-acceptance.md) tracks measured coverage.
+
 ## Headless renderer
 
 stub_renderer.cpp is a software renderer used for bounded tests and captures.
