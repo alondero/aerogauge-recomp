@@ -113,6 +113,22 @@ Remove-Item Env:AERO_CRASH_TEST
 
 Use this only on a test run. It deliberately terminates the process.
 
+## Desktop graphics and driver triage
+
+Use the [graphics acceptance route](testing.md#graphics-acceptance) to record
+one failing case and one control on the same device. Keep the ROM, settings
+and scene fixed while changing the variable under investigation.
+
+| Observed symptom | Evidence to collect |
+| --- | --- |
+| Window fails to open or render | Record the requested API, the RT64 initialization result and the GPU/driver. A headless fallback in the log leaves desktop presentation untested. |
+| Stutter or uneven motion | Record displayed-frame and present-call intervals with the guest VI/swap counts. Repeat the same race segment under Original, Manual and Display, and confirm the selected display and refresh mode. |
+| HUD clips or road, car or shadow geometry disappears | Capture the same checkpoint at 4:3 and the failing aspect/HUD mode. Toggle full-course geometry and Force Full LOD individually. A location-specific failure that repeats across drivers gives a starting point for inspecting the game display list. |
+| Failure seen only on one driver or monitor | Repeat the same capture on another available driver or display and record both outcomes. Include window mode, refresh rates and presentation mode. |
+
+See the [desktop comparison](graphics-acceptance.md#desktop-gpudriver-results)
+for observed outcomes and any measured workarounds.
+
 ## Reaching a useful game state
 
 The developer warp uses the game's own race setup after the request is

@@ -166,6 +166,7 @@ the log file when you report a problem; see
 - Texture dumping remains a developer feature.
 - Mod support is experimental, and packages must target AeroGauge Recompiled.
 - Platform, graphics-driver, and physical-controller coverage is incomplete.
+  See [graphics acceptance](docs/graphics-acceptance.md) for measured coverage.
 - The settings screen is not shown by headless test runs.
 
 See the [documentation map](docs/README.md) for developer documentation, test
