@@ -60,7 +60,7 @@ will produce the same image.
 | Racer-shadow depth comparison | aero_shadow_depth.cpp, called from rt64_renderer.cpp | AeroGauge-specific task display-list correction |
 | Widescreen HUD retagging and needle matrix shift | aero_hud_widescreen.c | AeroGauge-specific display-list rewrite |
 | Draw-distance replacement | aero_draw_distance.cpp | AeroGauge-specific native replacement |
-| Full-screen overscan removal | aero_scene_scissor.c | AeroGauge-specific scissor hook |
+| Full-screen overscan removal | aero_scene_scissor.c | AeroGauge-specific viewport-builder recovery |
 | Headless software renderer | stub_renderer.cpp | Test and capture instrument, not the player renderer |
 | Window and input wiring | main.cpp and aero_menu.cpp | Port integration |
 
@@ -182,36 +182,40 @@ keep the ROM evidence, the guest-memory cursor rules, and the test together.
 
 ### Full-screen overscan
 
-The USA ROM's full-screen race viewport has scale and translation
-`(640,480,511)` in quarter-pixel units, covering 320 by 240 pixels. The
-scene scissor builder at `0x800227E4` adds 16-pixel horizontal and 8-pixel
-vertical insets, then subtracts one more pixel at the lower bounds. Its
+The USA ROM's measured full-screen race viewport has scale x/y and
+translation x/y of 640/480 and 640/480 in quarter-pixel units, covering 320 by
+240 pixels. The scene
+viewport, scissor, and background builder at `0x800227E4` (Japan Rev A:
+`0x80023238`) adds 16-pixel horizontal and 8-pixel vertical insets, then
+subtracts one more pixel at the lower scissor bounds. Its
 `ED040020 004BC39C` command clips drawing to `(16,8)..(303,231)`.
 The black framebuffer clear remains visible outside that rectangle. RT64
 widens the projection but scales these margins with the output, making them
 particularly noticeable on ultrawide screens. The original hardware motive
 for these margins has not been established.
 
-[aero_scene_scissor.c](../../src/aero_scene_scissor.c) changes this command
-to `(0,0)..(320,240)`, with exclusive lower bounds. It runs on the game thread
-immediately after the command store at `0x800229C4`, using `s0` for the
-descriptor and `v1` for the command. It validates guest ranges, full-screen
-scale/translation, and the original command before writing two 32-bit words.
-Unexpected inputs, split-screen views, and custom crops are left intact.
-Camera matrices and viewport data do not change: the newly exposed area
-shows additional world geometry at the existing scale. This is enabled by
-default and needs no new RT64 patch or aspect setting.
+[aero_scene_scissor.c](../../src/aero_scene_scissor.c) is a whole-function
+recovery of that builder. It keeps the original entry ABI and reconstructs
+the clamp, `G_SETSCISSOR`, optional color-image clear, and `G_FILLRECT`
+output rather than repairing commands after emission. For the measured
+full-screen overscan descriptor it changes the scissor to `(0,0)..(320,240)`
+with exclusive lower bounds. When the builder also emits a solid background
+clear, the same case expands the fill rectangle to `(0,0)..(319,239)`;
+fill-cycle lower bounds are inclusive. The original fill color is preserved.
 
-When that builder also emits a solid background clear, the companion hook
-after `0x80022B28` expands its fill rectangle to `(0,0)..(319,239)`. Fill-cycle
-lower bounds are inclusive. The original fill color is preserved, and the
-same full-screen descriptor and command checks guard the change.
+Unexpected inputs, split-screen views, and custom crops keep bit-identical
+ROM output. Camera matrices and viewport data do not change: the newly
+exposed area shows additional world geometry at the existing scale. The
+enhancement is enabled by default and needs no RT64 patch or aspect setting.
+`AERO_SCENE_OVERSCAN=0` is the investigation kill switch and restores the
+stock rectangles.
 
-The `scene_scissor` regression test extracts the actual generated function
-and exercises its hooks with full-screen, split-screen, and custom-crop
-descriptors. ROM-derived output stays in the build directory. A future
-named source implementation of this builder can replace the register-based
-hook without changing the clipping contract.
+The `scene_scissor` regression test extracts the hooked generated entry and
+recreates the unhooked ROM translation as a reference. It calls both through
+the original guest ABI, compares persistent memory and ordered
+`osVirtualToPhysical` calls, and covers full-screen, split-screen,
+custom-crop, clamped, wrapping, and deterministic bit-pattern descriptors.
+ROM-derived output stays in the build directory.
 
 ### HUD hook contract
 

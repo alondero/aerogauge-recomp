@@ -323,7 +323,7 @@ The current CMake file registers these tests:
 | controller_db_sdl | Host | Real SDL2 virtual joystick; checks startup mapping load, `platform:` tag requirement, and override precedence |
 | dev_warp_chord | Host | No ROM or SDL; the developer warp chord requires both modifiers, selects one track per press, and re-arms after a release |
 | controller_pak_rom_filesystem | ROM-backed | Generated functions and the accepted ROM |
-| scene_scissor | ROM-backed | Generated scissor builder from the accepted ROM |
+| scene_scissor | ROM-backed | Recovered scene viewport builder compared with the unhooked generated ROM reference |
 | car_lod | ROM-backed | Recovered car visibility, model and animation compared with the accepted ROM |
 | vi_special_features | End to end | Python 3, ROM, executable, and a working RT64 graphics device |
 | audio_intro_playback | End to end | Windows desktop, ROM, executable, and usable audio device |

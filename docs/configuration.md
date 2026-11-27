@@ -281,6 +281,7 @@ and remove the files after a run.
 | AERO_WS_TRACE | 1 or 2 | Logs HUD gate and rectangle classification |
 | AERO_WS_NEEDLE_DX | number | Replaces the measured widescreen needle shift |
 | AERO_WS_INTRO | 0 or another value | Disables or enables the race-intro widescreen pass |
+| AERO_SCENE_OVERSCAN | 0 or another value | Disables or enables full-screen scene overscan removal |
 | AERO_FT_SECTIONS | 0 or another value | Selects full-track section registration |
 | AERO_FT_OBJECTS | 0 or another value | Selects full-track object registration |
 | AERO_FT_ZONE_MASK | hexadecimal mask | Limits full-track registration to selected zones |
@@ -382,6 +383,7 @@ renderer; use them only with a saved investigation command.
 | AERO_WS_TRACE | Renderer investigation; 1 or 2 | Unset means off | First HUD trace call | Logs HUD gates and rectangle classes; src/aero_hud_widescreen.c | AERO_WS_TRACE=2 ./build/aerogauge_modern |
 | AERO_WS_NEEDLE_DX | Renderer investigation; number | Unset uses 53.333 pixels | Each shifted HUD frame | Changes the speedometer needle translation; src/aero_hud_widescreen.c | AERO_WS_NEEDLE_DX=53.333 ./build/aerogauge_modern |
 | AERO_WS_INTRO | Renderer investigation; 0 disables, another value enables | Enabled when unset | Each ticker or fade draw | Adds the widescreen intro rectangle path; src/aero_race_intro.c | AERO_WS_INTRO=0 ./build/aerogauge_modern |
+| AERO_SCENE_OVERSCAN | Renderer investigation; 0 disables, another value enables | Enabled when unset | Each scene viewport build | Expands only the measured full-screen scissor and background clear; src/aero_scene_scissor.c | AERO_SCENE_OVERSCAN=0 ./build/aerogauge_modern |
 | AERO_FT_SECTIONS | Full-track investigation; 0 or another value | Enabled when unset; 0 selects the original section path | First section registration | Chooses section registration mode; src/aero_full_track.cpp | AERO_FT_SECTIONS=0 ./build/aerogauge_modern |
 | AERO_FT_OBJECTS | Full-track investigation; 0 or another value | Enabled when unset; 0 selects the original object path | First object registration | Chooses object registration mode; src/aero_full_track.cpp | AERO_FT_OBJECTS=0 ./build/aerogauge_modern |
 | AERO_FT_ZONE_MASK | Full-track investigation; hexadecimal mask | All zones when unset | First zone-mask query | Limits registered zones; src/aero_full_track.cpp | AERO_FT_ZONE_MASK=ff ./build/aerogauge_modern |
